@@ -1,7 +1,11 @@
 import html2canvas from "html2canvas";
 import { Order } from "@workspace/api-client-react";
 
-export async function shareOrderAsImage(order: Order, containerEl: HTMLElement): Promise<void> {
+export async function shareOrderAsImage(
+  order: Order,
+  containerEl: HTMLElement,
+  statusUrl: string
+): Promise<void> {
   const canvas = await html2canvas(containerEl, {
     backgroundColor: "#f0f2f5",
     scale: 2,
@@ -11,11 +15,7 @@ export async function shareOrderAsImage(order: Order, containerEl: HTMLElement):
 
   const imgDataUrl = canvas.toDataURL("image/png");
 
-  // Build the correct public status URL
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
-
-  // Download the image first
+  // Download the image (which already contains the status link inside it)
   const link = document.createElement("a");
   link.href = imgDataUrl;
   link.download = `ismael-cell-${order.codigo}.png`;
@@ -23,10 +23,9 @@ export async function shareOrderAsImage(order: Order, containerEl: HTMLElement):
   link.click();
   document.body.removeChild(link);
 
-  // Then open WhatsApp with the status link and order info
+  // Open WhatsApp with a short message containing the status link
   const text =
-    `📱 *ISMAEL CELL*\n` +
-    `Ordem de Serviço\n\n` +
+    `📱 *ISMAEL CELL* — Ordem de Serviço\n` +
     `Aparelho: ${order.modelo}\n` +
     `Serviço: ${order.servico}\n` +
     `Valor: R$ ${order.valor}\n\n` +
@@ -36,5 +35,5 @@ export async function shareOrderAsImage(order: Order, containerEl: HTMLElement):
 
   setTimeout(() => {
     window.open(waUrl, "_blank");
-  }, 500);
+  }, 600);
 }

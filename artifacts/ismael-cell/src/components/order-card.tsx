@@ -45,13 +45,16 @@ export function OrderCard({ order }: { order: Order }) {
     if (!shareCardRef.current) return;
     setIsSharing(true);
     try {
-      await shareOrderAsImage(order, shareCardRef.current);
+      await shareOrderAsImage(order, shareCardRef.current, statusUrl);
     } catch {
       toast({ title: "Erro ao gerar imagem", variant: "destructive" });
     } finally {
       setIsSharing(false);
     }
   };
+
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
 
   return (
     <>
@@ -65,7 +68,7 @@ export function OrderCard({ order }: { order: Order }) {
           pointerEvents: "none",
         }}
       >
-        <ShareCard ref={shareCardRef} order={order} />
+        <ShareCard ref={shareCardRef} order={order} statusUrl={statusUrl} />
       </div>
 
       <Card className="overflow-hidden transition-all hover:shadow-md border-l-4 hover:border-l-primary">
