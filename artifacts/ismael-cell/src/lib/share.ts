@@ -6,7 +6,6 @@ export async function shareOrderAsImage(
   containerEl: HTMLElement,
   statusUrl: string
 ): Promise<void> {
-  // Build WhatsApp text with the clickable link
   const text =
     `📱 *ISMAEL CELL* — Ordem de Serviço\n` +
     `Aparelho: ${order.modelo}\n` +
@@ -14,31 +13,39 @@ export async function shareOrderAsImage(
     `Valor: R$ ${order.valor}\n\n` +
     `🔗 Acompanhe sua ordem:\n${statusUrl}`;
 
-  const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+  // Generate the image
+  const canvas = await html2canvas(containerEl, {
+    backgroundColor: "#f0f2f5",
+    scale: 2,
+    useCORS: true,
+    logging: false,
+  });
 
-  // Open WhatsApp FIRST (must be synchronous/before any await to avoid popup blocker)
-  const waWindow = window.open(waUrl, "_blank");
+  const blob = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("toBlob failed"))), "image/png")
+  );
 
-  // Now capture the image and download it
-  try {
-    const canvas = await html2canvas(containerEl, {
-      backgroundColor: "#f0f2f5",
-      scale: 2,
-      useCORS: true,
-      logging: false,
+  const file = new File([blob], `ismael-cell-${order.codigo}.png`, { type: "image/png" });
+
+  // Use native share sheet if available (iOS/Android) — sends photo + text to WhatsApp at once
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    await navigator.share({
+      files: [file],
+      text,
     });
-
-    const imgDataUrl = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = imgDataUrl;
-    link.download = `ismael-cell-${order.codigo}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } catch {
-    // If image capture fails, WhatsApp was already opened with the text link
-    if (!waWindow) {
-      window.open(waUrl, "_blank");
-    }
+    return;
   }
+
+  // Fallback for desktop: download image + open WhatsApp with text
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = file.name;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(objectUrl);
+
+  const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
+  window.open(waUrl, "_blank");
 }
