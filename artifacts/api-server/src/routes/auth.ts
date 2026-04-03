@@ -10,7 +10,20 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json({ success: true, email });
+  const adminEmail = process.env.ADMIN_EMAIL;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+
+  if (!adminEmail || !adminPassword) {
+    res.status(500).json({ error: "Credenciais do sistema não configuradas" });
+    return;
+  }
+
+  if (email === adminEmail && password === adminPassword) {
+    res.json({ success: true, email });
+    return;
+  }
+
+  res.status(401).json({ error: "E-mail ou senha incorretos" });
 });
 
 export default router;
