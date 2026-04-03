@@ -3,11 +3,10 @@ import { Order } from "@workspace/api-client-react";
 
 interface ShareCardProps {
   order: Order;
-  statusUrl: string;
 }
 
 export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
-  ({ order, statusUrl }, ref) => {
+  ({ order }, ref) => {
     return (
       <div
         ref={ref}
@@ -86,7 +85,7 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
         </div>
 
         {/* Body */}
-        <div style={{ background: "#f0f2f5", padding: "20px 20px 0 20px" }}>
+        <div style={{ background: "#f0f2f5", padding: "20px" }}>
           <div
             style={{
               background: "#ffffff",
@@ -277,64 +276,6 @@ export const ShareCard = forwardRef<HTMLDivElement, ShareCardProps>(
           </div>
         </div>
 
-        {/* Footer — status link */}
-        <div
-          style={{
-            background: "#f0f2f5",
-            padding: "14px 20px 20px 20px",
-          }}
-        >
-          <div
-            style={{
-              background: "#1a2236",
-              borderRadius: "12px",
-              padding: "14px 20px",
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-            }}
-          >
-            {/* chain link icon */}
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#a78bfa"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              style={{ flexShrink: 0 }}
-            >
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
-            <div>
-              <div
-                style={{
-                  color: "rgba(255,255,255,0.5)",
-                  fontSize: "10px",
-                  fontWeight: "700",
-                  letterSpacing: "2px",
-                  marginBottom: "4px",
-                }}
-              >
-                ACOMPANHE SUA ORDEM
-              </div>
-              <div
-                style={{
-                  color: "#a78bfa",
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  wordBreak: "break-all",
-                  lineHeight: 1.4,
-                }}
-              >
-                {statusUrl}
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     );
   }

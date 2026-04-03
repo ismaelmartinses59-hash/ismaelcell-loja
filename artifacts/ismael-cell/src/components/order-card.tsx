@@ -68,7 +68,7 @@ export function OrderCard({ order }: { order: Order }) {
           pointerEvents: "none",
         }}
       >
-        <ShareCard ref={shareCardRef} order={order} statusUrl={statusUrl} />
+        <ShareCard ref={shareCardRef} order={order} />
       </div>
 
       <Card className="overflow-hidden transition-all hover:shadow-md border-l-4 hover:border-l-primary">
