@@ -23,7 +23,7 @@ const createOrderSchema = z.object({
 
 type CreateOrderForm = z.infer<typeof createOrderSchema>;
 
-export function OrderForm() {
+export function OrderForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createOrder = useCreateOrder();
@@ -84,6 +84,7 @@ export function OrderForm() {
               </Button>
             ),
           });
+          onSuccess?.();
         },
         onError: () => {
           toast({
