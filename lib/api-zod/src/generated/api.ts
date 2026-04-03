@@ -14,3 +14,94 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary List service orders
+ */
+export const ListOrdersQueryParams = zod.object({
+  search: zod.coerce
+    .string()
+    .optional()
+    .describe("Search by model, service, or line"),
+  status: zod
+    .enum(["aguardando", "em andamento", "concluido", "problema"])
+    .optional()
+    .describe("Filter by status"),
+});
+
+export const ListOrdersResponseItem = zod.object({
+  id: zod.number(),
+  codigo: zod.string(),
+  modelo: zod.string(),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  servico: zod.string(),
+  valor: zod.string(),
+  tempo: zod.string(),
+  status: zod.enum(["aguardando", "em andamento", "concluido", "problema"]),
+  createdAt: zod.coerce.date(),
+});
+export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
+
+/**
+ * @summary Create a new service order
+ */
+export const CreateOrderBody = zod.object({
+  modelo: zod.string(),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  servico: zod.string(),
+  valor: zod.string(),
+  tempo: zod.string(),
+});
+
+/**
+ * @summary Get a single order
+ */
+export const GetOrderParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetOrderResponse = zod.object({
+  id: zod.number(),
+  codigo: zod.string(),
+  modelo: zod.string(),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  servico: zod.string(),
+  valor: zod.string(),
+  tempo: zod.string(),
+  status: zod.enum(["aguardando", "em andamento", "concluido", "problema"]),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update order status
+ */
+export const UpdateOrderStatusParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateOrderStatusBody = zod.object({
+  status: zod.enum(["aguardando", "em andamento", "concluido", "problema"]),
+});
+
+export const UpdateOrderStatusResponse = zod.object({
+  id: zod.number(),
+  codigo: zod.string(),
+  modelo: zod.string(),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  servico: zod.string(),
+  valor: zod.string(),
+  tempo: zod.string(),
+  status: zod.enum(["aguardando", "em andamento", "concluido", "problema"]),
+  createdAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Get order statistics
+ */
+export const GetOrderStatsResponse = zod.object({
+  total: zod.number(),
+  aguardando: zod.number(),
+  emAndamento: zod.number(),
+  concluido: zod.number(),
+  problema: zod.number(),
+});

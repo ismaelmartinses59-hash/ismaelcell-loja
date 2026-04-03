@@ -8,3 +8,94 @@
 export interface HealthStatus {
   status: string;
 }
+
+export type OrderLinha = (typeof OrderLinha)[keyof typeof OrderLinha];
+
+export const OrderLinha = {
+  xiaomi: "xiaomi",
+  samsung: "samsung",
+  motorola: "motorola",
+  ios: "ios",
+} as const;
+
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
+
+export const OrderStatus = {
+  aguardando: "aguardando",
+  em_andamento: "em andamento",
+  concluido: "concluido",
+  problema: "problema",
+} as const;
+
+export interface Order {
+  id: number;
+  codigo: string;
+  modelo: string;
+  linha: OrderLinha;
+  servico: string;
+  valor: string;
+  tempo: string;
+  status: OrderStatus;
+  createdAt: string;
+}
+
+export type CreateOrderBodyLinha =
+  (typeof CreateOrderBodyLinha)[keyof typeof CreateOrderBodyLinha];
+
+export const CreateOrderBodyLinha = {
+  xiaomi: "xiaomi",
+  samsung: "samsung",
+  motorola: "motorola",
+  ios: "ios",
+} as const;
+
+export interface CreateOrderBody {
+  modelo: string;
+  linha: CreateOrderBodyLinha;
+  servico: string;
+  valor: string;
+  tempo: string;
+}
+
+export type UpdateOrderStatusBodyStatus =
+  (typeof UpdateOrderStatusBodyStatus)[keyof typeof UpdateOrderStatusBodyStatus];
+
+export const UpdateOrderStatusBodyStatus = {
+  aguardando: "aguardando",
+  em_andamento: "em andamento",
+  concluido: "concluido",
+  problema: "problema",
+} as const;
+
+export interface UpdateOrderStatusBody {
+  status: UpdateOrderStatusBodyStatus;
+}
+
+export interface OrderStats {
+  total: number;
+  aguardando: number;
+  emAndamento: number;
+  concluido: number;
+  problema: number;
+}
+
+export type ListOrdersParams = {
+  /**
+   * Search by model, service, or line
+   */
+  search?: string;
+  /**
+   * Filter by status
+   */
+  status?: ListOrdersStatus;
+};
+
+export type ListOrdersStatus =
+  (typeof ListOrdersStatus)[keyof typeof ListOrdersStatus];
+
+export const ListOrdersStatus = {
+  aguardando: "aguardando",
+  em_andamento: "em andamento",
+  concluido: "concluido",
+  problema: "problema",
+} as const;

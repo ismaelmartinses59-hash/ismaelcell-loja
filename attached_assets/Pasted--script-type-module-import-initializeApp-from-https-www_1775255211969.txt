@@ -1,0 +1,217 @@
+<script type="module">
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+import { getAuth, signInWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+import { getFirestore, collection, addDoc, getDocs, updateDoc, doc } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+
+// FIREBASE
+const firebaseConfig = {
+  apiKey: "AIzaSyCTcOWmXC8fNcAzHSUOsr4qA7dWDpS-zts",
+  authDomain: "ismaelcell-precos.firebaseapp.com",
+  projectId: "ismaelcell-precos",
+  storageBucket: "ismaelcell-precos.firebasestorage.app",
+  messagingSenderId: "953605857347",
+  appId: "1:953605857347:web:0f1c794faa769a8965f4f6"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+// ELEMENTOS
+const linha = document.getElementById("linha");
+const servico = document.getElementById("servico");
+const modelo = document.getElementById("modelo");
+const valor = document.getElementById("valor");
+const tempo = document.getElementById("tempo");
+const busca = document.getElementById("busca");
+
+// SERVIÇOS
+const servicosPorLinha = {
+  xiaomi: ["CONTA GOOGLE","CONTA MI","PAYJOY","SOFTWARE","HARD RESET"],
+  samsung: ["CONTA GOOGLE","SAMSUNG CLOUD","PAYJOY","SOFTWARE","HARD RESET"],
+  motorola: ["CONTA GOOGLE","MDM","SOFTWARE","HARD RESET"],
+  ios: ["SOFTWARE","PASSCODE","BYPASS"]
+};
+
+// TEMPO
+const tempoServico = {
+  "CONTA GOOGLE": "5 a 60 min",
+  "CONTA MI": "5 a 60 min",
+  "HARD RESET": "10 a 60 min",
+  "SOFTWARE": "30 min a 2h",
+  "PAYJOY": "5 a 60 min",
+  "PASSCODE": "10 a 60 min",
+  "BYPASS": "1 a 48h"
+};
+
+// LOGIN
+window.login = async () => {
+  try {
+    await signInWithEmailAndPassword(auth,email.value,senha.value);
+    alert("Login realizado!");
+    carregar();
+  } catch(e){
+    alert("Erro: " + e.message);
+  }
+};
+
+// SERVIÇOS DINÂMICOS
+linha.addEventListener("change",()=>{
+  servico.innerHTML = '<option value="">Serviço</option>';
+  servicosPorLinha[linha.value]?.forEach(s=>{
+    servico.innerHTML += `<option>${s}</option>`;
+  });
+});
+
+// TEMPO AUTOMÁTICO
+servico.addEventListener("change",()=>{
+  tempo.value = tempoServico[servico.value] || "";
+});
+
+// SALVAR
+window.salvar = async ()=>{
+
+  if(!auth.currentUser){
+    alert("Faça login!");
+    return;
+  }
+
+  if(!modelo.value || !servico.value || !valor.value){
+    alert("Preencha todos os campos!");
+    return;
+  }
+
+  let codigo = "OS-" + Date.now();
+
+  await addDoc(collection(db,"precos"),{
+    modelo:modelo.value,
+    linha:linha.value,
+    servico:servico.value,
+    valor:valor.value,
+    tempo:tempo.value,
+    status:"aguardando",
+    codigo:codigo
+  });
+
+  alert("Ordem criada: " + codigo);
+
+  modelo.value = "";
+  valor.value = "";
+  tempo.value = "";
+
+  carregar();
+};
+
+// STATUS FORMATADO
+function formatarStatus(s){
+  if(s === "aguardando") return "⏳ Aguardando";
+  if(s === "em andamento") return "🔧 Em andamento";
+  if(s === "concluido") return "✅ Concluído";
+  if(s === "problema") return "⚠️ Problema";
+  return s;
+}
+
+// ATUALIZAR STATUS
+window.atualizarStatus = async (id, novoStatus) => {
+  await updateDoc(doc(db,"precos",id),{
+    status: novoStatus
+  });
+  carregar();
+};
+
+// CARREGAR
+window.carregar = async ()=>{
+
+  let lista = document.getElementById("lista");
+  let buscaTexto = busca.value.toLowerCase();
+
+  lista.innerHTML = "";
+
+  const dados = await getDocs(collection(db,"precos"));
+
+  let encontrou = false;
+
+  dados.forEach(docSnap=>{
+    let d = docSnap.data();
+
+    let texto = (d.modelo + d.servico + d.linha).toLowerCase();
+
+    if(buscaTexto === "" || texto.includes(buscaTexto)){
+
+      encontrou = true;
+
+      lista.innerHTML += `
+      <div class="item">
+        <strong>${d.modelo}</strong><br>
+        ${d.servico} - R$ ${d.valor}<br>
+        🔢 ${d.codigo}<br>
+        📊 ${formatarStatus(d.status)}
+
+        <br><br>
+
+        <button style="background:#3b82f6" onclick="atualizarStatus('${docSnap.id}','em andamento')">Iniciar</button>
+        <button style="background:#ef4444" onclick="atualizarStatus('${docSnap.id}','problema')">Problema</button>
+        <button style="background:#22c55e" onclick="atualizarStatus('${docSnap.id}','concluido')">Concluir</button>
+
+        <br><br>
+
+        <button onclick="compartilhar(
+          '${encodeURIComponent(d.modelo)}',
+          '${encodeURIComponent(d.servico)}',
+          '${encodeURIComponent(d.valor)}',
+          '${d.codigo}'
+        )">📤 Compartilhar</button>
+      </div>`;
+    }
+  });
+
+  lista.style.display = (buscaTexto === "" || !encontrou) ? "none":"block";
+};
+
+busca.addEventListener("input",carregar);
+
+// COMPARTILHAR
+window.compartilhar = function(modelo, servico, valor, codigo){
+
+  modelo = decodeURIComponent(modelo);
+  servico = decodeURIComponent(servico);
+  valor = decodeURIComponent(valor);
+
+  let linkStatus = `https://4382cc1a-c3af-423e-8851-b9f3d9cf6b45-00-y7zgeg84rzy7.spock.replit.dev/#${codigo}`;
+
+  let card = document.createElement("div");
+  card.className = "card-clean";
+
+  card.innerHTML = `
+    <div class="topo">📱 ISMAEL CELL</div>
+    <div class="box">
+      <div class="linha"><strong>${modelo}</strong></div>
+      <div class="linha">${servico}</div>
+      <div class="linha" style="color:#0a7d4f;font-size:18px;">
+        R$ ${valor}
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(card);
+
+  html2canvas(card).then(canvas=>{
+
+    let img = canvas.toDataURL();
+
+    let url = `https://wa.me/?text=${encodeURIComponent(linkStatus)}`;
+    window.open(url,"_blank");
+
+    let a = document.createElement("a");
+    a.href = img;
+    a.download = "servico.png";
+    a.click();
+
+    document.body.removeChild(card);
+  });
+};
+
+window.onload = carregar;
+
+</script>
