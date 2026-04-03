@@ -11,6 +11,10 @@ export async function shareOrderAsImage(order: Order, containerEl: HTMLElement):
 
   const imgDataUrl = canvas.toDataURL("image/png");
 
+  // Build the correct public status URL
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
+
   // Download the image first
   const link = document.createElement("a");
   link.href = imgDataUrl;
@@ -19,9 +23,15 @@ export async function shareOrderAsImage(order: Order, containerEl: HTMLElement):
   link.click();
   document.body.removeChild(link);
 
-  // Then open WhatsApp after a short delay so the download triggers first
-  const statusUrl = `https://${window.location.host}/status/${order.codigo}`;
-  const text = `*Ismael Cell* - Ordem de Serviço\n📱 ${order.modelo}\n🔧 ${order.servico}\n💰 R$ ${order.valor}\n\nAcompanhe o status: ${statusUrl}`;
+  // Then open WhatsApp with the status link and order info
+  const text =
+    `📱 *ISMAEL CELL*\n` +
+    `Ordem de Serviço\n\n` +
+    `Aparelho: ${order.modelo}\n` +
+    `Serviço: ${order.servico}\n` +
+    `Valor: R$ ${order.valor}\n\n` +
+    `🔗 Acompanhe sua ordem:\n${statusUrl}`;
+
   const waUrl = `https://wa.me/?text=${encodeURIComponent(text)}`;
 
   setTimeout(() => {
