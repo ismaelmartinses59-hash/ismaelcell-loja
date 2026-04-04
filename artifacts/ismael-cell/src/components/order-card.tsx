@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2 } from "lucide-react";
+import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2, Link2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { shareOrderAsImage } from "@/lib/share";
@@ -160,6 +160,22 @@ export function OrderCard({ order }: { order: Order }) {
               >
                 {isSharing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
                 WhatsApp
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(statusUrl).then(() => {
+                    toast({ title: "Link copiado!", description: "Cole no WhatsApp ou onde quiser." });
+                  }).catch(() => {
+                    window.open(statusUrl, "_blank");
+                  });
+                }}
+                className="w-full justify-start border-dashed"
+              >
+                <Link2 className="w-4 h-4 mr-2" />
+                Link status
               </Button>
 
               {/* Delete — tap once to arm, tap again to confirm */}
