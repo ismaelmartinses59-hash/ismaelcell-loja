@@ -84,8 +84,8 @@ export function OrderForm({ onSuccess, prefill, activeModels = [] }: OrderFormPr
 
     if (isDuplicate) {
       toast({
-        title: "Modelo já tem ordem ativa",
-        description: `Já existe uma ordem em andamento para "${data.modelo}". Conclua ou finalize antes de criar outra.`,
+        title: "Modelo já existe",
+        description: `"${data.modelo}" já está cadastrado. Exclua a ordem existente para criar uma nova.`,
         variant: "destructive",
       });
       return;

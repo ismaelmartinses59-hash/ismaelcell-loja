@@ -1,34 +1,31 @@
 import { useRef, useState } from "react";
-import { Order, OrderStatus, useUpdateOrderStatus, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
+import { Order, OrderStatus, useUpdateOrderStatus, useDeleteOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
+import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { shareOrderAsImage } from "@/lib/share";
 
 const STATUS_COLORS: Record<string, string> = {
-  "aguardando": "bg-amber-100 text-amber-800 border-amber-200 dark:bg-amber-900/30 dark:text-amber-500",
-  "em andamento": "bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-400",
-  "concluido": "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-400",
-  "problema": "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400",
+  "aguardando": "bg-amber-100 text-amber-800 border-amber-200",
+  "em andamento": "bg-blue-100 text-blue-800 border-blue-200",
+  "concluido": "bg-green-100 text-green-800 border-green-200",
+  "problema": "bg-red-100 text-red-800 border-red-200",
 };
 
-interface OrderCardProps {
-  order: Order;
-  onRefazer?: (order: Order) => void;
-}
-
-export function OrderCard({ order, onRefazer }: OrderCardProps) {
+export function OrderCard({ order }: { order: Order }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const updateStatus = useUpdateOrderStatus();
+  const deleteOrder = useDeleteOrder();
   const shareCardRef = useRef<HTMLDivElement>(null);
   const [isSharing, setIsSharing] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleStatusChange = (status: OrderStatus) => {
     updateStatus.mutate(
@@ -41,6 +38,28 @@ export function OrderCard({ order, onRefazer }: OrderCardProps) {
         },
         onError: () => {
           toast({ title: "Erro ao atualizar status", variant: "destructive" });
+        },
+      }
+    );
+  };
+
+  const handleDelete = () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      // Auto-reset confirmation after 3 seconds
+      setTimeout(() => setConfirmDelete(false), 3000);
+      return;
+    }
+    deleteOrder.mutate(
+      { id: order.id },
+      {
+        onSuccess: () => {
+          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
+          toast({ title: `Ordem ${order.codigo} excluída` });
+        },
+        onError: () => {
+          toast({ title: "Erro ao excluir ordem", variant: "destructive" });
         },
       }
     );
@@ -63,16 +82,7 @@ export function OrderCard({ order, onRefazer }: OrderCardProps) {
 
   return (
     <>
-      {/* Hidden share card rendered off-screen for html2canvas capture */}
-      <div
-        style={{
-          position: "fixed",
-          top: "-9999px",
-          left: "-9999px",
-          zIndex: -1,
-          pointerEvents: "none",
-        }}
-      >
+      <div style={{ position: "fixed", top: "-9999px", left: "-9999px", zIndex: -1, pointerEvents: "none" }}>
         <ShareCard ref={shareCardRef} order={order} />
       </div>
 
@@ -141,19 +151,6 @@ export function OrderCard({ order, onRefazer }: OrderCardProps) {
                 </Button>
               )}
 
-              {/* Refazer button — only shown on concluded orders */}
-              {order.status === "concluido" && onRefazer && (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => onRefazer(order)}
-                  className="w-full justify-start hover:bg-blue-50 hover:text-blue-700"
-                >
-                  <RefreshCw className="w-4 h-4 mr-2 text-blue-500" />
-                  Refazer
-                </Button>
-              )}
-
               <Button
                 size="sm"
                 variant="outline"
@@ -161,12 +158,22 @@ export function OrderCard({ order, onRefazer }: OrderCardProps) {
                 disabled={isSharing}
                 className="w-full justify-start border-dashed"
               >
-                {isSharing ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                ) : (
-                  <Share2 className="w-4 h-4 mr-2" />
-                )}
+                {isSharing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
                 WhatsApp
+              </Button>
+
+              {/* Delete — tap once to arm, tap again to confirm */}
+              <Button
+                size="sm"
+                variant={confirmDelete ? "destructive" : "ghost"}
+                onClick={handleDelete}
+                disabled={deleteOrder.isPending}
+                className="w-full justify-start"
+              >
+                {deleteOrder.isPending
+                  ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  : <Trash2 className="w-4 h-4 mr-2" />}
+                {confirmDelete ? "Confirmar?" : "Excluir"}
               </Button>
 
               <p className="text-[10px] text-muted-foreground w-full text-center mt-auto md:pt-2">

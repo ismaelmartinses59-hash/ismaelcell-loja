@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetOrderStats, useListOrders, getListOrdersQueryKey, getGetOrderStatsQueryKey,
-  type Order, type OrderLinha
+  type Order
 } from "@workspace/api-client-react";
 import { OrderForm } from "@/components/order-form";
 import { OrderCard } from "@/components/order-card";
@@ -13,17 +13,11 @@ import { Button } from "@/components/ui/button";
 import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X } from "lucide-react";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
-interface Prefill {
-  modelo: string;
-  linha: OrderLinha;
-}
-
 export default function Orders() {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
-  const [prefill, setPrefill] = useState<Prefill | null>(null);
 
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
@@ -35,7 +29,7 @@ export default function Orders() {
     query: { queryKey: getGetOrderStatsQueryKey() }
   });
 
-  // All orders (unfiltered) used to compute active models for duplicate check
+  // All orders — used to build the list of existing models (for duplicate prevention)
   const { data: allOrders = [] } = useListOrders(
     {},
     { query: { queryKey: getListOrdersQueryKey({}) } }
@@ -56,30 +50,14 @@ export default function Orders() {
     }
   );
 
-  // Models that currently have active (non-concluded) orders — used to block duplicates
-  const activeModels = allOrders
-    .filter((o) => o.status !== "concluido")
-    .map((o) => o.modelo);
+  // ALL model names already in the system — no duplicates allowed
+  const existingModels = allOrders.map((o) => o.modelo);
 
   const handleLogout = () => {
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("userEmail");
     setLocation("/");
   };
-
-  const handleRefazer = (order: Order) => {
-    setPrefill({ modelo: order.modelo, linha: order.linha as OrderLinha });
-    setShowForm(true);
-    // Scroll to top smoothly on mobile
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleFormSuccess = () => {
-    setShowForm(false);
-    setPrefill(null);
-  };
-
-  const formProps = { prefill, activeModels, onSuccess: handleFormSuccess };
 
   return (
     <div className="min-h-screen bg-muted/30 pb-24">
@@ -96,14 +74,7 @@ export default function Orders() {
             <Button
               size="sm"
               className="md:hidden flex items-center gap-1"
-              onClick={() => {
-                if (showForm) {
-                  setShowForm(false);
-                  setPrefill(null);
-                } else {
-                  setShowForm(true);
-                }
-              }}
+              onClick={() => setShowForm((v) => !v)}
             >
               {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {showForm ? "Fechar" : "Nova Ordem"}
@@ -118,7 +89,7 @@ export default function Orders() {
 
       <main className="max-w-5xl mx-auto px-4 mt-4 space-y-4">
 
-        {/* Stats Row */}
+        {/* Stats */}
         {stats && (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             <Card>
@@ -163,38 +134,33 @@ export default function Orders() {
           <div className="md:hidden">
             <Card className="shadow-md border-primary/30 border-2">
               <CardContent className="p-4">
-                <h2 className="font-semibold text-base mb-4">
-                  {prefill ? `Refazer Ordem — ${prefill.modelo}` : "Nova Ordem de Serviço"}
-                </h2>
-                <OrderForm {...formProps} />
+                <h2 className="font-semibold text-base mb-4">Nova Ordem de Serviço</h2>
+                <OrderForm activeModels={existingModels} onSuccess={() => setShowForm(false)} />
               </CardContent>
             </Card>
           </div>
         )}
 
-        {/* Desktop: side-by-side layout */}
+        {/* Desktop: side-by-side */}
         <div className="hidden md:grid md:grid-cols-[340px_1fr] gap-6 items-start">
           <div className="sticky top-20">
             <Card className="shadow-md">
               <CardContent className="p-5">
-                <h2 className="font-semibold text-base mb-4">
-                  {prefill ? `Refazer Ordem — ${prefill.modelo}` : "Nova Ordem de Serviço"}
-                </h2>
-                <OrderForm {...formProps} />
+                <h2 className="font-semibold text-base mb-4">Nova Ordem de Serviço</h2>
+                <OrderForm activeModels={existingModels} />
               </CardContent>
             </Card>
           </div>
-
           <div className="space-y-4">
             <OrderFilters search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
-            <OrdersList orders={orders} isLoading={isLoading} onRefazer={handleRefazer} />
+            <OrdersList orders={orders} isLoading={isLoading} />
           </div>
         </div>
 
         {/* Mobile: orders list */}
         <div className="md:hidden space-y-4">
           <OrderFilters search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
-          <OrdersList orders={orders} isLoading={isLoading} onRefazer={handleRefazer} />
+          <OrdersList orders={orders} isLoading={isLoading} />
         </div>
 
       </main>
@@ -202,13 +168,9 @@ export default function Orders() {
   );
 }
 
-function OrderFilters({
-  search, setSearch, statusFilter, setStatusFilter
-}: {
-  search: string;
-  setSearch: (v: string) => void;
-  statusFilter: string;
-  setStatusFilter: (v: string) => void;
+function OrderFilters({ search, setSearch, statusFilter, setStatusFilter }: {
+  search: string; setSearch: (v: string) => void;
+  statusFilter: string; setStatusFilter: (v: string) => void;
 }) {
   return (
     <div className="flex flex-col sm:flex-row gap-3">
@@ -237,30 +199,18 @@ function OrderFilters({
   );
 }
 
-function OrdersList({
-  orders, isLoading, onRefazer
-}: {
-  orders: Order[];
-  isLoading: boolean;
-  onRefazer: (order: Order) => void;
-}) {
-  if (isLoading) {
-    return <div className="text-center py-12 text-muted-foreground">Carregando ordens...</div>;
-  }
+function OrdersList({ orders, isLoading }: { orders: Order[]; isLoading: boolean }) {
+  if (isLoading) return <div className="text-center py-12 text-muted-foreground">Carregando ordens...</div>;
   if (orders.length === 0) {
     return (
       <Card className="border-dashed">
-        <CardContent className="p-10 text-center text-muted-foreground">
-          Nenhuma ordem encontrada.
-        </CardContent>
+        <CardContent className="p-10 text-center text-muted-foreground">Nenhuma ordem encontrada.</CardContent>
       </Card>
     );
   }
   return (
     <div className="space-y-3">
-      {orders.map((order) => (
-        <OrderCard key={order.id} order={order} onRefazer={onRefazer} />
-      ))}
+      {orders.map((order) => <OrderCard key={order.id} order={order} />)}
     </div>
   );
 }
