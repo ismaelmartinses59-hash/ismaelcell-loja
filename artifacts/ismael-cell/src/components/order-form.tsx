@@ -1,14 +1,13 @@
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCreateOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
+import { useCreateOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey, OrderLinha } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { OrderLinha } from "@workspace/api-client-react";
 import { SERVICES_BY_LINE, ESTIMATED_TIMES } from "@/lib/constants";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
@@ -23,7 +22,13 @@ const createOrderSchema = z.object({
 
 type CreateOrderForm = z.infer<typeof createOrderSchema>;
 
-export function OrderForm({ onSuccess }: { onSuccess?: () => void } = {}) {
+interface OrderFormProps {
+  onSuccess?: () => void;
+  prefill?: { modelo: string; linha: OrderLinha } | null;
+  activeModels?: string[]; // models that already have active (non-concluded) orders
+}
+
+export function OrderForm({ onSuccess, prefill, activeModels = [] }: OrderFormProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createOrder = useCreateOrder();
@@ -31,8 +36,8 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const form = useForm<CreateOrderForm>({
     resolver: zodResolver(createOrderSchema),
     defaultValues: {
-      modelo: "",
-      linha: undefined,
+      modelo: prefill?.modelo ?? "",
+      linha: prefill?.linha ?? undefined,
       servico: "",
       valor: "",
       tempo: "",
@@ -41,6 +46,19 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void } = {}) {
 
   const watchLinha = form.watch("linha");
   const watchServico = form.watch("servico");
+
+  // When prefill changes (e.g. "Refazer" clicked), reset form with prefilled values
+  useEffect(() => {
+    if (prefill) {
+      form.reset({
+        modelo: prefill.modelo,
+        linha: prefill.linha,
+        servico: "",
+        valor: "",
+        tempo: "",
+      });
+    }
+  }, [prefill, form]);
 
   // Reset servico when linha changes
   useEffect(() => {
@@ -59,6 +77,20 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void } = {}) {
   const availableServices = watchLinha ? SERVICES_BY_LINE[watchLinha] : [];
 
   const onSubmit = (data: CreateOrderForm) => {
+    // Check for duplicate active order with same model
+    const isDuplicate = activeModels.some(
+      (m) => m.trim().toLowerCase() === data.modelo.trim().toLowerCase()
+    );
+
+    if (isDuplicate) {
+      toast({
+        title: "Modelo já tem ordem ativa",
+        description: `Já existe uma ordem em andamento para "${data.modelo}". Conclua ou finalize antes de criar outra.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
     createOrder.mutate(
       { data },
       {
@@ -72,15 +104,17 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void } = {}) {
           });
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
-          
-          const shareUrl = `https://wa.me/?text=STATUS: https://${window.location.host}/status/${order.codigo}`;
-          
+
+          const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+          const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
+          const shareUrl = `https://wa.me/?text=${encodeURIComponent(`🔗 Acompanhe sua ordem:\n${statusUrl}`)}`;
+
           toast({
-            title: "Ordem criada com sucesso!",
-            description: "Código: " + order.codigo,
+            title: "Ordem criada!",
+            description: `Código: ${order.codigo}`,
             action: (
               <Button size="sm" variant="outline" onClick={() => window.open(shareUrl, "_blank")}>
-                Compartilhar WhatsApp
+                Compartilhar
               </Button>
             ),
           });
@@ -143,8 +177,8 @@ export function OrderForm({ onSuccess }: { onSuccess?: () => void } = {}) {
           render={({ field }) => (
             <FormItem>
               <FormLabel>Serviço</FormLabel>
-              <Select 
-                onValueChange={field.onChange} 
+              <Select
+                onValueChange={field.onChange}
                 value={field.value}
                 disabled={!watchLinha}
               >

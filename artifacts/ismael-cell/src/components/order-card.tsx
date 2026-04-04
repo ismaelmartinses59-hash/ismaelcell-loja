@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Share2, Play, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
+import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { shareOrderAsImage } from "@/lib/share";
@@ -18,7 +18,12 @@ const STATUS_COLORS: Record<string, string> = {
   "problema": "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-400",
 };
 
-export function OrderCard({ order }: { order: Order }) {
+interface OrderCardProps {
+  order: Order;
+  onRefazer?: (order: Order) => void;
+}
+
+export function OrderCard({ order, onRefazer }: OrderCardProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const updateStatus = useUpdateOrderStatus();
@@ -108,7 +113,7 @@ export function OrderCard({ order }: { order: Order }) {
               </div>
             </div>
 
-            <div className="bg-muted/50 border-t md:border-t-0 md:border-l p-5 flex flex-row md:flex-col items-center justify-center gap-2 min-w-[160px]">
+            <div className="bg-muted/50 border-t md:border-t-0 md:border-l p-4 flex flex-row md:flex-col items-center justify-center gap-2 min-w-[150px]">
               {order.status === "aguardando" && (
                 <Button size="sm" onClick={() => handleStatusChange(OrderStatus.em_andamento)} className="w-full justify-start" variant="secondary">
                   <Play className="w-4 h-4 mr-2 text-blue-500" />
@@ -136,6 +141,19 @@ export function OrderCard({ order }: { order: Order }) {
                 </Button>
               )}
 
+              {/* Refazer button — only shown on concluded orders */}
+              {order.status === "concluido" && onRefazer && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onRefazer(order)}
+                  className="w-full justify-start hover:bg-blue-50 hover:text-blue-700"
+                >
+                  <RefreshCw className="w-4 h-4 mr-2 text-blue-500" />
+                  Refazer
+                </Button>
+              )}
+
               <Button
                 size="sm"
                 variant="outline"
@@ -151,7 +169,7 @@ export function OrderCard({ order }: { order: Order }) {
                 WhatsApp
               </Button>
 
-              <p className="text-[10px] text-muted-foreground w-full text-center mt-auto md:pt-4">
+              <p className="text-[10px] text-muted-foreground w-full text-center mt-auto md:pt-2">
                 {format(new Date(order.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })}
               </p>
             </div>
