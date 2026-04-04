@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import {
   Order, OrderStatus,
-  useUpdateOrderStatus, useDeleteOrder, useCreateOrder,
+  useUpdateOrderStatus, useDeleteOrder,
   getListOrdersQueryKey, getGetOrderStatsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2, RotateCcw } from "lucide-react";
+import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { shareOrderAsImage } from "@/lib/share";
@@ -27,7 +27,6 @@ export function OrderCard({ order }: { order: Order }) {
   const queryClient = useQueryClient();
   const updateStatus = useUpdateOrderStatus();
   const deleteOrder = useDeleteOrder();
-  const createOrder = useCreateOrder();
   const shareCardRef = useRef<HTMLDivElement>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -67,36 +66,6 @@ export function OrderCard({ order }: { order: Order }) {
         },
         onError: () => {
           toast({ title: "Erro ao excluir ordem", variant: "destructive" });
-        },
-      }
-    );
-  };
-
-  // Creates a brand-new OS with the same details, giving a fresh tracking code
-  const handleNovaOrdem = () => {
-    createOrder.mutate(
-      {
-        data: {
-          modelo: order.modelo,
-          linha: order.linha,
-          servico: order.servico,
-          valor: order.valor,
-          tempo: order.tempo,
-        },
-      },
-      {
-        onSuccess: (nova) => {
-          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
-          const novoLink = `${window.location.origin}${base}/status/${nova.codigo}`;
-          navigator.clipboard.writeText(novoLink).catch(() => {});
-          toast({
-            title: "Nova OS criada!",
-            description: `Código ${nova.codigo} — link copiado para a área de transferência.`,
-          });
-        },
-        onError: () => {
-          toast({ title: "Erro ao criar nova ordem", variant: "destructive" });
         },
       }
     );
@@ -186,19 +155,19 @@ export function OrderCard({ order }: { order: Order }) {
                 </Button>
               )}
 
-              {/* On concluded orders: instantly create a new OS with same details */}
+              {/* On concluded orders: reactivate the same order (resets to aguardando) */}
               {order.status === "concluido" && (
                 <Button
                   size="sm"
-                  onClick={handleNovaOrdem}
-                  disabled={createOrder.isPending}
+                  onClick={() => handleStatusChange(OrderStatus.aguardando)}
+                  disabled={updateStatus.isPending}
                   className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 border border-green-200"
                   variant="outline"
                 >
-                  {createOrder.isPending
+                  {updateStatus.isPending
                     ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    : <RotateCcw className="w-4 h-4 mr-2" />}
-                  Nova OS
+                    : <RefreshCw className="w-4 h-4 mr-2" />}
+                  Reativar
                 </Button>
               )}
 
