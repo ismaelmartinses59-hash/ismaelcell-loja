@@ -536,3 +536,35 @@ export function useGetOrderStats<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+// ─── deleteOrder ───────────────────────────────────────────────────────────
+
+export const deleteOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(`/orders/${id}`, {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const useDeleteOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["deleteOrder"],
+    mutationFn: ({ id }: { id: number }) => deleteOrder(id, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};

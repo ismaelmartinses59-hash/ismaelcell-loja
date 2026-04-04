@@ -151,4 +151,26 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   res.json(UpdateOrderStatusResponse.parse(order));
 });
 
+router.delete("/orders/:id", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+
+  if (isNaN(id)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  const [deleted] = await db
+    .delete(ordersTable)
+    .where(eq(ordersTable.id, id))
+    .returning();
+
+  if (!deleted) {
+    res.status(404).json({ error: "Ordem não encontrada" });
+    return;
+  }
+
+  res.status(204).send();
+});
+
 export default router;
