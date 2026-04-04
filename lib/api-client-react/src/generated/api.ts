@@ -537,6 +537,38 @@ export function useGetOrderStats<
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
+// ─── reactivateOrder ────────────────────────────────────────────────────────
+
+export const reactivateOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Order> => {
+  return customFetch<Order>(`/api/orders/${id}/reactivate`, {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const useReactivateOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reactivateOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["reactivateOrder"],
+    mutationFn: ({ id }: { id: number }) => reactivateOrder(id, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
+
 // ─── deleteOrder ───────────────────────────────────────────────────────────
 
 export const deleteOrder = async (

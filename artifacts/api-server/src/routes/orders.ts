@@ -151,6 +151,31 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   res.json(UpdateOrderStatusResponse.parse(order));
 });
 
+router.post("/orders/:id/reactivate", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+
+  if (isNaN(id)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  const novoCodigo = "OS-" + Date.now();
+
+  const [order] = await db
+    .update(ordersTable)
+    .set({ status: "aguardando", codigo: novoCodigo })
+    .where(eq(ordersTable.id, id))
+    .returning();
+
+  if (!order) {
+    res.status(404).json({ error: "Ordem não encontrada" });
+    return;
+  }
+
+  res.json(order);
+});
+
 router.delete("/orders/:id", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
