@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import {
   Order, OrderStatus,
-  useUpdateOrderStatus, useDeleteOrder,
+  useUpdateOrderStatus, useDeleteOrder, useReactivateOrder,
   getListOrdersQueryKey, getGetOrderStatsQueryKey
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -27,6 +27,7 @@ export function OrderCard({ order }: { order: Order }) {
   const queryClient = useQueryClient();
   const updateStatus = useUpdateOrderStatus();
   const deleteOrder = useDeleteOrder();
+  const reactivate = useReactivateOrder();
   const shareCardRef = useRef<HTMLDivElement>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -155,16 +156,31 @@ export function OrderCard({ order }: { order: Order }) {
                 </Button>
               )}
 
-              {/* On concluded orders: reactivate the same order (resets to aguardando) */}
+              {/* On concluded orders: reset to aguardando with a brand-new OS code */}
               {order.status === "concluido" && (
                 <Button
                   size="sm"
-                  onClick={() => handleStatusChange(OrderStatus.aguardando)}
-                  disabled={updateStatus.isPending}
+                  onClick={() => reactivate.mutate(
+                    { id: order.id },
+                    {
+                      onSuccess: (updated) => {
+                        queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+                        queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
+                        const novoLink = `${window.location.origin}${base}/status/${updated.codigo}`;
+                        navigator.clipboard.writeText(novoLink).catch(() => {});
+                        toast({
+                          title: `Nova OS: ${updated.codigo}`,
+                          description: "Status resetado. Novo link copiado!",
+                        });
+                      },
+                      onError: () => toast({ title: "Erro ao reativar ordem", variant: "destructive" }),
+                    }
+                  )}
+                  disabled={reactivate.isPending}
                   className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 border border-green-200"
                   variant="outline"
                 >
-                  {updateStatus.isPending
+                  {reactivate.isPending
                     ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                     : <RefreshCw className="w-4 h-4 mr-2" />}
                   Reativar
