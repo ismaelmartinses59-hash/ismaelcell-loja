@@ -1,12 +1,16 @@
 import { useRef, useState } from "react";
-import { Order, OrderLinha, OrderStatus, useUpdateOrderStatus, useDeleteOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
+import {
+  Order, OrderStatus,
+  useUpdateOrderStatus, useDeleteOrder, useCreateOrder,
+  getListOrdersQueryKey, getGetOrderStatsQueryKey
+} from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2 } from "lucide-react";
+import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { shareOrderAsImage } from "@/lib/share";
@@ -18,14 +22,18 @@ const STATUS_COLORS: Record<string, string> = {
   "problema": "bg-red-100 text-red-800 border-red-200",
 };
 
-export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (modelo: string, linha: OrderLinha) => void }) {
+export function OrderCard({ order }: { order: Order }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const updateStatus = useUpdateOrderStatus();
   const deleteOrder = useDeleteOrder();
+  const createOrder = useCreateOrder();
   const shareCardRef = useRef<HTMLDivElement>(null);
   const [isSharing, setIsSharing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+
+  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
 
   const handleStatusChange = (status: OrderStatus) => {
     updateStatus.mutate(
@@ -34,7 +42,7 @@ export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (mod
         onSuccess: () => {
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
-          toast({ title: `Status atualizado para ${status}` });
+          toast({ title: `Status atualizado para "${status}"` });
         },
         onError: () => {
           toast({ title: "Erro ao atualizar status", variant: "destructive" });
@@ -46,7 +54,6 @@ export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (mod
   const handleDelete = () => {
     if (!confirmDelete) {
       setConfirmDelete(true);
-      // Auto-reset confirmation after 3 seconds
       setTimeout(() => setConfirmDelete(false), 3000);
       return;
     }
@@ -65,6 +72,36 @@ export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (mod
     );
   };
 
+  // Creates a brand-new OS with the same details, giving a fresh tracking code
+  const handleNovaOrdem = () => {
+    createOrder.mutate(
+      {
+        data: {
+          modelo: order.modelo,
+          linha: order.linha,
+          servico: order.servico,
+          valor: order.valor,
+          tempo: order.tempo,
+        },
+      },
+      {
+        onSuccess: (nova) => {
+          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
+          const novoLink = `${window.location.origin}${base}/status/${nova.codigo}`;
+          navigator.clipboard.writeText(novoLink).catch(() => {});
+          toast({
+            title: "Nova OS criada!",
+            description: `Código ${nova.codigo} — link copiado para a área de transferência.`,
+          });
+        },
+        onError: () => {
+          toast({ title: "Erro ao criar nova ordem", variant: "destructive" });
+        },
+      }
+    );
+  };
+
   const handleShare = async () => {
     if (!shareCardRef.current) return;
     setIsSharing(true);
@@ -76,9 +113,6 @@ export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (mod
       setIsSharing(false);
     }
   };
-
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
 
   return (
     <>
@@ -124,6 +158,7 @@ export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (mod
             </div>
 
             <div className="bg-muted/50 border-t md:border-t-0 md:border-l p-4 flex flex-row md:flex-col items-center justify-center gap-2 min-w-[150px]">
+
               {order.status === "aguardando" && (
                 <Button size="sm" onClick={() => handleStatusChange(OrderStatus.em_andamento)} className="w-full justify-start" variant="secondary">
                   <Play className="w-4 h-4 mr-2 text-blue-500" />
@@ -151,15 +186,19 @@ export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (mod
                 </Button>
               )}
 
-              {order.status === "concluido" && onRefazer && (
+              {/* On concluded orders: instantly create a new OS with same details */}
+              {order.status === "concluido" && (
                 <Button
                   size="sm"
-                  onClick={() => onRefazer(order.modelo, order.linha as OrderLine)}
+                  onClick={handleNovaOrdem}
+                  disabled={createOrder.isPending}
                   className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 border border-green-200"
                   variant="outline"
                 >
-                  <Play className="w-4 h-4 mr-2 text-green-600" />
-                  Nova ordem
+                  {createOrder.isPending
+                    ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    : <RotateCcw className="w-4 h-4 mr-2" />}
+                  Nova OS
                 </Button>
               )}
 
@@ -174,7 +213,6 @@ export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (mod
                 WhatsApp
               </Button>
 
-              {/* Delete — tap once to arm, tap again to confirm */}
               <Button
                 size="sm"
                 variant={confirmDelete ? "destructive" : "ghost"}
