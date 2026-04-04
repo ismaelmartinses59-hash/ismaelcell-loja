@@ -151,6 +151,41 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
   res.json(UpdateOrderStatusResponse.parse(order));
 });
 
+router.put("/orders/:id", async (req, res): Promise<void> => {
+  const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+  const id = parseInt(raw, 10);
+
+  if (isNaN(id)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  const body = CreateOrderBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: body.error.message });
+    return;
+  }
+
+  const [order] = await db
+    .update(ordersTable)
+    .set({
+      modelo: body.data.modelo,
+      linha: body.data.linha,
+      servico: body.data.servico,
+      valor: body.data.valor,
+      tempo: body.data.tempo,
+    })
+    .where(eq(ordersTable.id, id))
+    .returning();
+
+  if (!order) {
+    res.status(404).json({ error: "Ordem não encontrada" });
+    return;
+  }
+
+  res.json(GetOrderResponse.parse(order));
+});
+
 router.post("/orders/:id/reactivate", async (req, res): Promise<void> => {
   const raw = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
   const id = parseInt(raw, 10);
