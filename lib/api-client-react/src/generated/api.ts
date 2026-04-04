@@ -537,6 +537,50 @@ export function useGetOrderStats<
   return { ...query, queryKey: queryOptions.queryKey };
 }
 
+// ─── editOrder ──────────────────────────────────────────────────────────────
+
+export type EditOrderBody = {
+  modelo: string;
+  linha: OrderLinha;
+  servico: string;
+  valor: string;
+  tempo: string;
+};
+
+export const editOrder = async (
+  id: number,
+  data: EditOrderBody,
+  options?: RequestInit,
+): Promise<Order> => {
+  return customFetch<Order>(`/api/orders/${id}`, {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+};
+
+export const useEditOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editOrder>>,
+    TError,
+    { id: number; data: EditOrderBody },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["editOrder"],
+    mutationFn: ({ id, data }: { id: number; data: EditOrderBody }) =>
+      editOrder(id, data, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
+
 // ─── reactivateOrder ────────────────────────────────────────────────────────
 
 export const reactivateOrder = async (
