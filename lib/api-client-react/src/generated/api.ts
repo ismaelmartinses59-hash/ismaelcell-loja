@@ -543,7 +543,7 @@ export const deleteOrder = async (
   id: number,
   options?: RequestInit,
 ): Promise<void> => {
-  return customFetch<void>(`/orders/${id}`, {
+  return customFetch<void>(`/api/orders/${id}`, {
     ...options,
     method: "DELETE",
   });
