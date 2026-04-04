@@ -1,12 +1,12 @@
 import { useRef, useState } from "react";
-import { Order, OrderLine, OrderStatus, useUpdateOrderStatus, useDeleteOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
+import { Order, OrderLinha, OrderStatus, useUpdateOrderStatus, useDeleteOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2, Link2 } from "lucide-react";
+import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { shareOrderAsImage } from "@/lib/share";
@@ -18,7 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   "problema": "bg-red-100 text-red-800 border-red-200",
 };
 
-export function OrderCard({ order }: { order: Order }) {
+export function OrderCard({ order, onRefazer }: { order: Order; onRefazer?: (modelo: string, linha: OrderLinha) => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const updateStatus = useUpdateOrderStatus();
@@ -151,6 +151,18 @@ export function OrderCard({ order }: { order: Order }) {
                 </Button>
               )}
 
+              {order.status === "concluido" && onRefazer && (
+                <Button
+                  size="sm"
+                  onClick={() => onRefazer(order.modelo, order.linha as OrderLine)}
+                  className="w-full justify-start bg-green-50 text-green-700 hover:bg-green-100 hover:text-green-800 border border-green-200"
+                  variant="outline"
+                >
+                  <Play className="w-4 h-4 mr-2 text-green-600" />
+                  Nova ordem
+                </Button>
+              )}
+
               <Button
                 size="sm"
                 variant="outline"
@@ -160,22 +172,6 @@ export function OrderCard({ order }: { order: Order }) {
               >
                 {isSharing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
                 WhatsApp
-              </Button>
-
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => {
-                  navigator.clipboard.writeText(statusUrl).then(() => {
-                    toast({ title: "Link copiado!", description: "Cole no WhatsApp ou onde quiser." });
-                  }).catch(() => {
-                    window.open(statusUrl, "_blank");
-                  });
-                }}
-                className="w-full justify-start border-dashed"
-              >
-                <Link2 className="w-4 h-4 mr-2" />
-                Link status
               </Button>
 
               {/* Delete — tap once to arm, tap again to confirm */}
