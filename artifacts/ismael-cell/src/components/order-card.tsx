@@ -230,7 +230,7 @@ export function OrderCard({ order }: { order: Order }) {
                 </div>
               </div>
 
-              <div className="bg-muted/50 border-t md:border-t-0 md:border-l p-4 flex flex-row md:flex-col items-center justify-center gap-2 min-w-[150px]">
+              <div className="bg-muted/50 border-t md:border-t-0 md:border-l p-4 grid grid-cols-2 md:grid-cols-1 gap-2 md:min-w-[150px] content-start">
 
                 {order.status === "aguardando" && (
                   <Button size="sm" onClick={() => handleStatusChange(OrderStatus.em_andamento)} className="w-full justify-start" variant="secondary">
@@ -305,7 +305,7 @@ export function OrderCard({ order }: { order: Order }) {
                   {confirmDelete ? "Confirmar?" : "Excluir"}
                 </Button>
 
-                <p className="text-[10px] text-muted-foreground w-full text-center mt-auto md:pt-2">
+                <p className="text-[10px] text-muted-foreground w-full text-center col-span-2 md:col-span-1 md:pt-2">
                   {format(new Date(order.createdAt), "dd/MM/yy HH:mm", { locale: ptBR })}
                 </p>
               </div>
