@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetOrderStats, useListOrders, getListOrdersQueryKey, getGetOrderStatsQueryKey,
-  type Order, type OrderLine
+  type Order, type OrderLinha
 } from "@workspace/api-client-react";
 import { OrderForm } from "@/components/order-form";
 import { OrderCard } from "@/components/order-card";
@@ -18,7 +18,7 @@ export default function Orders() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
-  const [prefill, setPrefill] = useState<{ modelo: string; linha: OrderLine } | null>(null);
+  const [prefill, setPrefill] = useState<{ modelo: string; linha: OrderLinha } | null>(null);
 
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
@@ -56,7 +56,7 @@ export default function Orders() {
     .filter((o) => o.status !== "concluido")
     .map((o) => o.modelo);
 
-  const handleRefazer = (modelo: string, linha: OrderLine) => {
+  const handleRefazer = (modelo: string, linha: OrderLinha) => {
     setPrefill({ modelo, linha });
     setShowForm(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -216,7 +216,7 @@ function OrderFilters({ search, setSearch, statusFilter, setStatusFilter }: {
 function OrdersList({ orders, isLoading, onRefazer }: {
   orders: Order[];
   isLoading: boolean;
-  onRefazer: (modelo: string, linha: OrderLine) => void;
+  onRefazer: (modelo: string, linha: OrderLinha) => void;
 }) {
   if (isLoading) return <div className="text-center py-12 text-muted-foreground">Carregando ordens...</div>;
   if (orders.length === 0) {
