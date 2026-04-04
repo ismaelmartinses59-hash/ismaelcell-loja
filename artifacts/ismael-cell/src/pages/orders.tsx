@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetOrderStats, useListOrders, getListOrdersQueryKey, getGetOrderStatsQueryKey,
-  type Order
+  type Order, type OrderLine
 } from "@workspace/api-client-react";
 import { OrderForm } from "@/components/order-form";
 import { OrderCard } from "@/components/order-card";
@@ -18,6 +18,7 @@ export default function Orders() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
+  const [prefill, setPrefill] = useState<{ modelo: string; linha: OrderLine } | null>(null);
 
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
@@ -50,8 +51,21 @@ export default function Orders() {
     }
   );
 
-  // ALL model names already in the system — no duplicates allowed
-  const existingModels = allOrders.map((o) => o.modelo);
+  // Only ACTIVE orders block new entries — concluded ones are free to reuse
+  const activeModels = allOrders
+    .filter((o) => o.status !== "concluido")
+    .map((o) => o.modelo);
+
+  const handleRefazer = (modelo: string, linha: OrderLine) => {
+    setPrefill({ modelo, linha });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleFormSuccess = () => {
+    setShowForm(false);
+    setPrefill(null);
+  };
 
   const handleLogout = () => {
     localStorage.removeItem("isLoggedIn");
@@ -135,7 +149,7 @@ export default function Orders() {
             <Card className="shadow-md border-primary/30 border-2">
               <CardContent className="p-4">
                 <h2 className="font-semibold text-base mb-4">Nova Ordem de Serviço</h2>
-                <OrderForm activeModels={existingModels} onSuccess={() => setShowForm(false)} />
+                <OrderForm prefill={prefill} activeModels={activeModels} onSuccess={handleFormSuccess} />
               </CardContent>
             </Card>
           </div>
@@ -147,20 +161,20 @@ export default function Orders() {
             <Card className="shadow-md">
               <CardContent className="p-5">
                 <h2 className="font-semibold text-base mb-4">Nova Ordem de Serviço</h2>
-                <OrderForm activeModels={existingModels} />
+                <OrderForm prefill={prefill} activeModels={activeModels} onSuccess={handleFormSuccess} />
               </CardContent>
             </Card>
           </div>
           <div className="space-y-4">
             <OrderFilters search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
-            <OrdersList orders={orders} isLoading={isLoading} />
+            <OrdersList orders={orders} isLoading={isLoading} onRefazer={handleRefazer} />
           </div>
         </div>
 
         {/* Mobile: orders list */}
         <div className="md:hidden space-y-4">
           <OrderFilters search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
-          <OrdersList orders={orders} isLoading={isLoading} />
+          <OrdersList orders={orders} isLoading={isLoading} onRefazer={handleRefazer} />
         </div>
 
       </main>
@@ -199,7 +213,11 @@ function OrderFilters({ search, setSearch, statusFilter, setStatusFilter }: {
   );
 }
 
-function OrdersList({ orders, isLoading }: { orders: Order[]; isLoading: boolean }) {
+function OrdersList({ orders, isLoading, onRefazer }: {
+  orders: Order[];
+  isLoading: boolean;
+  onRefazer: (modelo: string, linha: OrderLine) => void;
+}) {
   if (isLoading) return <div className="text-center py-12 text-muted-foreground">Carregando ordens...</div>;
   if (orders.length === 0) {
     return (
@@ -210,7 +228,7 @@ function OrdersList({ orders, isLoading }: { orders: Order[]; isLoading: boolean
   }
   return (
     <div className="space-y-3">
-      {orders.map((order) => <OrderCard key={order.id} order={order} />)}
+      {orders.map((order) => <OrderCard key={order.id} order={order} onRefazer={onRefazer} />)}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Order, OrderStatus, useUpdateOrderStatus, useDeleteOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
+import { Order, OrderLine, OrderStatus, useUpdateOrderStatus, useDeleteOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
