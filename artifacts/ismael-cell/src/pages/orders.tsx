@@ -8,11 +8,12 @@ import {
 import { OrderForm } from "@/components/order-form";
 import { OrderCard } from "@/components/order-card";
 import { FaturamentoModal } from "@/components/faturamento-modal";
+import { GarantiaModal } from "@/components/garantia-modal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield } from "lucide-react";
+import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield } from "lucide-react";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
 const VISIBLE_SECONDS = 10;
@@ -24,6 +25,7 @@ export default function Orders() {
   const [showForm, setShowForm] = useState(false);
   const [tipo, setTipo] = useState<OrderTipo>(OrderTipo.cliente);
   const [showFaturamento, setShowFaturamento] = useState(false);
+  const [showGarantia, setShowGarantia] = useState(false);
 
   // Auto-hide: seconds remaining (0 = hidden, >0 = visible countdown)
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -113,13 +115,18 @@ export default function Orders() {
   return (
     <div className="min-h-screen bg-muted/30 pb-24">
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
+      <GarantiaModal open={showGarantia} onClose={() => setShowGarantia(false)} />
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 shrink-0">
-            <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
-              <Wrench className="h-4 w-4 text-primary-foreground" />
-            </div>
+            <button
+              onClick={() => setShowGarantia(true)}
+              className="w-8 h-8 bg-primary rounded-md flex items-center justify-center hover:bg-primary/90 transition-colors"
+              title="Registrar Garantia"
+            >
+              <Shield className="h-4 w-4 text-primary-foreground" />
+            </button>
             <h1 className="font-bold text-lg tracking-tight hidden sm:block">Ismael Cell</h1>
           </div>
 
