@@ -29,8 +29,8 @@ export default function Orders() {
   const [secondsLeft, setSecondsLeft] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Cards are visible if countdown is running OR user is searching
-  const ordersVisible = secondsLeft > 0 || search.length > 0;
+  // Cards are visible if countdown is running, user is searching, or a status filter is active
+  const ordersVisible = secondsLeft > 0 || search.length > 0 || statusFilter !== "all";
 
   // Start 10-second countdown after saving
   const startCountdown = () => {
@@ -325,7 +325,7 @@ function OrdersList({
         <CardContent className="p-10 flex flex-col items-center gap-3 text-center text-muted-foreground">
           <EyeOff className="h-8 w-8 opacity-30" />
           <p className="font-medium">Ordens ocultas</p>
-          <p className="text-sm">Digite na busca acima para encontrar uma ordem</p>
+          <p className="text-sm">Digite na busca ou selecione um status para ver as ordens</p>
         </CardContent>
       </Card>
     );
