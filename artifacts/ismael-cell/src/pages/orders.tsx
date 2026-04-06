@@ -19,7 +19,7 @@ export default function Orders() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
-  const [tipo, setTipo] = useState<OrderTipo>(OrderTipo.lojista);
+  const [tipo, setTipo] = useState<OrderTipo>(OrderTipo.cliente);
 
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
@@ -88,17 +88,6 @@ export default function Orders() {
           {/* Tabs: Cliente / Lojista */}
           <div className="flex items-center bg-muted rounded-lg p-1 gap-1">
             <button
-              onClick={() => handleTipoChange(OrderTipo.lojista)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                !isCliente
-                  ? "bg-white shadow text-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Store className="w-3.5 h-3.5" />
-              Lojista
-            </button>
-            <button
               onClick={() => handleTipoChange(OrderTipo.cliente)}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
                 isCliente
@@ -108,6 +97,17 @@ export default function Orders() {
             >
               <User className="w-3.5 h-3.5" />
               Cliente
+            </button>
+            <button
+              onClick={() => handleTipoChange(OrderTipo.lojista)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                !isCliente
+                  ? "bg-white shadow text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Store className="w-3.5 h-3.5" />
+              Lojista
             </button>
           </div>
 
