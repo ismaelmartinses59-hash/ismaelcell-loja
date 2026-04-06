@@ -65,7 +65,6 @@ export function OrderCard({ order }: { order: Order }) {
   const [editNomeCliente, setEditNomeCliente] = useState(order.nomeCliente ?? "");
   const [editSenhaDispo, setEditSenhaDispo] = useState(order.senhaDispo ?? "");
   const [editGarantia, setEditGarantia] = useState(order.garantia ?? "");
-  const [editDataServico, setEditDataServico] = useState(order.dataServico ?? "");
 
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
@@ -85,7 +84,6 @@ export function OrderCard({ order }: { order: Order }) {
     setEditNomeCliente(order.nomeCliente ?? "");
     setEditSenhaDispo(order.senhaDispo ?? "");
     setEditGarantia(order.garantia ?? "");
-    setEditDataServico(order.dataServico ?? "");
     setIsEditing(true);
   };
 
@@ -106,7 +104,7 @@ export function OrderCard({ order }: { order: Order }) {
           nomeCliente: editNomeCliente || undefined,
           senhaDispo: editSenhaDispo || undefined,
           garantia: editGarantia || undefined,
-          dataServico: editDataServico || undefined,
+          dataServico: order.dataServico ?? undefined,
         }
       },
       {
@@ -242,10 +240,6 @@ export function OrderCard({ order }: { order: Order }) {
                   <Input value={editTempo} onChange={(e) => setEditTempo(e.target.value)} placeholder="Ex: 30 min a 2h" />
                 </div>
 
-                <div className="space-y-1">
-                  <Label className="text-xs">Data do Serviço</Label>
-                  <Input type="date" value={editDataServico} onChange={(e) => setEditDataServico(e.target.value)} />
-                </div>
 
                 <div className="space-y-1">
                   <Label className="text-xs">Garantia</Label>

@@ -186,11 +186,14 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  const hoje = new Date().toISOString().split("T")[0];
+
   const [order] = await db
     .update(ordersTable)
     .set({
       status: body.data.status,
       dataConclusao: body.data.status === "concluido" ? new Date() : null,
+      ...(body.data.status === "em andamento" ? { dataServico: hoje } : {}),
     })
     .where(eq(ordersTable.id, params.data.id))
     .returning();
