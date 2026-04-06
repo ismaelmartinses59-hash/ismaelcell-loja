@@ -69,7 +69,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
         nomeCliente: "",
         senhaDispo: "",
         garantia: "",
-        dataServico: today,
+        dataServico: "",
       });
     }
   }, [prefill, form]);
@@ -116,7 +116,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
             nomeCliente: "",
             senhaDispo: "",
             garantia: "",
-            dataServico: today,
+            dataServico: "",
           });
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
