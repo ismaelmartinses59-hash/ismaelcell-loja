@@ -50,6 +50,7 @@ export interface Order {
   senhaDispo?: string | null;
   garantia?: string | null;
   dataServico?: string | null;
+  dataConclusao?: string | null;
   createdAt: string;
 }
 
