@@ -196,10 +196,12 @@ export function OrderCard({ order }: { order: Order }) {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1 sm:col-span-2">
-                  <Label className="text-xs">Nome do Cliente</Label>
-                  <Input value={editNomeCliente} onChange={(e) => setEditNomeCliente(e.target.value)} placeholder="Ex: João Silva" />
-                </div>
+                {order.tipo === "cliente" && (
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-xs">Nome do Cliente</Label>
+                    <Input value={editNomeCliente} onChange={(e) => setEditNomeCliente(e.target.value)} placeholder="Ex: João Silva" />
+                  </div>
+                )}
 
                 <div className="space-y-1">
                   <Label className="text-xs">Modelo</Label>
@@ -301,7 +303,7 @@ export function OrderCard({ order }: { order: Order }) {
                       </Badge>
                     </div>
                     <h3 className="text-lg font-bold text-foreground">{order.modelo}</h3>
-                    {order.nomeCliente && (
+                    {order.nomeCliente && order.tipo === "cliente" && (
                       <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
                         <User className="w-3.5 h-3.5" />
                         <span>{order.nomeCliente}</span>
