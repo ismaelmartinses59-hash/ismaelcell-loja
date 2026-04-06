@@ -55,8 +55,6 @@ export function OrderCard({ order }: { order: Order }) {
   const [confirmEncerrar, setConfirmEncerrar] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showSenha, setShowSenha] = useState(false);
-  const [isSettingGarantia, setIsSettingGarantia] = useState(false);
-  const [quickGarantia, setQuickGarantia] = useState(order.garantia ?? "");
 
   const [editModelo, setEditModelo] = useState(order.modelo);
   const [editLinha, setEditLinha] = useState<OrderLinha>(order.linha as OrderLinha);
@@ -157,33 +155,6 @@ export function OrderCard({ order }: { order: Order }) {
     }
     handleStatusChange(OrderStatus.encerrado);
     setConfirmEncerrar(false);
-  };
-
-  const handleSaveGarantia = () => {
-    editOrder.mutate(
-      {
-        id: order.id,
-        data: {
-          modelo: order.modelo,
-          linha: order.linha as OrderLinha,
-          servico: order.servico,
-          valor: order.valor,
-          tempo: order.tempo,
-          nomeCliente: order.nomeCliente ?? undefined,
-          senhaDispo: order.senhaDispo ?? undefined,
-          garantia: quickGarantia || undefined,
-          dataServico: order.dataServico ?? undefined,
-        }
-      },
-      {
-        onSuccess: () => {
-          invalidate();
-          setIsSettingGarantia(false);
-          toast({ title: "Garantia salva!" });
-        },
-        onError: () => toast({ title: "Erro ao salvar garantia", variant: "destructive" }),
-      }
-    );
   };
 
   const handleShare = async () => {
@@ -455,43 +426,6 @@ export function OrderCard({ order }: { order: Order }) {
 
                 {!isEncerrado && (
                   <>
-                    {/* ── Garantia rápida ────────────────────────── */}
-                    {isSettingGarantia ? (
-                      <div className="col-span-2 md:col-span-1 space-y-1.5 w-full">
-                        <p className="text-[10px] font-semibold text-yellow-700 uppercase flex items-center gap-1">
-                          <Shield className="w-3 h-3" /> Definir Garantia
-                        </p>
-                        <Select value={quickGarantia} onValueChange={setQuickGarantia}>
-                          <SelectTrigger className="h-8 text-xs">
-                            <SelectValue placeholder="Selecione..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {GARANTIA_OPTIONS.map((g) => (
-                              <SelectItem key={g} value={g} className="text-xs">{g}</SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <div className="flex gap-1.5">
-                          <Button size="sm" className="flex-1 h-7 text-xs" onClick={handleSaveGarantia} disabled={editOrder.isPending}>
-                            {editOrder.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Salvar"}
-                          </Button>
-                          <Button size="sm" variant="ghost" className="flex-1 h-7 text-xs" onClick={() => { setIsSettingGarantia(false); setQuickGarantia(order.garantia ?? ""); }}>
-                            Cancelar
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => { setQuickGarantia(order.garantia ?? ""); setIsSettingGarantia(true); }}
-                        className={`w-full justify-start ${order.garantia && order.garantia !== "Sem garantia" ? "border-yellow-300 text-yellow-700 bg-yellow-50 hover:bg-yellow-100" : "border-dashed"}`}
-                      >
-                        <Shield className="w-4 h-4 mr-2" />
-                        {order.garantia && order.garantia !== "Sem garantia" ? order.garantia : "Garantia"}
-                      </Button>
-                    )}
-
                     <Button size="sm" variant="outline" onClick={openEdit} className="w-full justify-start border-dashed">
                       <Pencil className="w-4 h-4 mr-2" />
                       Editar
