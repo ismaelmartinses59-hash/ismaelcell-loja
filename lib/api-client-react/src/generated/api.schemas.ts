@@ -27,6 +27,13 @@ export const OrderStatus = {
   problema: "problema",
 } as const;
 
+export type OrderTipo = (typeof OrderTipo)[keyof typeof OrderTipo];
+
+export const OrderTipo = {
+  cliente: "cliente",
+  lojista: "lojista",
+} as const;
+
 export interface Order {
   id: number;
   codigo: string;
@@ -36,6 +43,7 @@ export interface Order {
   valor: string;
   tempo: string;
   status: OrderStatus;
+  tipo: OrderTipo;
   createdAt: string;
 }
 
@@ -55,6 +63,7 @@ export interface CreateOrderBody {
   servico: string;
   valor: string;
   tempo: string;
+  tipo?: OrderTipo;
 }
 
 export type UpdateOrderStatusBodyStatus =
@@ -88,6 +97,10 @@ export type ListOrdersParams = {
    * Filter by status
    */
   status?: ListOrdersStatus;
+  /**
+   * Filter by tipo (cliente | lojista)
+   */
+  tipo?: OrderTipo;
 };
 
 export type ListOrdersStatus =

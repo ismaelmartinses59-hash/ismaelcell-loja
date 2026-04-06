@@ -27,6 +27,10 @@ export const ListOrdersQueryParams = zod.object({
     .enum(["aguardando", "em andamento", "concluido", "problema"])
     .optional()
     .describe("Filter by status"),
+  tipo: zod
+    .enum(["cliente", "lojista"])
+    .optional()
+    .describe("Filter by tipo"),
 });
 
 export const ListOrdersResponseItem = zod.object({
@@ -38,6 +42,7 @@ export const ListOrdersResponseItem = zod.object({
   valor: zod.string(),
   tempo: zod.string(),
   status: zod.enum(["aguardando", "em andamento", "concluido", "problema"]),
+  tipo: zod.enum(["cliente", "lojista"]),
   createdAt: zod.coerce.date(),
 });
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
@@ -51,6 +56,7 @@ export const CreateOrderBody = zod.object({
   servico: zod.string(),
   valor: zod.string(),
   tempo: zod.string(),
+  tipo: zod.enum(["cliente", "lojista"]).default("lojista"),
 });
 
 /**
@@ -69,6 +75,7 @@ export const GetOrderResponse = zod.object({
   valor: zod.string(),
   tempo: zod.string(),
   status: zod.enum(["aguardando", "em andamento", "concluido", "problema"]),
+  tipo: zod.enum(["cliente", "lojista"]),
   createdAt: zod.coerce.date(),
 });
 
@@ -92,6 +99,7 @@ export const UpdateOrderStatusResponse = zod.object({
   valor: zod.string(),
   tempo: zod.string(),
   status: zod.enum(["aguardando", "em andamento", "concluido", "problema"]),
+  tipo: zod.enum(["cliente", "lojista"]),
   createdAt: zod.coerce.date(),
 });
 

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetOrderStats, useListOrders, getListOrdersQueryKey, getGetOrderStatsQueryKey,
+  OrderTipo,
   type Order
 } from "@workspace/api-client-react";
 import { OrderForm } from "@/components/order-form";
@@ -10,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X } from "lucide-react";
+import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User } from "lucide-react";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
 export default function Orders() {
@@ -18,6 +19,7 @@ export default function Orders() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
+  const [tipo, setTipo] = useState<OrderTipo>(OrderTipo.lojista);
 
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
@@ -25,24 +27,33 @@ export default function Orders() {
     }
   }, [setLocation]);
 
-  const { data: stats } = useGetOrderStats({
-    query: { queryKey: getGetOrderStatsQueryKey() }
+  // Reset search/filter when switching tabs
+  const handleTipoChange = (newTipo: OrderTipo) => {
+    setTipo(newTipo);
+    setSearch("");
+    setStatusFilter("all");
+    setShowForm(false);
+  };
+
+  const { data: stats } = useGetOrderStats(tipo, {
+    query: { queryKey: getGetOrderStatsQueryKey(tipo) }
   });
 
-  // All orders — used to find active models (for duplicate prevention)
   const { data: allOrders = [] } = useListOrders(
-    {},
-    { query: { queryKey: getListOrdersQueryKey({}) } }
+    { tipo },
+    { query: { queryKey: getListOrdersQueryKey({ tipo }) } }
   );
 
   const { data: orders = [], isLoading } = useListOrders(
     {
+      tipo,
       search: search || undefined,
       status: statusFilter !== "all" ? (statusFilter as ListOrdersStatus) : undefined
     },
     {
       query: {
         queryKey: getListOrdersQueryKey({
+          tipo,
           search: search || undefined,
           status: statusFilter !== "all" ? (statusFilter as ListOrdersStatus) : undefined
         })
@@ -50,7 +61,6 @@ export default function Orders() {
     }
   );
 
-  // Only ACTIVE (non-concluded) orders block duplicate model creation
   const activeModels = allOrders
     .filter((o) => o.status !== "concluido")
     .map((o) => o.modelo);
@@ -61,25 +71,54 @@ export default function Orders() {
     setLocation("/");
   };
 
+  const isCliente = tipo === OrderTipo.cliente;
+
   return (
     <div className="min-h-screen bg-muted/30 pb-24">
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
-        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 shrink-0">
             <div className="w-8 h-8 bg-primary rounded-md flex items-center justify-center">
               <Wrench className="h-4 w-4 text-primary-foreground" />
             </div>
-            <h1 className="font-bold text-lg tracking-tight">Ismael Cell</h1>
+            <h1 className="font-bold text-lg tracking-tight hidden sm:block">Ismael Cell</h1>
           </div>
-          <div className="flex items-center gap-2">
+
+          {/* Tabs: Cliente / Lojista */}
+          <div className="flex items-center bg-muted rounded-lg p-1 gap-1">
+            <button
+              onClick={() => handleTipoChange(OrderTipo.lojista)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                !isCliente
+                  ? "bg-white shadow text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Store className="w-3.5 h-3.5" />
+              Lojista
+            </button>
+            <button
+              onClick={() => handleTipoChange(OrderTipo.cliente)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                isCliente
+                  ? "bg-white shadow text-primary"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              Cliente
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
             <Button
               size="sm"
               className="md:hidden flex items-center gap-1"
               onClick={() => setShowForm((v) => !v)}
             >
               {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-              {showForm ? "Fechar" : "Nova Ordem"}
+              {showForm ? "Fechar" : "Nova"}
             </Button>
             <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground hover:text-foreground">
               <LogOut className="h-4 w-4" />
@@ -87,6 +126,9 @@ export default function Orders() {
             </Button>
           </div>
         </div>
+
+        {/* Tab indicator strip */}
+        <div className={`h-0.5 transition-colors ${isCliente ? "bg-blue-500" : "bg-primary"}`} />
       </header>
 
       <main className="max-w-5xl mx-auto px-4 mt-4 space-y-4">
@@ -134,10 +176,13 @@ export default function Orders() {
         {/* Mobile: collapsible form */}
         {showForm && (
           <div className="md:hidden">
-            <Card className="shadow-md border-primary/30 border-2">
+            <Card className={`shadow-md border-2 ${isCliente ? "border-blue-300" : "border-primary/30"}`}>
               <CardContent className="p-4">
-                <h2 className="font-semibold text-base mb-4">Nova Ordem de Serviço</h2>
-                <OrderForm activeModels={activeModels} onSuccess={() => setShowForm(false)} />
+                <div className="flex items-center gap-2 mb-4">
+                  {isCliente ? <User className="w-4 h-4 text-blue-500" /> : <Store className="w-4 h-4 text-primary" />}
+                  <h2 className="font-semibold text-base">Nova OS — {isCliente ? "Cliente" : "Lojista"}</h2>
+                </div>
+                <OrderForm activeModels={activeModels} tipo={tipo} onSuccess={() => setShowForm(false)} />
               </CardContent>
             </Card>
           </div>
@@ -148,8 +193,11 @@ export default function Orders() {
           <div className="sticky top-20">
             <Card className="shadow-md">
               <CardContent className="p-5">
-                <h2 className="font-semibold text-base mb-4">Nova Ordem de Serviço</h2>
-                <OrderForm activeModels={activeModels} />
+                <div className="flex items-center gap-2 mb-4">
+                  {isCliente ? <User className="w-4 h-4 text-blue-500" /> : <Store className="w-4 h-4 text-primary" />}
+                  <h2 className="font-semibold text-base">Nova OS — {isCliente ? "Cliente" : "Lojista"}</h2>
+                </div>
+                <OrderForm activeModels={activeModels} tipo={tipo} />
               </CardContent>
             </Card>
           </div>

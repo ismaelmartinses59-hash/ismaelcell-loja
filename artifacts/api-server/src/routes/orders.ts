@@ -16,13 +16,21 @@ import {
 const router: IRouter = Router();
 
 router.get("/orders/stats", async (req, res): Promise<void> => {
-  const rows = await db
+  const tipo = req.query.tipo as string | undefined;
+
+  let statsQuery = db
     .select({
       status: ordersTable.status,
       count: sql<number>`cast(count(*) as integer)`,
     })
     .from(ordersTable)
-    .groupBy(ordersTable.status);
+    .$dynamic();
+
+  if (tipo === "cliente" || tipo === "lojista") {
+    statsQuery = statsQuery.where(eq(ordersTable.tipo, tipo));
+  }
+
+  const rows = await statsQuery.groupBy(ordersTable.status);
 
   const stats = {
     total: 0,
@@ -71,6 +79,10 @@ router.get("/orders", async (req, res): Promise<void> => {
     conditions.push(eq(ordersTable.status, status));
   }
 
+  if (query.data.tipo) {
+    conditions.push(eq(ordersTable.tipo, query.data.tipo));
+  }
+
   if (conditions.length > 0) {
     for (const cond of conditions) {
       dbQuery = dbQuery.where(cond);
@@ -92,7 +104,7 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   const [order] = await db
     .insert(ordersTable)
-    .values({ ...parsed.data, codigo, status: "aguardando" })
+    .values({ ...parsed.data, codigo, status: "aguardando", tipo: parsed.data.tipo ?? "lojista" })
     .returning();
 
   res.status(201).json(GetOrderResponse.parse(order));

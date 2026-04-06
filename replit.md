@@ -29,14 +29,18 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 A mobile phone repair shop management tool for Ismael Cell assistência técnica.
 
 ### Features
-- Login page (POST /api/auth/login — default: `admin@ismaelcell.com` / `ismael123`)
+- Login page (POST /api/auth/login — credentials from ADMIN_EMAIL/ADMIN_PASSWORD env secrets)
 - Service order management: create, list, filter, search, update status
+- **Cliente/Lojista dual-mode**: Tab switcher in header; all orders, stats, and forms are scoped to the selected `tipo`
 - Supports phone lines: Xiaomi, Samsung, Motorola, iOS
 - Auto-fills service options and estimated time based on phone line
 - Status workflow: aguardando → em andamento → concluido / problema
+- Inline edit on each order card (PUT /api/orders/:id)
+- Delete with confirmation (DELETE /api/orders/:id)
+- Reativar: re-opens concluded orders with a new OS code (POST /api/orders/:id/reactivate)
 - WhatsApp sharing: links to `/status/:codigo` for each order
 - Public order status page (no login required)
-- Dashboard stats: total, aguardando, em andamento, concluido, problema
+- Dashboard stats: total, aguardando, em andamento, concluido, problema (filtered by tipo)
 
 ### Routes (frontend)
 - `/` — Login
@@ -45,10 +49,19 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 
 ### API Routes
 - `POST /api/auth/login` — authenticate
-- `GET /api/orders` — list/search orders
-- `POST /api/orders` — create order
+- `GET /api/orders?tipo=lojista|cliente` — list/search orders filtered by tipo
+- `POST /api/orders` — create order (accepts `tipo` field)
 - `GET /api/orders/:id` — get single order
 - `PATCH /api/orders/:id` — update status
-- `GET /api/orders/stats` — dashboard stats
+- `PUT /api/orders/:id` — inline edit order fields
+- `DELETE /api/orders/:id` — delete order
+- `POST /api/orders/:id/reactivate` — reactivate concluded order
+- `GET /api/orders/stats?tipo=lojista|cliente` — dashboard stats filtered by tipo
+
+### Important implementation notes
+- `useDeleteOrder`, `useEditOrder`, `useReactivateOrder` are manually appended to `lib/api-client-react/src/generated/api.ts` — do NOT regenerate blindly
+- `EditOrderBody` type and `OrderTipo` const/type are also defined manually in that file
+- After editing `api.ts`, run `cd lib/api-client-react && npx tsc --build` to update declarations
+- `tipo` column in DB defaults to `"lojista"`; accepted values: `"lojista"` | `"cliente"`
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useCreateOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey, OrderLinha } from "@workspace/api-client-react";
+import { useCreateOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey, OrderLinha, OrderTipo } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,10 +25,11 @@ type CreateOrderForm = z.infer<typeof createOrderSchema>;
 interface OrderFormProps {
   onSuccess?: () => void;
   prefill?: { modelo: string; linha: OrderLinha } | null;
-  activeModels?: string[]; // models that already have active (non-concluded) orders
+  activeModels?: string[];
+  tipo?: OrderTipo;
 }
 
-export function OrderForm({ onSuccess, prefill, activeModels = [] }: OrderFormProps = {}) {
+export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderTipo.lojista }: OrderFormProps = {}) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const createOrder = useCreateOrder();
@@ -92,7 +93,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [] }: OrderFormPr
     }
 
     createOrder.mutate(
-      { data },
+      { data: { ...data, tipo } },
       {
         onSuccess: (order) => {
           form.reset({
