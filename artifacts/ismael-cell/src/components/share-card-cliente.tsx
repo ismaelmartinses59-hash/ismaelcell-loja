@@ -5,6 +5,8 @@ interface ShareCardClienteProps {
   order: Order;
 }
 
+const FONT = "Inter, Segoe UI, Arial, sans-serif";
+
 export const ShareCardCliente = forwardRef<HTMLDivElement, ShareCardClienteProps>(
   ({ order }, ref) => {
     return (
@@ -22,14 +24,10 @@ export const ShareCardCliente = forwardRef<HTMLDivElement, ShareCardClienteProps
           src="/share-bg-cliente.png"
           alt="IsmaelCell"
           crossOrigin="anonymous"
-          style={{
-            width: "100%",
-            display: "block",
-            borderRadius: "16px",
-          }}
+          style={{ width: "100%", display: "block", borderRadius: "16px" }}
         />
 
-        {/* Overlay: Box 1 — Modelo */}
+        {/* Box 1 — Modelo */}
         <div
           style={{
             position: "absolute",
@@ -41,18 +39,34 @@ export const ShareCardCliente = forwardRef<HTMLDivElement, ShareCardClienteProps
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            gap: "2px",
+            gap: "3px",
           }}
         >
-          <span style={{ color: "#94a3b8", fontSize: "10px", fontWeight: 700, letterSpacing: "2px", fontFamily: "Inter, Segoe UI, sans-serif", lineHeight: 1 }}>
+          <span style={{
+            color: "#7dd3fc",
+            fontSize: "11px",
+            fontWeight: 700,
+            letterSpacing: "2.5px",
+            fontFamily: FONT,
+            lineHeight: 1,
+          }}>
             MODELO
           </span>
-          <span style={{ color: "#0f172a", fontSize: "18px", fontWeight: 800, letterSpacing: "0.5px", fontFamily: "Inter, Segoe UI, sans-serif", lineHeight: 1, textAlign: "center" }}>
+          <span style={{
+            color: "#ffffff",
+            fontSize: "22px",
+            fontWeight: 900,
+            letterSpacing: "1px",
+            fontFamily: FONT,
+            lineHeight: 1,
+            textAlign: "center",
+            textShadow: "0 0 8px rgba(96,165,250,0.6)",
+          }}>
             {order.modelo.toUpperCase()}
           </span>
         </div>
 
-        {/* Overlay: Box 2 — Serviço */}
+        {/* Box 2 — Serviço */}
         <div
           style={{
             position: "absolute",
@@ -64,18 +78,34 @@ export const ShareCardCliente = forwardRef<HTMLDivElement, ShareCardClienteProps
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            gap: "2px",
+            gap: "3px",
           }}
         >
-          <span style={{ color: "#94a3b8", fontSize: "10px", fontWeight: 700, letterSpacing: "2px", fontFamily: "Inter, Segoe UI, sans-serif", lineHeight: 1 }}>
+          <span style={{
+            color: "#7dd3fc",
+            fontSize: "11px",
+            fontWeight: 700,
+            letterSpacing: "2.5px",
+            fontFamily: FONT,
+            lineHeight: 1,
+          }}>
             SERVIÇO
           </span>
-          <span style={{ color: "#0f172a", fontSize: "15px", fontWeight: 800, letterSpacing: "0.5px", fontFamily: "Inter, Segoe UI, sans-serif", lineHeight: 1.1, textAlign: "center" }}>
+          <span style={{
+            color: "#ffffff",
+            fontSize: "17px",
+            fontWeight: 900,
+            letterSpacing: "0.5px",
+            fontFamily: FONT,
+            lineHeight: 1.1,
+            textAlign: "center",
+            textShadow: "0 0 8px rgba(96,165,250,0.6)",
+          }}>
             {order.servico.toUpperCase()}
           </span>
         </div>
 
-        {/* Overlay: Box 3 — Valor */}
+        {/* Box 3 — Valor */}
         <div
           style={{
             position: "absolute",
@@ -87,13 +117,28 @@ export const ShareCardCliente = forwardRef<HTMLDivElement, ShareCardClienteProps
             flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
-            gap: "2px",
+            gap: "3px",
           }}
         >
-          <span style={{ color: "#94a3b8", fontSize: "10px", fontWeight: 700, letterSpacing: "2px", fontFamily: "Inter, Segoe UI, sans-serif", lineHeight: 1 }}>
+          <span style={{
+            color: "#7dd3fc",
+            fontSize: "11px",
+            fontWeight: 700,
+            letterSpacing: "2.5px",
+            fontFamily: FONT,
+            lineHeight: 1,
+          }}>
             VALOR
           </span>
-          <span style={{ color: "#1d4ed8", fontSize: "20px", fontWeight: 900, fontFamily: "Inter, Segoe UI, sans-serif", lineHeight: 1, textAlign: "center" }}>
+          <span style={{
+            color: "#60a5fa",
+            fontSize: "26px",
+            fontWeight: 900,
+            fontFamily: FONT,
+            lineHeight: 1,
+            textAlign: "center",
+            textShadow: "0 0 12px rgba(96,165,250,0.8)",
+          }}>
             R$ {order.valor}
           </span>
         </div>
