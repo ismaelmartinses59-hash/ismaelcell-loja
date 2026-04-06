@@ -15,7 +15,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2,
-  RefreshCw, Pencil, X, Save, Eye, EyeOff, XCircle, User, Shield, Calendar, KeyRound
+  RefreshCw, Pencil, X, Save, Eye, EyeOff, XCircle, User, Shield, Calendar, KeyRound, Copy, Check
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
@@ -51,6 +51,7 @@ export function OrderCard({ order }: { order: Order }) {
   const shareCardRef = useRef<HTMLDivElement>(null);
 
   const [isSharing, setIsSharing] = useState(false);
+  const [copiedOS, setCopiedOS] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmEncerrar, setConfirmEncerrar] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -280,9 +281,21 @@ export function OrderCard({ order }: { order: Order }) {
                 <div className="flex justify-between items-start mb-3">
                   <div>
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-sm font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(order.codigo);
+                          setCopiedOS(true);
+                          setTimeout(() => setCopiedOS(false), 1800);
+                        }}
+                        className="flex items-center gap-1.5 font-mono text-sm font-medium text-muted-foreground bg-muted px-2 py-0.5 rounded hover:bg-muted/80 active:scale-95 transition-all group"
+                        title="Copiar código da OS"
+                      >
                         #{order.codigo}
-                      </span>
+                        {copiedOS
+                          ? <Check className="w-3 h-3 text-green-600 shrink-0" />
+                          : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-60 transition-opacity shrink-0" />
+                        }
+                      </button>
                       <Badge variant="outline" className="uppercase text-[10px] tracking-wider">
                         {order.linha}
                       </Badge>

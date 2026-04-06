@@ -74,8 +74,11 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
   );
 
   const orderRegistrar = buscaAtiva
-    ? ordersRegistrar.find(o => o.codigo.toLowerCase() === buscaAtiva.toLowerCase())
-      ?? (ordersRegistrar.length === 1 ? ordersRegistrar[0] : null)
+    ? ordersRegistrar.find(o => {
+        const codNum = o.codigo.replace(/^OS-/i, "").toLowerCase();
+        const termLow = buscaAtiva.toLowerCase();
+        return codNum === termLow || codNum.includes(termLow) || o.codigo.toLowerCase().includes(termLow);
+      }) ?? (ordersRegistrar.length === 1 ? ordersRegistrar[0] : null)
     : null;
 
   const ordersComGarantia = useMemo(() => {
@@ -133,8 +136,9 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
   const handleBuscar = () => {
     const termo = busca.trim();
     if (!termo) return;
-    const codigo = termo.startsWith("OS-") ? termo : `OS-${termo}`;
-    setBuscaAtiva(codigo);
+    // Remove o prefixo "OS-" (com qualquer capitalização) para a busca no backend
+    const numPart = termo.replace(/^os-/i, "");
+    setBuscaAtiva(numPart);
     setGarantiaSelecionada("");
   };
 
