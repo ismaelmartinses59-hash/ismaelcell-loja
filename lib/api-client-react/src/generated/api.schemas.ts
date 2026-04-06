@@ -100,6 +100,7 @@ export interface OrderStats {
   concluido: number;
   problema: number;
   encerrado: number;
+  comGarantia: number;
 }
 
 export interface ListOrdersParams {

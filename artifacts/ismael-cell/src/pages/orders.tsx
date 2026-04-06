@@ -12,7 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp } from "lucide-react";
+import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield } from "lucide-react";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
 const VISIBLE_SECONDS = 10;
@@ -183,7 +183,7 @@ export default function Orders() {
 
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             <Card>
               <CardContent className="p-3 flex flex-col items-center justify-center text-center">
                 <span className="text-2xl font-bold">{stats.total}</span>
@@ -216,6 +216,13 @@ export default function Orders() {
                 <AlertTriangle className="h-4 w-4 text-red-500 mb-1" />
                 <span className="text-xl font-bold">{stats.problema}</span>
                 <span className="text-xs font-medium text-muted-foreground uppercase">Problema</span>
+              </CardContent>
+            </Card>
+            <Card className="border-yellow-200 bg-yellow-50/40">
+              <CardContent className="p-3 flex flex-col items-center justify-center text-center">
+                <Shield className="h-4 w-4 text-yellow-600 mb-1" />
+                <span className="text-xl font-bold text-yellow-700">{stats.comGarantia}</span>
+                <span className="text-xs font-medium text-yellow-600 uppercase">Garantia</span>
               </CardContent>
             </Card>
           </div>

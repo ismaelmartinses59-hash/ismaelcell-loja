@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, ilike, or, sql, and } from "drizzle-orm";
+import { eq, ilike, or, sql, and, isNotNull, ne } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
 import {
   ListOrdersQueryParams,
@@ -39,6 +39,7 @@ router.get("/orders/stats", async (req, res): Promise<void> => {
     concluido: 0,
     problema: 0,
     encerrado: 0,
+    comGarantia: 0,
   };
 
   for (const row of rows) {
@@ -52,6 +53,29 @@ router.get("/orders/stats", async (req, res): Promise<void> => {
       else if (row.status === "problema") stats.problema = row.count;
     }
   }
+
+  // Count orders with an active warranty (non-null, non-empty, not "Sem garantia")
+  let garantiaQuery = db
+    .select({ count: sql<number>`cast(count(*) as integer)` })
+    .from(ordersTable)
+    .where(and(
+      isNotNull(ordersTable.garantia),
+      ne(ordersTable.garantia, ""),
+      ne(ordersTable.garantia, "Sem garantia"),
+    ))
+    .$dynamic();
+
+  if (tipo === "cliente" || tipo === "lojista") {
+    garantiaQuery = garantiaQuery.where(and(
+      eq(ordersTable.tipo, tipo),
+      isNotNull(ordersTable.garantia),
+      ne(ordersTable.garantia, ""),
+      ne(ordersTable.garantia, "Sem garantia"),
+    ));
+  }
+
+  const [garantiaRow] = await garantiaQuery;
+  stats.comGarantia = garantiaRow?.count ?? 0;
 
   res.json(GetOrderStatsResponse.parse(stats));
 });
