@@ -16,6 +16,7 @@ import { ptBR } from "date-fns/locale";
 import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2, RefreshCw, Pencil, X, Save } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
+import { ShareCardCliente } from "@/components/share-card-cliente";
 import { shareOrderAsImage } from "@/lib/share";
 import { SERVICES_BY_LINE, ESTIMATED_TIMES } from "@/lib/constants";
 
@@ -125,7 +126,10 @@ export function OrderCard({ order }: { order: Order }) {
   return (
     <>
       <div style={{ position: "fixed", top: "-9999px", left: "-9999px", zIndex: -1, pointerEvents: "none" }}>
-        <ShareCard ref={shareCardRef} order={order} />
+        {order.tipo === "cliente"
+          ? <ShareCardCliente ref={shareCardRef} order={order} />
+          : <ShareCard ref={shareCardRef} order={order} />
+        }
       </div>
 
       <Card className="overflow-hidden transition-all hover:shadow-md border-l-4 hover:border-l-primary">
