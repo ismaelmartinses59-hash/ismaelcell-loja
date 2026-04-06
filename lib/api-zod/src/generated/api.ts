@@ -101,4 +101,5 @@ export const GetOrderStatsResponse = zod.object({
   concluido: zod.number(),
   problema: zod.number(),
   encerrado: zod.number(),
+  comGarantia: zod.number(),
 });
