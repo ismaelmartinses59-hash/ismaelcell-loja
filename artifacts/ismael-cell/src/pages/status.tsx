@@ -3,13 +3,14 @@ import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-reac
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { type LucideIcon, Wrench, CheckCircle2, Clock, Activity, AlertTriangle, Smartphone } from "lucide-react";
+import { type LucideIcon, Wrench, CheckCircle2, Clock, Activity, AlertTriangle, Smartphone, XCircle } from "lucide-react";
 
 const STATUS_COLORS: Record<string, string> = {
   "aguardando": "bg-amber-100 text-amber-800 border-amber-200",
   "em andamento": "bg-blue-100 text-blue-800 border-blue-200",
   "concluido": "bg-green-100 text-green-800 border-green-200",
   "problema": "bg-red-100 text-red-800 border-red-200",
+  "encerrado": "bg-gray-100 text-gray-500 border-gray-200",
 };
 
 const STATUS_ICONS: Record<string, LucideIcon> = {
@@ -17,6 +18,15 @@ const STATUS_ICONS: Record<string, LucideIcon> = {
   "em andamento": Activity,
   "concluido": CheckCircle2,
   "problema": AlertTriangle,
+  "encerrado": XCircle,
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  "aguardando": "Aguardando",
+  "em andamento": "Em andamento",
+  "concluido": "Concluído",
+  "problema": "Problema",
+  "encerrado": "Encerrado",
 };
 
 export default function Status() {
@@ -58,7 +68,7 @@ export default function Status() {
     );
   }
 
-  const StatusIcon = STATUS_ICONS[order.status];
+  const StatusIcon = STATUS_ICONS[order.status] ?? Wrench;
 
   return (
     <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
@@ -79,7 +89,7 @@ export default function Status() {
             <div className={`mx-auto w-24 h-24 rounded-full flex items-center justify-center ${STATUS_COLORS[order.status]}`}>
               <StatusIcon className="w-10 h-10" />
             </div>
-            <h2 className="text-2xl font-black capitalize tracking-tight">{order.status}</h2>
+            <h2 className="text-2xl font-black capitalize tracking-tight">{STATUS_LABELS[order.status] ?? order.status}</h2>
           </div>
 
           <div className="bg-muted rounded-xl p-5 space-y-4">
