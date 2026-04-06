@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, ilike, or, sql } from "drizzle-orm";
+import { eq, ilike, or, sql, and } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
 import {
   ListOrdersQueryParams,
@@ -90,9 +90,7 @@ router.get("/orders", async (req, res): Promise<void> => {
   }
 
   if (conditions.length > 0) {
-    for (const cond of conditions) {
-      dbQuery = dbQuery.where(cond);
-    }
+    dbQuery = dbQuery.where(and(...conditions));
   }
 
   const orders = await dbQuery.orderBy(sql`${ordersTable.createdAt} desc`);
