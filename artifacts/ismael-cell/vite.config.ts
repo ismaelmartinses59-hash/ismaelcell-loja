@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+import { VitePWA } from "vite-plugin-pwa";
 
 const rawPort = process.env.PORT;
 
@@ -32,6 +33,53 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    VitePWA({
+      registerType: "autoUpdate",
+      includeAssets: ["favicon.svg", "pwa-192x192.png", "pwa-512x512.png"],
+      manifest: {
+        name: "Ismael Cell",
+        short_name: "IsmaelCell",
+        description: "Gestão de Ordens de Serviço — Ismael Cell Assistência Técnica",
+        theme_color: "#1a2236",
+        background_color: "#0f172a",
+        display: "standalone",
+        orientation: "portrait",
+        start_url: basePath,
+        scope: basePath,
+        lang: "pt-BR",
+        icons: [
+          {
+            src: `${basePath}pwa-192x192.png`,
+            sizes: "192x192",
+            type: "image/png",
+          },
+          {
+            src: `${basePath}pwa-512x512.png`,
+            sizes: "512x512",
+            type: "image/png",
+            purpose: "any maskable",
+          },
+        ],
+      },
+      workbox: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        runtimeCaching: [
+          {
+            urlPattern: /^https?:\/\/.*\/api\/.*/i,
+            handler: "NetworkFirst",
+            options: {
+              cacheName: "api-cache",
+              expiration: { maxEntries: 50, maxAgeSeconds: 60 * 5 },
+              networkTimeoutSeconds: 10,
+            },
+          },
+        ],
+      },
+      devOptions: {
+        enabled: true,
+        type: "module",
+      },
+    }),
     ...(process.env.NODE_ENV !== "production" &&
     process.env.REPL_ID !== undefined
       ? [
