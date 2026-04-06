@@ -166,7 +166,10 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
 
   const [order] = await db
     .update(ordersTable)
-    .set({ status: body.data.status })
+    .set({
+      status: body.data.status,
+      dataConclusao: body.data.status === "concluido" ? new Date() : null,
+    })
     .where(eq(ordersTable.id, params.data.id))
     .returning();
 

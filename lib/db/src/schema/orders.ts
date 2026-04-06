@@ -16,6 +16,7 @@ export const ordersTable = pgTable("orders", {
   senhaDispo: text("senha_dispo"),
   garantia: text("garantia"),
   dataServico: text("data_servico"),
+  dataConclusao: timestamp("data_conclusao"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
