@@ -28,6 +28,20 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 A mobile phone repair shop management tool for Ismael Cell assistência técnica.
 
+### DB Fields (orders table)
+- `id`, `codigo`, `modelo`, `linha`, `servico`, `valor`, `tempo`, `status`, `tipo`, `createdAt`
+- `nome_cliente` (text, nullable) — client name
+- `senha_dispo` (text, nullable) — device PIN/password  
+- `garantia` (text, nullable) — warranty period
+- `data_servico` (text, nullable) — service date (YYYY-MM-DD)
+
+### Status Values
+`aguardando` | `em andamento` | `concluido` | `problema` | `encerrado`
+
+### Notes
+- Do NOT regenerate api.ts from api-client-react — it has manually appended hooks
+- After editing api-client-react types, run: `cd lib/api-client-react && npx tsc --build`
+
 ### Features
 - Login page (POST /api/auth/login — credentials from ADMIN_EMAIL/ADMIN_PASSWORD env secrets)
 - Service order management: create, list, filter, search, update status

@@ -12,6 +12,10 @@ export const ordersTable = pgTable("orders", {
   tempo: text("tempo").notNull(),
   status: text("status").notNull().default("aguardando"),
   tipo: text("tipo").notNull().default("lojista"),
+  nomeCliente: text("nome_cliente"),
+  senhaDispo: text("senha_dispo"),
+  garantia: text("garantia"),
+  dataServico: text("data_servico"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

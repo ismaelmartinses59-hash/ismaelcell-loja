@@ -547,6 +547,10 @@ export type EditOrderBody = {
   servico: string;
   valor: string;
   tempo: string;
+  nomeCliente?: string;
+  senhaDispo?: string;
+  garantia?: string;
+  dataServico?: string;
 };
 
 export const editOrder = async (

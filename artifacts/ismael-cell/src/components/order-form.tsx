@@ -12,12 +12,18 @@ import { SERVICES_BY_LINE, SERVICES_BY_LINE_CLIENTE, ESTIMATED_TIMES } from "@/l
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
+const GARANTIA_OPTIONS = ["Sem garantia", "7 dias", "30 dias", "90 dias", "6 meses", "1 ano"];
+
 const createOrderSchema = z.object({
   modelo: z.string().min(1, "Modelo é obrigatório"),
   linha: z.nativeEnum(OrderLinha),
   servico: z.string().min(1, "Serviço é obrigatório"),
   valor: z.string().min(1, "Valor é obrigatório"),
   tempo: z.string().min(1, "Tempo é obrigatório"),
+  nomeCliente: z.string().optional(),
+  senhaDispo: z.string().optional(),
+  garantia: z.string().optional(),
+  dataServico: z.string().optional(),
 });
 
 type CreateOrderForm = z.infer<typeof createOrderSchema>;
@@ -34,6 +40,8 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
   const queryClient = useQueryClient();
   const createOrder = useCreateOrder();
 
+  const today = new Date().toISOString().split("T")[0];
+
   const form = useForm<CreateOrderForm>({
     resolver: zodResolver(createOrderSchema),
     defaultValues: {
@@ -42,13 +50,16 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
       servico: "",
       valor: "",
       tempo: "",
+      nomeCliente: "",
+      senhaDispo: "",
+      garantia: "",
+      dataServico: today,
     },
   });
 
   const watchLinha = form.watch("linha");
   const watchServico = form.watch("servico");
 
-  // When prefill changes (e.g. "Refazer" clicked), reset form with prefilled values
   useEffect(() => {
     if (prefill) {
       form.reset({
@@ -57,18 +68,20 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
         servico: "",
         valor: "",
         tempo: "",
+        nomeCliente: "",
+        senhaDispo: "",
+        garantia: "",
+        dataServico: today,
       });
     }
   }, [prefill, form]);
 
-  // Reset servico when linha changes
   useEffect(() => {
     if (watchLinha) {
       form.setValue("servico", "");
     }
   }, [watchLinha, form]);
 
-  // Auto-fill tempo when servico changes
   useEffect(() => {
     if (watchServico && ESTIMATED_TIMES[watchServico]) {
       form.setValue("tempo", ESTIMATED_TIMES[watchServico]);
@@ -79,7 +92,6 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
   const availableServices = watchLinha ? serviceMap[watchLinha] : [];
 
   const onSubmit = (data: CreateOrderForm) => {
-    // Check for duplicate active order with same model
     const isDuplicate = activeModels.some(
       (m) => m.trim().toLowerCase() === data.modelo.trim().toLowerCase()
     );
@@ -103,6 +115,10 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
             servico: "",
             valor: "",
             tempo: "",
+            nomeCliente: "",
+            senhaDispo: "",
+            garantia: "",
+            dataServico: today,
           });
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
@@ -135,6 +151,20 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="nomeCliente"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Nome do Cliente</FormLabel>
+              <FormControl>
+                <Input placeholder="Ex: João Silva" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
         <FormField
           control={form.control}
           name="linha"
@@ -180,11 +210,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
           render={({ field }) => (
             <FormItem>
               <FormLabel>Serviço</FormLabel>
-              <Select
-                onValueChange={field.onChange}
-                value={field.value}
-                disabled={!watchLinha}
-              >
+              <Select onValueChange={field.onChange} value={field.value} disabled={!watchLinha}>
                 <FormControl>
                   <SelectTrigger>
                     <SelectValue placeholder={watchLinha ? "Selecione o serviço" : "Selecione a linha primeiro"} />
@@ -192,9 +218,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
                 </FormControl>
                 <SelectContent>
                   {availableServices?.map((srv) => (
-                    <SelectItem key={srv} value={srv}>
-                      {srv}
-                    </SelectItem>
+                    <SelectItem key={srv} value={srv}>{srv}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -232,6 +256,59 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
             )}
           />
         </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
+            name="dataServico"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Data do Serviço</FormLabel>
+                <FormControl>
+                  <Input type="date" {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="garantia"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Garantia</FormLabel>
+                <Select onValueChange={field.onChange} value={field.value || ""}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {GARANTIA_OPTIONS.map((g) => (
+                      <SelectItem key={g} value={g}>{g}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="senhaDispo"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Senha do Aparelho</FormLabel>
+              <FormControl>
+                <Input placeholder="PIN ou padrão de desbloqueio" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <Button type="submit" className="w-full mt-4" disabled={createOrder.isPending}>
           {createOrder.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
