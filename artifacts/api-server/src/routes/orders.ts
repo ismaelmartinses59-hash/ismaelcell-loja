@@ -38,14 +38,19 @@ router.get("/orders/stats", async (req, res): Promise<void> => {
     emAndamento: 0,
     concluido: 0,
     problema: 0,
+    encerrado: 0,
   };
 
   for (const row of rows) {
-    stats.total += row.count;
-    if (row.status === "aguardando") stats.aguardando = row.count;
-    else if (row.status === "em andamento") stats.emAndamento = row.count;
-    else if (row.status === "concluido") stats.concluido = row.count;
-    else if (row.status === "problema") stats.problema = row.count;
+    if (row.status === "encerrado") {
+      stats.encerrado = row.count;
+    } else {
+      stats.total += row.count;
+      if (row.status === "aguardando") stats.aguardando = row.count;
+      else if (row.status === "em andamento") stats.emAndamento = row.count;
+      else if (row.status === "concluido") stats.concluido = row.count;
+      else if (row.status === "problema") stats.problema = row.count;
+    }
   }
 
   res.json(GetOrderStatsResponse.parse(stats));
@@ -71,6 +76,7 @@ router.get("/orders", async (req, res): Promise<void> => {
         ilike(ordersTable.servico, `%${search}%`),
         ilike(ordersTable.linha, `%${search}%`),
         ilike(ordersTable.codigo, `%${search}%`),
+        ilike(ordersTable.nomeCliente, `%${search}%`),
       ),
     );
   }
@@ -104,7 +110,16 @@ router.post("/orders", async (req, res): Promise<void> => {
 
   const [order] = await db
     .insert(ordersTable)
-    .values({ ...parsed.data, codigo, status: "aguardando", tipo: parsed.data.tipo ?? "lojista" })
+    .values({
+      ...parsed.data,
+      codigo,
+      status: "aguardando",
+      tipo: parsed.data.tipo ?? "lojista",
+      nomeCliente: parsed.data.nomeCliente ?? null,
+      senhaDispo: parsed.data.senhaDispo ?? null,
+      garantia: parsed.data.garantia ?? null,
+      dataServico: parsed.data.dataServico ?? null,
+    })
     .returning();
 
   res.status(201).json(GetOrderResponse.parse(order));
@@ -186,6 +201,10 @@ router.put("/orders/:id", async (req, res): Promise<void> => {
       servico: body.data.servico,
       valor: body.data.valor,
       tempo: body.data.tempo,
+      nomeCliente: body.data.nomeCliente ?? null,
+      senhaDispo: body.data.senhaDispo ?? null,
+      garantia: body.data.garantia ?? null,
+      dataServico: body.data.dataServico ?? null,
     })
     .where(eq(ordersTable.id, id))
     .returning();

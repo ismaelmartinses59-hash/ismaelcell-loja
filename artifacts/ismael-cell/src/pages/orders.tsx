@@ -7,11 +7,12 @@ import {
 } from "@workspace/api-client-react";
 import { OrderForm } from "@/components/order-form";
 import { OrderCard } from "@/components/order-card";
+import { FaturamentoModal } from "@/components/faturamento-modal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff } from "lucide-react";
+import { Search, LogOut, Wrench, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp } from "lucide-react";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
 const VISIBLE_SECONDS = 10;
@@ -22,6 +23,7 @@ export default function Orders() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
   const [tipo, setTipo] = useState<OrderTipo>(OrderTipo.cliente);
+  const [showFaturamento, setShowFaturamento] = useState(false);
 
   // Auto-hide: seconds remaining (0 = hidden, >0 = visible countdown)
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -91,7 +93,7 @@ export default function Orders() {
   );
 
   const activeModels = allOrders
-    .filter((o) => o.status !== "concluido")
+    .filter((o) => o.status !== "concluido" && o.status !== "encerrado")
     .map((o) => o.modelo);
 
   const handleLogout = () => {
@@ -110,6 +112,7 @@ export default function Orders() {
 
   return (
     <div className="min-h-screen bg-muted/30 pb-24">
+      <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -147,6 +150,16 @@ export default function Orders() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex items-center gap-1 text-green-700 border-green-300 hover:bg-green-50"
+              onClick={() => setShowFaturamento(true)}
+              title="Relatório de Faturamento"
+            >
+              <TrendingUp className="h-4 w-4" />
+              <span className="hidden sm:inline">Faturamento</span>
+            </Button>
             <Button
               size="sm"
               className="md:hidden flex items-center gap-1"
@@ -290,6 +303,7 @@ function OrderFilters({ search, setSearch, statusFilter, setStatusFilter }: {
           <SelectItem value={ListOrdersStatus.em_andamento}>Em Andamento</SelectItem>
           <SelectItem value={ListOrdersStatus.concluido}>Concluído</SelectItem>
           <SelectItem value={ListOrdersStatus.problema}>Com Problema</SelectItem>
+          <SelectItem value={ListOrdersStatus.encerrado}>Encerrado</SelectItem>
         </SelectContent>
       </Select>
     </div>

@@ -13,18 +13,32 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2, RefreshCw, Pencil, X, Save } from "lucide-react";
+import {
+  Share2, Play, AlertTriangle, CheckCircle2, Loader2, Trash2,
+  RefreshCw, Pencil, X, Save, Eye, EyeOff, XCircle, User, Shield, Calendar, KeyRound
+} from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { ShareCardCliente } from "@/components/share-card-cliente";
 import { shareOrderAsImage } from "@/lib/share";
 import { SERVICES_BY_LINE, SERVICES_BY_LINE_CLIENTE, ESTIMATED_TIMES } from "@/lib/constants";
 
+const GARANTIA_OPTIONS = ["Sem garantia", "7 dias", "30 dias", "90 dias", "6 meses", "1 ano"];
+
 const STATUS_COLORS: Record<string, string> = {
   "aguardando": "bg-amber-100 text-amber-800 border-amber-200",
   "em andamento": "bg-blue-100 text-blue-800 border-blue-200",
   "concluido": "bg-green-100 text-green-800 border-green-200",
   "problema": "bg-red-100 text-red-800 border-red-200",
+  "encerrado": "bg-gray-100 text-gray-500 border-gray-200",
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  "aguardando": "Aguardando",
+  "em andamento": "Em andamento",
+  "concluido": "Concluído",
+  "problema": "Problema",
+  "encerrado": "Encerrado",
 };
 
 export function OrderCard({ order }: { order: Order }) {
@@ -38,17 +52,28 @@ export function OrderCard({ order }: { order: Order }) {
 
   const [isSharing, setIsSharing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmEncerrar, setConfirmEncerrar] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [showSenha, setShowSenha] = useState(false);
 
-  // Edit form state
   const [editModelo, setEditModelo] = useState(order.modelo);
   const [editLinha, setEditLinha] = useState<OrderLinha>(order.linha as OrderLinha);
   const [editServico, setEditServico] = useState(order.servico);
   const [editValor, setEditValor] = useState(order.valor);
   const [editTempo, setEditTempo] = useState(order.tempo);
+  const [editNomeCliente, setEditNomeCliente] = useState(order.nomeCliente ?? "");
+  const [editSenhaDispo, setEditSenhaDispo] = useState(order.senhaDispo ?? "");
+  const [editGarantia, setEditGarantia] = useState(order.garantia ?? "");
+  const [editDataServico, setEditDataServico] = useState(order.dataServico ?? "");
 
   const base = import.meta.env.BASE_URL.replace(/\/$/, "");
   const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
+  const isEncerrado = order.status === "encerrado";
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
+  };
 
   const openEdit = () => {
     setEditModelo(order.modelo);
@@ -56,19 +81,36 @@ export function OrderCard({ order }: { order: Order }) {
     setEditServico(order.servico);
     setEditValor(order.valor);
     setEditTempo(order.tempo);
+    setEditNomeCliente(order.nomeCliente ?? "");
+    setEditSenhaDispo(order.senhaDispo ?? "");
+    setEditGarantia(order.garantia ?? "");
+    setEditDataServico(order.dataServico ?? "");
     setIsEditing(true);
   };
 
   const handleSaveEdit = () => {
     if (!editModelo.trim() || !editServico || !editValor.trim() || !editTempo) {
-      toast({ title: "Preencha todos os campos", variant: "destructive" });
+      toast({ title: "Preencha todos os campos obrigatórios", variant: "destructive" });
       return;
     }
     editOrder.mutate(
-      { id: order.id, data: { modelo: editModelo.trim(), linha: editLinha, servico: editServico, valor: editValor.trim(), tempo: editTempo } },
+      {
+        id: order.id,
+        data: {
+          modelo: editModelo.trim(),
+          linha: editLinha,
+          servico: editServico,
+          valor: editValor.trim(),
+          tempo: editTempo,
+          nomeCliente: editNomeCliente || undefined,
+          senhaDispo: editSenhaDispo || undefined,
+          garantia: editGarantia || undefined,
+          dataServico: editDataServico || undefined,
+        }
+      },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+          invalidate();
           toast({ title: "Ordem atualizada!" });
           setIsEditing(false);
         },
@@ -81,10 +123,7 @@ export function OrderCard({ order }: { order: Order }) {
     updateStatus.mutate(
       { id: order.id, data: { status } },
       {
-        onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
-        },
+        onSuccess: () => invalidate(),
         onError: () => toast({ title: "Erro ao atualizar status", variant: "destructive" }),
       }
     );
@@ -100,13 +139,22 @@ export function OrderCard({ order }: { order: Order }) {
       { id: order.id },
       {
         onSuccess: () => {
-          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-          queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
+          invalidate();
           toast({ title: `Ordem ${order.codigo} excluída` });
         },
         onError: () => toast({ title: "Erro ao excluir ordem", variant: "destructive" }),
       }
     );
+  };
+
+  const handleEncerrar = () => {
+    if (!confirmEncerrar) {
+      setConfirmEncerrar(true);
+      setTimeout(() => setConfirmEncerrar(false), 3500);
+      return;
+    }
+    handleStatusChange(OrderStatus.encerrado);
+    setConfirmEncerrar(false);
   };
 
   const handleShare = async () => {
@@ -133,7 +181,7 @@ export function OrderCard({ order }: { order: Order }) {
         }
       </div>
 
-      <Card className="overflow-hidden transition-all hover:shadow-md border-l-4 hover:border-l-primary">
+      <Card className={`overflow-hidden transition-all hover:shadow-md border-l-4 hover:border-l-primary ${isEncerrado ? "opacity-60" : ""}`}>
         <CardContent className="p-0">
 
           {/* ── EDIT MODE ─────────────────────────────────────────────── */}
@@ -147,6 +195,11 @@ export function OrderCard({ order }: { order: Order }) {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Nome do Cliente</Label>
+                  <Input value={editNomeCliente} onChange={(e) => setEditNomeCliente(e.target.value)} placeholder="Ex: João Silva" />
+                </div>
+
                 <div className="space-y-1">
                   <Label className="text-xs">Modelo</Label>
                   <Input value={editModelo} onChange={(e) => setEditModelo(e.target.value)} placeholder="Ex: Moto e13" />
@@ -181,9 +234,31 @@ export function OrderCard({ order }: { order: Order }) {
                   <Input value={editValor} onChange={(e) => setEditValor(e.target.value)} placeholder="Ex: 50" />
                 </div>
 
-                <div className="space-y-1 sm:col-span-2">
+                <div className="space-y-1">
                   <Label className="text-xs">Tempo estimado</Label>
                   <Input value={editTempo} onChange={(e) => setEditTempo(e.target.value)} placeholder="Ex: 30 min a 2h" />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Data do Serviço</Label>
+                  <Input type="date" value={editDataServico} onChange={(e) => setEditDataServico(e.target.value)} />
+                </div>
+
+                <div className="space-y-1">
+                  <Label className="text-xs">Garantia</Label>
+                  <Select value={editGarantia} onValueChange={setEditGarantia}>
+                    <SelectTrigger><SelectValue placeholder="Selecione..." /></SelectTrigger>
+                    <SelectContent>
+                      {GARANTIA_OPTIONS.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-1 sm:col-span-2">
+                  <Label className="text-xs">Senha do Aparelho</Label>
+                  <Input value={editSenhaDispo} onChange={(e) => setEditSenhaDispo(e.target.value)} placeholder="PIN ou padrão" />
                 </div>
               </div>
 
@@ -213,9 +288,15 @@ export function OrderCard({ order }: { order: Order }) {
                       </Badge>
                     </div>
                     <h3 className="text-lg font-bold text-foreground">{order.modelo}</h3>
+                    {order.nomeCliente && (
+                      <div className="flex items-center gap-1 mt-0.5 text-sm text-muted-foreground">
+                        <User className="w-3.5 h-3.5" />
+                        <span>{order.nomeCliente}</span>
+                      </div>
+                    )}
                   </div>
                   <Badge variant="outline" className={`capitalize px-2.5 py-1 text-xs font-semibold ${STATUS_COLORS[order.status]}`}>
-                    {order.status}
+                    {STATUS_LABELS[order.status] ?? order.status}
                   </Badge>
                 </div>
 
@@ -232,19 +313,62 @@ export function OrderCard({ order }: { order: Order }) {
                     <p className="text-muted-foreground mb-0.5 text-xs font-medium uppercase tracking-wider">Tempo Est.</p>
                     <p className="font-medium text-foreground">{order.tempo}</p>
                   </div>
+
+                  {order.dataServico && (
+                    <div>
+                      <p className="text-muted-foreground mb-0.5 text-xs font-medium uppercase tracking-wider flex items-center gap-1">
+                        <Calendar className="w-3 h-3" /> Data
+                      </p>
+                      <p className="font-medium text-foreground">
+                        {(() => {
+                          const [y, m, d] = order.dataServico!.split("-");
+                          return `${d}/${m}/${y}`;
+                        })()}
+                      </p>
+                    </div>
+                  )}
+
+                  {order.garantia && (
+                    <div>
+                      <p className="text-muted-foreground mb-0.5 text-xs font-medium uppercase tracking-wider flex items-center gap-1">
+                        <Shield className="w-3 h-3" /> Garantia
+                      </p>
+                      <p className="font-medium text-foreground">{order.garantia}</p>
+                    </div>
+                  )}
+
+                  {order.senhaDispo && (
+                    <div>
+                      <p className="text-muted-foreground mb-0.5 text-xs font-medium uppercase tracking-wider flex items-center gap-1">
+                        <KeyRound className="w-3 h-3" /> Senha
+                      </p>
+                      <div className="flex items-center gap-1">
+                        <p className={`font-medium text-foreground transition-all ${showSenha ? "" : "blur-sm select-none"}`}>
+                          {order.senhaDispo}
+                        </p>
+                        <button
+                          onClick={() => setShowSenha((s) => !s)}
+                          className="ml-1 text-muted-foreground hover:text-foreground transition-colors"
+                          title={showSenha ? "Ocultar senha" : "Mostrar senha"}
+                        >
+                          {showSenha ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               <div className="bg-muted/50 border-t md:border-t-0 md:border-l p-4 grid grid-cols-2 md:grid-cols-1 gap-2 md:min-w-[150px] content-start">
 
-                {order.status === "aguardando" && (
+                {!isEncerrado && order.status === "aguardando" && (
                   <Button size="sm" onClick={() => handleStatusChange(OrderStatus.em_andamento)} className="w-full justify-start" variant="secondary">
                     <Play className="w-4 h-4 mr-2 text-blue-500" />
                     Iniciar
                   </Button>
                 )}
 
-                {order.status === "em andamento" && (
+                {!isEncerrado && order.status === "em andamento" && (
                   <>
                     <Button size="sm" onClick={() => handleStatusChange(OrderStatus.concluido)} className="w-full justify-start hover:bg-green-100 hover:text-green-800" variant="secondary">
                       <CheckCircle2 className="w-4 h-4 mr-2 text-green-600" />
@@ -257,7 +381,7 @@ export function OrderCard({ order }: { order: Order }) {
                   </>
                 )}
 
-                {order.status === "problema" && (
+                {!isEncerrado && order.status === "problema" && (
                   <Button size="sm" onClick={() => handleStatusChange(OrderStatus.em_andamento)} className="w-full justify-start" variant="secondary">
                     <Play className="w-4 h-4 mr-2 text-blue-500" />
                     Retomar
@@ -271,8 +395,7 @@ export function OrderCard({ order }: { order: Order }) {
                       { id: order.id },
                       {
                         onSuccess: (updated) => {
-                          queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
-                          queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
+                          invalidate();
                           const novoLink = `${window.location.origin}${base}/status/${updated.codigo}`;
                           navigator.clipboard.writeText(novoLink).catch(() => {});
                           toast({ title: `Nova OS: ${updated.codigo}`, description: "Novo link copiado!" });
@@ -289,15 +412,42 @@ export function OrderCard({ order }: { order: Order }) {
                   </Button>
                 )}
 
-                <Button size="sm" variant="outline" onClick={openEdit} className="w-full justify-start border-dashed">
-                  <Pencil className="w-4 h-4 mr-2" />
-                  Editar
-                </Button>
+                {isEncerrado && (
+                  <Button
+                    size="sm"
+                    onClick={() => handleStatusChange(OrderStatus.aguardando)}
+                    className="w-full justify-start bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200"
+                    variant="outline"
+                  >
+                    <RefreshCw className="w-4 h-4 mr-2" />
+                    Reabrir
+                  </Button>
+                )}
 
-                <Button size="sm" variant="outline" onClick={handleShare} disabled={isSharing} className="w-full justify-start border-dashed">
-                  {isSharing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
-                  WhatsApp
-                </Button>
+                {!isEncerrado && (
+                  <>
+                    <Button size="sm" variant="outline" onClick={openEdit} className="w-full justify-start border-dashed">
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Editar
+                    </Button>
+
+                    <Button size="sm" variant="outline" onClick={handleShare} disabled={isSharing} className="w-full justify-start border-dashed">
+                      {isSharing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
+                      WhatsApp
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant={confirmEncerrar ? "destructive" : "outline"}
+                      onClick={handleEncerrar}
+                      disabled={updateStatus.isPending}
+                      className={`w-full justify-start ${confirmEncerrar ? "" : "border-orange-300 text-orange-700 hover:bg-orange-50"}`}
+                    >
+                      <XCircle className="w-4 h-4 mr-2" />
+                      {confirmEncerrar ? "Confirmar?" : "Encerrar OS"}
+                    </Button>
+                  </>
+                )}
 
                 <Button
                   size="sm"
