@@ -279,7 +279,6 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
               </FormItem>
             )}
           />
-        </div>
 
         <FormField
           control={form.control}
