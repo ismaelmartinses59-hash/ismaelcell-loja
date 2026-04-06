@@ -40,8 +40,6 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
   const queryClient = useQueryClient();
   const createOrder = useCreateOrder();
 
-  const today = new Date().toISOString().split("T")[0];
-
   const form = useForm<CreateOrderForm>({
     resolver: zodResolver(createOrderSchema),
     defaultValues: {
@@ -53,7 +51,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
       nomeCliente: "",
       senhaDispo: "",
       garantia: "",
-      dataServico: today,
+      dataServico: "",
     },
   });
 
@@ -259,22 +257,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
           />
         </div>
 
-        <div className="grid grid-cols-2 gap-4">
-          <FormField
-            control={form.control}
-            name="dataServico"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Data do Serviço</FormLabel>
-                <FormControl>
-                  <Input type="date" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
+        <FormField
             control={form.control}
             name="garantia"
             render={({ field }) => (
