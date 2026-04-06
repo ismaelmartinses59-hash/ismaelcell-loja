@@ -21,6 +21,7 @@ import type {
   HealthStatus,
   ListOrdersParams,
   Order,
+  OrderLinha,
   OrderStats,
   UpdateOrderStatusBody,
 } from "./api.schemas";
@@ -465,27 +466,28 @@ export const useUpdateOrderStatus = <
 /**
  * @summary Get order statistics
  */
-export const getGetOrderStatsUrl = () => {
-  return `/api/orders/stats`;
+export const getGetOrderStatsUrl = (tipo?: string) => {
+  return tipo ? `/api/orders/stats?tipo=${tipo}` : `/api/orders/stats`;
 };
 
 export const getOrderStats = async (
+  tipo?: string,
   options?: RequestInit,
 ): Promise<OrderStats> => {
-  return customFetch<OrderStats>(getGetOrderStatsUrl(), {
+  return customFetch<OrderStats>(getGetOrderStatsUrl(tipo), {
     ...options,
     method: "GET",
   });
 };
 
-export const getGetOrderStatsQueryKey = () => {
-  return [`/api/orders/stats`] as const;
+export const getGetOrderStatsQueryKey = (tipo?: string) => {
+  return [`/api/orders/stats`, ...(tipo ? [tipo] : [])] as const;
 };
 
 export const getGetOrderStatsQueryOptions = <
   TData = Awaited<ReturnType<typeof getOrderStats>>,
   TError = ErrorType<unknown>,
->(options?: {
+>(tipo?: string, options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getOrderStats>>,
     TError,
@@ -495,11 +497,11 @@ export const getGetOrderStatsQueryOptions = <
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetOrderStatsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetOrderStatsQueryKey(tipo);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrderStats>>> = ({
     signal,
-  }) => getOrderStats({ signal, ...requestOptions });
+  }) => getOrderStats(tipo, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getOrderStats>>,
@@ -520,7 +522,7 @@ export type GetOrderStatsQueryError = ErrorType<unknown>;
 export function useGetOrderStats<
   TData = Awaited<ReturnType<typeof getOrderStats>>,
   TError = ErrorType<unknown>,
->(options?: {
+>(tipo?: string, options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getOrderStats>>,
     TError,
@@ -528,7 +530,7 @@ export function useGetOrderStats<
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetOrderStatsQueryOptions(options);
+  const queryOptions = getGetOrderStatsQueryOptions(tipo, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
