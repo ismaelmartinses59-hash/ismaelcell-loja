@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { ShareCardCliente } from "@/components/share-card-cliente";
 import { shareOrderAsImage } from "@/lib/share";
-import { SERVICES_BY_LINE, ESTIMATED_TIMES } from "@/lib/constants";
+import { SERVICES_BY_LINE, SERVICES_BY_LINE_CLIENTE, ESTIMATED_TIMES } from "@/lib/constants";
 
 const STATUS_COLORS: Record<string, string> = {
   "aguardando": "bg-amber-100 text-amber-800 border-amber-200",
@@ -121,7 +121,8 @@ export function OrderCard({ order }: { order: Order }) {
     }
   };
 
-  const availableServices = SERVICES_BY_LINE[editLinha] ?? [];
+  const serviceMap = order.tipo === "cliente" ? SERVICES_BY_LINE_CLIENTE : SERVICES_BY_LINE;
+  const availableServices = serviceMap[editLinha] ?? [];
 
   return (
     <>

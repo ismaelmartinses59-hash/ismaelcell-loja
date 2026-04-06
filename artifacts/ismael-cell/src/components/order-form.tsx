@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { SERVICES_BY_LINE, ESTIMATED_TIMES } from "@/lib/constants";
+import { SERVICES_BY_LINE, SERVICES_BY_LINE_CLIENTE, ESTIMATED_TIMES } from "@/lib/constants";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
@@ -75,7 +75,8 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
     }
   }, [watchServico, form]);
 
-  const availableServices = watchLinha ? SERVICES_BY_LINE[watchLinha] : [];
+  const serviceMap = tipo === OrderTipo.cliente ? SERVICES_BY_LINE_CLIENTE : SERVICES_BY_LINE;
+  const availableServices = watchLinha ? serviceMap[watchLinha] : [];
 
   const onSubmit = (data: CreateOrderForm) => {
     // Check for duplicate active order with same model
@@ -151,6 +152,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
                   <SelectItem value={OrderLinha.samsung}>Samsung</SelectItem>
                   <SelectItem value={OrderLinha.motorola}>Motorola</SelectItem>
                   <SelectItem value={OrderLinha.ios}>iOS (Apple)</SelectItem>
+                  <SelectItem value={OrderLinha.realme}>Realme</SelectItem>
                 </SelectContent>
               </Select>
               <FormMessage />
