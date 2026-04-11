@@ -372,7 +372,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
               <div style={{ background: "#f0f7ff", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
                 <div style={{ fontWeight: 700, fontSize: 22, color: "#111827", marginBottom: 6 }}>{sharingPeca.modelo}</div>
                 <div style={{ display: "inline-block", background: "#dbeafe", color: "#1d4ed8", fontSize: 13, fontWeight: 600, padding: "3px 12px", borderRadius: 20 }}>
-                  LINHA-{sharingPeca.qualidade}
+                  LINHA-{sharingPeca.qualidade.toUpperCase()}
                 </div>
               </div>
               <div style={{ textAlign: "center", marginBottom: 24 }}>
