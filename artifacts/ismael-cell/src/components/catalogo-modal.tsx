@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
@@ -288,6 +288,19 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
 
+  const venderMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/pecas/${id}/vender`, { method: "POST" }),
+    onSuccess: (peca: Peca) => {
+      invalidatePecas();
+      if (peca.quantidade === 0) {
+        toast({ title: "✅ Vendida! Estoque esgotado.", description: `${peca.modelo} — sem unidades restantes.` });
+      } else {
+        toast({ title: `✅ Vendida! Restam ${peca.quantidade} un.`, description: peca.modelo });
+      }
+    },
+    onError: () => toast({ title: "Sem estoque disponível", variant: "destructive" }),
+  });
+
   // ── Garantia mutations ────────────────────────────────────────────────────────
   const addGarantiaMutation = useMutation({
     mutationFn: (data: { modelo: string; qualidade: string; lojista: string; motivo: string }) =>
@@ -415,29 +428,45 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
                       </div>
                     </div>
                   ) : (
-                    <div className={`border rounded-xl p-3 flex items-center gap-3 bg-white ${peca.quantidade <= 1 ? "border-amber-300 bg-amber-50/40" : ""}`}>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-semibold text-sm truncate">{peca.modelo}</div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{peca.qualidade}</span>
-                          <span className="text-xs text-muted-foreground font-semibold">{formatMoney(peca.valor)}</span>
+                    <div className={`border rounded-xl p-3 bg-white space-y-2 ${peca.quantidade === 0 ? "border-gray-300 opacity-70" : peca.quantidade <= 1 ? "border-amber-300 bg-amber-50/40" : ""}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm truncate flex items-center gap-2">
+                            {peca.modelo}
+                            {peca.quantidade === 0 && (
+                              <span className="text-[10px] font-bold uppercase bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full">Esgotado</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{peca.qualidade}</span>
+                            <span className="text-xs text-muted-foreground font-semibold">{formatMoney(peca.valor)}</span>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className={`text-lg font-bold ${peca.quantidade === 0 ? "text-gray-400" : peca.quantidade <= 1 ? "text-amber-600" : "text-green-600"}`}>{peca.quantidade}</div>
+                          <div className="text-xs text-muted-foreground">un. estoque</div>
+                        </div>
+                        <div className="flex gap-1 shrink-0">
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleShare(peca)} title="Compartilhar">
+                            <Share2 className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingId(peca.id); setShowAdd(false); }}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setDeletingId(peca.id)}>
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
                         </div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <div className={`text-lg font-bold ${peca.quantidade <= 1 ? "text-amber-600" : "text-green-600"}`}>{peca.quantidade}</div>
-                        <div className="text-xs text-muted-foreground">un. estoque</div>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleShare(peca)} title="Compartilhar">
-                          <Share2 className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingId(peca.id); setShowAdd(false); }}>
-                          <Pencil className="w-3.5 h-3.5" />
-                        </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50" onClick={() => setDeletingId(peca.id)}>
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
+                      <Button
+                        size="sm"
+                        disabled={peca.quantidade === 0 || venderMutation.isPending}
+                        onClick={() => venderMutation.mutate(peca.id)}
+                        className="w-full h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+                        {peca.quantidade === 0 ? "Sem estoque" : "Registrar Venda (-1 un.)"}
+                      </Button>
                     </div>
                   )}
                 </div>
