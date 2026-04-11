@@ -53,7 +53,7 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
   const [modelo, setModelo] = useState(initial?.modelo ?? "");
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
   const [valor, setValor] = useState(initial?.valor ?? "");
-  const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 0));
+  const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 1));
   const [custo, setCusto] = useState("");
   const [precoSugerido, setPrecoSugerido] = useState<number | null>(null);
 
@@ -73,7 +73,9 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
 
   const submit = () => {
     if (!modelo.trim() || !qualidade || !valor.trim()) return;
-    onSave({ modelo: modelo.trim(), qualidade, valor: valor.trim(), quantidade: parseInt(quantidade) || 0 });
+    const qtd = parseInt(quantidade) || 0;
+    if (qtd < 1) return;
+    onSave({ modelo: modelo.trim(), qualidade, valor: valor.trim(), quantidade: qtd });
   };
 
   // Troca as opções de qualidade de acordo com o modelo digitado
@@ -112,8 +114,8 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade em Estoque</label>
           <Input
             type="number"
-            min={0}
-            placeholder="0"
+            min={1}
+            placeholder="1"
             value={quantidade}
             onChange={(e) => setQuantidade(e.target.value)}
           />
@@ -161,7 +163,7 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
         <Button size="sm" variant="ghost" onClick={onCancel} disabled={loading}>
           <X className="w-4 h-4 mr-1" /> Cancelar
         </Button>
-        <Button size="sm" onClick={submit} disabled={loading || !modelo.trim() || !qualidade || !valor.trim()}>
+        <Button size="sm" onClick={submit} disabled={loading || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1}>
           <Check className="w-4 h-4 mr-1" /> {loading ? "Salvando..." : "Salvar"}
         </Button>
       </div>
@@ -233,7 +235,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
     }
   }, [pecas, toast]);
 
-  const lowStock = pecas.filter((p) => p.quantidade <= 2);
+  const lowStock = pecas.filter((p) => p.quantidade <= 1);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
@@ -253,7 +255,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
           {lowStock.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span><strong>{lowStock.length}</strong> {lowStock.length === 1 ? "peça com estoque baixo" : "peças com estoque baixo"} (≤2 unidades)</span>
+              <span><strong>{lowStock.length}</strong> {lowStock.length === 1 ? "peça com estoque mínimo" : "peças com estoque mínimo"} (1 unidade — hora de comprar!)</span>
             </div>
           )}
         </DialogHeader>
@@ -312,7 +314,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
                   </div>
                 </div>
               ) : (
-                <div className={`border rounded-xl p-3 flex items-center gap-3 bg-white ${peca.quantidade <= 2 ? "border-amber-300 bg-amber-50/40" : ""}`}>
+                <div className={`border rounded-xl p-3 flex items-center gap-3 bg-white ${peca.quantidade <= 1 ? "border-amber-300 bg-amber-50/40" : ""}`}>
                   <div className="flex-1 min-w-0">
                     <div className="font-semibold text-sm truncate">{peca.modelo}</div>
                     <div className="flex items-center gap-2 mt-0.5">
@@ -321,7 +323,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className={`text-lg font-bold ${peca.quantidade <= 2 ? "text-amber-600" : "text-green-600"}`}>
+                    <div className={`text-lg font-bold ${peca.quantidade <= 1 ? "text-amber-600" : "text-green-600"}`}>
                       {peca.quantidade}
                     </div>
                     <div className="text-xs text-muted-foreground">un. estoque</div>
