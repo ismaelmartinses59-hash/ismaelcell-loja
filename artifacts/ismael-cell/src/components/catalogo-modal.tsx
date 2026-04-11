@@ -52,6 +52,22 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
   const [valor, setValor] = useState(initial?.valor ?? "");
   const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 0));
+  const [custo, setCusto] = useState("");
+  const [precoSugerido, setPrecoSugerido] = useState<number | null>(null);
+
+  const calcularSugestao = (custoStr: string) => {
+    const c = parseFloat(custoStr.replace(",", "."));
+    if (isNaN(c) || c <= 0) { setPrecoSugerido(null); return; }
+    let preco = c <= 55 ? c + 25 : c <= 80 ? c + 35 : c + 50;
+    preco = Math.round(preco / 5) * 5;
+    setPrecoSugerido(preco);
+  };
+
+  const aplicarSugestao = () => {
+    if (precoSugerido !== null) {
+      setValor(String(precoSugerido).replace(".", ","));
+    }
+  };
 
   const submit = () => {
     if (!modelo.trim() || !qualidade || !valor.trim()) return;
@@ -108,14 +124,6 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
           </Select>
         </div>
         <div>
-          <label className="text-xs font-medium text-muted-foreground mb-1 block">Valor (R$)</label>
-          <Input
-            placeholder="120,00"
-            value={valor}
-            onChange={(e) => setValor(e.target.value)}
-          />
-        </div>
-        <div className="col-span-2">
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade em Estoque</label>
           <Input
             type="number"
@@ -123,6 +131,44 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
             placeholder="0"
             value={quantidade}
             onChange={(e) => setQuantidade(e.target.value)}
+          />
+        </div>
+
+        {/* Calculadora de preço */}
+        <div className="col-span-2 bg-white border border-dashed border-primary/30 rounded-lg p-3 space-y-2">
+          <p className="text-xs font-semibold text-primary uppercase tracking-wide">Calculadora de Preço</p>
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Meu custo (R$)</label>
+              <Input
+                placeholder="Ex: 60,00"
+                value={custo}
+                onChange={(e) => { setCusto(e.target.value); calcularSugestao(e.target.value); }}
+              />
+            </div>
+            {precoSugerido !== null && (
+              <button
+                type="button"
+                onClick={aplicarSugestao}
+                className="shrink-0 flex items-center gap-1.5 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-800 text-xs font-semibold px-3 py-2 rounded-lg transition-colors"
+              >
+                💡 R$ {precoSugerido} — usar
+              </button>
+            )}
+          </div>
+          {precoSugerido !== null && (
+            <p className="text-xs text-muted-foreground">
+              Margem aplicada: custo {custo} → venda sugerida <strong>R$ {precoSugerido}</strong> (arredondado para R$5)
+            </p>
+          )}
+        </div>
+
+        <div className="col-span-2">
+          <label className="text-xs font-medium text-muted-foreground mb-1 block">Valor de Venda (R$)</label>
+          <Input
+            placeholder="120,00"
+            value={valor}
+            onChange={(e) => setValor(e.target.value)}
           />
         </div>
       </div>
