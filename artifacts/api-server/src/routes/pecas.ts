@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, ilike, or, sql } from "drizzle-orm";
-import { db, pecasTable } from "@workspace/db";
+import { db, pecasTable, vendasTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -60,6 +60,12 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
     .set({ quantidade: atual.quantidade - 1 })
     .where(eq(pecasTable.id, id))
     .returning();
+  await db.insert(vendasTable).values({
+    pecaId: id,
+    modelo: atual.modelo,
+    qualidade: atual.qualidade,
+    valor: atual.valor,
+  });
   res.json(peca);
 });
 

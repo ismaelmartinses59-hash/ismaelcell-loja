@@ -34,6 +34,21 @@ interface GarantiaPeca {
   createdAt: string;
 }
 
+interface Venda {
+  id: number;
+  pecaId: number;
+  modelo: string;
+  qualidade: string;
+  valor: string;
+  createdAt: string;
+}
+
+interface VendasResumo {
+  vendas: Venda[];
+  total: number;
+  quantidade: number;
+}
+
 function apiFetch(path: string, opts?: RequestInit) {
   return fetch(`${BASE}${path}`, {
     ...opts,
@@ -239,7 +254,8 @@ interface CatalogoModalProps {
 export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias">("pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico">("pecas");
+  const [periodo, setPeriodo] = useState<"dia" | "semana" | "mes">("dia");
 
   // Peças state
   const [search, setSearch] = useState("");
@@ -265,6 +281,13 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
     queryKey: ["garantias-peca"],
     queryFn: () => apiFetch("/api/garantias-peca"),
     enabled: open,
+  });
+
+  const { data: vendasData, isLoading: vendasLoading } = useQuery<VendasResumo>({
+    queryKey: ["vendas", periodo],
+    queryFn: () => apiFetch(`/api/vendas?periodo=${periodo}`),
+    enabled: open && aba === "historico",
+    refetchInterval: aba === "historico" ? 30000 : false,
   });
 
   const invalidatePecas = () => qc.invalidateQueries({ queryKey: ["pecas"] });
@@ -367,7 +390,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
           <div className="flex gap-1 bg-muted rounded-lg p-1">
             <button
               onClick={() => setAba("pecas")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${aba === "pecas" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "pecas" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Package className="w-3.5 h-3.5" /> Peças
               {lowStock.length > 0 && (
@@ -376,12 +399,18 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
             </button>
             <button
               onClick={() => setAba("garantias")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${aba === "garantias" ? "bg-white shadow text-amber-600" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "garantias" ? "bg-white shadow text-amber-600" : "text-muted-foreground hover:text-foreground"}`}
             >
               <ShieldAlert className="w-3.5 h-3.5" /> Garantias
               {pendentes.length > 0 && (
                 <span className="bg-amber-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{pendentes.length}</span>
               )}
+            </button>
+            <button
+              onClick={() => setAba("historico")}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "historico" ? "bg-white shadow text-green-700" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <ShoppingBag className="w-3.5 h-3.5" /> Histórico
             </button>
           </div>
         </DialogHeader>
@@ -558,6 +587,76 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
                   )}
                 </div>
               ))}
+            </div>
+          </>
+        )}
+
+        {/* ── ABA HISTÓRICO ──────────────────────────────────────────────── */}
+        {aba === "historico" && (
+          <>
+            <div className="px-4 pt-3 pb-2 shrink-0 space-y-3">
+              {/* Filtros de período */}
+              <div className="flex gap-1.5">
+                {(["dia", "semana", "mes"] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPeriodo(p)}
+                    className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${periodo === p ? "bg-green-600 text-white border-green-600" : "bg-white text-muted-foreground border-border hover:border-green-400"}`}
+                  >
+                    {p === "dia" ? "Hoje" : p === "semana" ? "Semana" : "Mês"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Card de resumo */}
+              {vendasData && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-bold text-green-700">{vendasData.quantidade}</div>
+                    <div className="text-xs text-green-600 font-medium">
+                      {vendasData.quantidade === 1 ? "peça vendida" : "peças vendidas"}
+                    </div>
+                  </div>
+                  <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-center">
+                    <div className="text-2xl font-bold text-green-700">
+                      {vendasData.total.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                    </div>
+                    <div className="text-xs text-green-600 font-medium">em vendas</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+              {vendasLoading && <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>}
+              {!vendasLoading && vendasData?.vendas.length === 0 && (
+                <div className="text-center py-10 text-muted-foreground text-sm">
+                  <ShoppingBag className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium">Nenhuma venda {periodo === "dia" ? "hoje" : periodo === "semana" ? "esta semana" : "este mês"}</p>
+                </div>
+              )}
+              {vendasData?.vendas.map((v) => {
+                const hora = new Date(v.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                const dia = new Date(v.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                const valorFmt = parseFloat(v.valor.replace(",", ".")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+                return (
+                  <div key={v.id} className="border rounded-xl px-3 py-2.5 bg-white flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
+                      <ShoppingBag className="w-4 h-4 text-green-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-semibold text-sm truncate">{v.modelo}</div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{v.qualidade}</span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-green-600 text-sm">{valorFmt}</div>
+                      <div className="text-xs text-muted-foreground">{periodo === "dia" ? hora : `${dia} ${hora}`}</div>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
