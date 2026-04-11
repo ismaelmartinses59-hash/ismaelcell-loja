@@ -78,8 +78,26 @@
       <div class="splash-dots">
         <span></span><span></span><span></span>
       </div>
+      <div id="splash-msg" style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:4px;display:none;">Conectando ao servidor...</div>
     </div>
     <div id="root"></div>
+    <script>
+      (function() {
+        var splash = document.getElementById('splash');
+        var msg = document.getElementById('splash-msg');
+        function hideSplash() {
+          if (!splash) return;
+          splash.classList.add('fade-out');
+          setTimeout(function() { if (splash && splash.parentNode) splash.remove(); }, 450);
+        }
+        setTimeout(function() { if (msg) msg.style.display = 'block'; }, 4000);
+        setTimeout(function() {
+          if (msg) msg.textContent = 'Recarregando...';
+          setTimeout(function() { window.location.reload(); }, 2000);
+        }, 12000);
+        window.__hideSplash = hideSplash;
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
