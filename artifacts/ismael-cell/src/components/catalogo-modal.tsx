@@ -247,6 +247,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [sharingPeca, setSharingPeca] = useState<Peca | null>(null);
+  const [shareDate, setShareDate] = useState("");
   const shareRef = useRef<HTMLDivElement>(null);
 
   // Garantias state
@@ -308,6 +309,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
 
   // ── Share ─────────────────────────────────────────────────────────────────────
   const handleShare = useCallback(async (peca: Peca) => {
+    setShareDate(new Date().toLocaleDateString("pt-BR"));
     setSharingPeca(peca);
     await new Promise((r) => setTimeout(r, 80));
     const el = shareRef.current;
@@ -548,7 +550,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
                 <div style={{ fontWeight: 800, fontSize: 40, color: "#16a34a", letterSpacing: "-1px" }}>{formatMoney(sharingPeca.valor)}</div>
               </div>
               <div style={{ paddingTop: 14, borderTop: "1px solid #e5e7eb", fontSize: 12, color: "#9ca3af", textAlign: "center" }}>
-                Ismael Cell · Assistência Técnica · {new Date().toLocaleDateString("pt-BR")}
+                Ismael Cell · Assistência Técnica · {shareDate}
               </div>
             </div>
           </div>
