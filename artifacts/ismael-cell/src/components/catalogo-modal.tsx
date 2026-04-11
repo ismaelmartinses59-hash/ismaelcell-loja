@@ -11,9 +11,11 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const QUALIDADES = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
 
-const SUGESTOES_MARCA: Record<string, string[]> = {
-  bateria: ["Bateria Skaiky", "Bateria Foxcomm", "Bateria Original China"],
-};
+const QUALIDADES_BATERIA = ["Skaiky", "Foxcomm", "Original China"];
+
+const SUGESTOES_QUALIDADE: Array<{ palavra: string; opcoes: string[] }> = [
+  { palavra: "bateria", opcoes: QUALIDADES_BATERIA },
+];
 
 interface Peca {
   id: number;
@@ -74,16 +76,10 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
     onSave({ modelo: modelo.trim(), qualidade, valor: valor.trim(), quantidade: parseInt(quantidade) || 0 });
   };
 
-  // Detecta sugestões de marca com base no que foi digitado
-  const sugestoes: string[] = [];
+  // Troca as opções de qualidade de acordo com o modelo digitado
   const lower = modelo.toLowerCase();
-  for (const [chave, marcas] of Object.entries(SUGESTOES_MARCA)) {
-    if (lower.includes(chave)) {
-      sugestoes.push(...marcas);
-      break;
-    }
-  }
-  const sugestoesVisiveis = sugestoes.filter((s) => s.toLowerCase() !== lower);
+  const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
+  const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
 
   return (
     <div className="bg-muted/40 rounded-xl p-4 space-y-3 border">
@@ -93,22 +89,11 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
           <Input
             placeholder="Ex: Tela A03 Core, Bateria S21..."
             value={modelo}
-            onChange={(e) => setModelo(e.target.value)}
+            onChange={(e) => {
+              setModelo(e.target.value);
+              setQualidade("");
+            }}
           />
-          {sugestoesVisiveis.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-1.5">
-              {sugestoesVisiveis.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setModelo(s)}
-                  className="text-xs bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 px-2.5 py-1 rounded-full transition-colors"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Qualidade</label>
@@ -117,7 +102,7 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
               <SelectValue placeholder="Selecione" />
             </SelectTrigger>
             <SelectContent>
-              {QUALIDADES.map((q) => (
+              {qualidadesAtivas.map((q) => (
                 <SelectItem key={q} value={q}>{q}</SelectItem>
               ))}
             </SelectContent>
