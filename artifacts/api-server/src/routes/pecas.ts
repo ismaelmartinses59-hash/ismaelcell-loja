@@ -49,6 +49,20 @@ router.put("/pecas/:id", async (req, res): Promise<void> => {
   res.json(peca);
 });
 
+router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const [atual] = await db.select().from(pecasTable).where(eq(pecasTable.id, id));
+  if (!atual) { res.status(404).json({ error: "Peça não encontrada" }); return; }
+  if (atual.quantidade <= 0) { res.status(400).json({ error: "Sem estoque disponível" }); return; }
+  const [peca] = await db
+    .update(pecasTable)
+    .set({ quantidade: atual.quantidade - 1 })
+    .where(eq(pecasTable.id, id))
+    .returning();
+  res.json(peca);
+});
+
 router.delete("/pecas/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
