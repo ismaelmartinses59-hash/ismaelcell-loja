@@ -183,6 +183,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [sharingPeca, setSharingPeca] = useState<Peca | null>(null);
   const shareRef = useRef<HTMLDivElement>(null);
 
   const { data: pecas = [], isLoading } = useQuery<Peca[]>({
@@ -212,28 +213,32 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
 
-  const handleShare = useCallback(async () => {
+  const handleShare = useCallback(async (peca: Peca) => {
+    setSharingPeca(peca);
+    await new Promise((r) => setTimeout(r, 80)); // aguarda render do div oculto
     const el = shareRef.current;
-    if (!el || pecas.length === 0) return;
+    if (!el) return;
     try {
       const { default: html2canvas } = await import("html2canvas");
       const canvas = await html2canvas(el, { backgroundColor: "#ffffff", scale: 2 });
       canvas.toBlob(async (blob) => {
         if (!blob) return;
-        const file = new File([blob], "catalogo-ismael-cell.png", { type: "image/png" });
+        const file = new File([blob], `${peca.modelo.replace(/\s+/g, "-")}.png`, { type: "image/png" });
         if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], title: "Catálogo de Peças — Ismael Cell" });
+          await navigator.share({ files: [file], title: `${peca.modelo} — Ismael Cell` });
         } else {
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
-          a.href = url; a.download = "catalogo-ismael-cell.png"; a.click();
+          a.href = url; a.download = file.name; a.click();
           URL.revokeObjectURL(url);
         }
+        setSharingPeca(null);
       }, "image/png");
     } catch {
+      setSharingPeca(null);
       toast({ title: "Não foi possível gerar a imagem", variant: "destructive" });
     }
-  }, [pecas, toast]);
+  }, [toast]);
 
   const lowStock = pecas.filter((p) => p.quantidade <= 1);
 
@@ -241,15 +246,10 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-lg w-full max-h-[90vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-4 pt-4 pb-3 border-b shrink-0">
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
-              <Package className="w-5 h-5 text-primary" />
-              Catálogo de Peças
-            </DialogTitle>
-            <Button size="sm" variant="outline" onClick={handleShare} disabled={pecas.length === 0} className="text-green-700 border-green-300 hover:bg-green-50">
-              <Share2 className="w-4 h-4 mr-1" /> Compartilhar
-            </Button>
-          </div>
+          <DialogTitle className="flex items-center gap-2">
+            <Package className="w-5 h-5 text-primary" />
+            Catálogo de Peças
+          </DialogTitle>
 
           {/* Low stock alert */}
           {lowStock.length > 0 && (
@@ -329,6 +329,9 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
                     <div className="text-xs text-muted-foreground">un. estoque</div>
                   </div>
                   <div className="flex gap-1 shrink-0">
+                    <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleShare(peca)} title="Compartilhar">
+                      <Share2 className="w-3.5 h-3.5" />
+                    </Button>
                     <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => { setEditingId(peca.id); setShowAdd(false); }}>
                       <Pencil className="w-3.5 h-3.5" />
                     </Button>
@@ -342,50 +345,50 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
           ))}
         </div>
 
-        {/* Hidden share card rendered for html2canvas */}
-        <div style={{ position: "absolute", left: "-9999px", top: 0 }}>
-          <div ref={shareRef} style={{
-            width: 600,
-            background: "#ffffff",
-            fontFamily: "Inter, sans-serif",
-            padding: 32,
-          }}>
-            {/* Header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24, paddingBottom: 16, borderBottom: "2px solid #2563eb" }}>
-              <div style={{ width: 44, height: 44, background: "#2563eb", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-                </svg>
-              </div>
-              <div>
-                <div style={{ fontWeight: 700, fontSize: 18, color: "#111827" }}>Ismael Cell</div>
-                <div style={{ fontSize: 13, color: "#6b7280" }}>Tabela de Preços — Peças para Revenda</div>
-              </div>
-            </div>
-
-            {/* Items */}
-            {pecas.map((peca, i) => (
-              <div key={peca.id} style={{
-                display: "flex", alignItems: "center", justifyContent: "space-between",
-                padding: "12px 16px",
-                background: i % 2 === 0 ? "#f8fafc" : "#ffffff",
-                borderRadius: 8,
-                marginBottom: 6,
-              }}>
-                <div>
-                  <div style={{ fontWeight: 600, fontSize: 15, color: "#111827" }}>{peca.modelo}</div>
-                  <div style={{ fontSize: 12, color: "#2563eb", marginTop: 2, fontWeight: 500 }}>{peca.qualidade}</div>
+        {/* Card oculto para gerar imagem de compartilhamento */}
+        {sharingPeca && (
+          <div style={{ position: "fixed", left: "-9999px", top: 0 }}>
+            <div ref={shareRef} style={{
+              width: 480,
+              background: "#ffffff",
+              fontFamily: "Inter, sans-serif",
+              padding: 32,
+              borderRadius: 16,
+            }}>
+              {/* Header */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28, paddingBottom: 16, borderBottom: "2px solid #2563eb" }}>
+                <div style={{ width: 44, height: 44, background: "#2563eb", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                  </svg>
                 </div>
-                <div style={{ fontWeight: 700, fontSize: 16, color: "#16a34a" }}>{formatMoney(peca.valor)}</div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: 18, color: "#111827" }}>Ismael Cell</div>
+                  <div style={{ fontSize: 13, color: "#6b7280" }}>Preço para Revenda</div>
+                </div>
               </div>
-            ))}
 
-            {/* Footer */}
-            <div style={{ marginTop: 20, paddingTop: 14, borderTop: "1px solid #e5e7eb", fontSize: 12, color: "#9ca3af", textAlign: "center" }}>
-              Ismael Cell · Assistência Técnica · {new Date().toLocaleDateString("pt-BR")}
+              {/* Peça */}
+              <div style={{ background: "#f0f7ff", borderRadius: 12, padding: "20px 24px", marginBottom: 20 }}>
+                <div style={{ fontWeight: 700, fontSize: 22, color: "#111827", marginBottom: 6 }}>{sharingPeca.modelo}</div>
+                <div style={{ display: "inline-block", background: "#dbeafe", color: "#1d4ed8", fontSize: 13, fontWeight: 600, padding: "3px 12px", borderRadius: 20 }}>
+                  {sharingPeca.qualidade}
+                </div>
+              </div>
+              <div style={{ textAlign: "center", marginBottom: 24 }}>
+                <div style={{ fontSize: 13, color: "#6b7280", marginBottom: 4 }}>Valor</div>
+                <div style={{ fontWeight: 800, fontSize: 40, color: "#16a34a", letterSpacing: "-1px" }}>
+                  {formatMoney(sharingPeca.valor)}
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div style={{ paddingTop: 14, borderTop: "1px solid #e5e7eb", fontSize: 12, color: "#9ca3af", textAlign: "center" }}>
+                Ismael Cell · Assistência Técnica · {new Date().toLocaleDateString("pt-BR")}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </DialogContent>
     </Dialog>
   );
