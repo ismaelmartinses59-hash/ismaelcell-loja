@@ -353,12 +353,16 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   const handleShare = useCallback(async (peca: Peca) => {
     setShareDate(new Date().toLocaleDateString("pt-BR"));
     setSharingPeca(peca);
-    await new Promise((r) => setTimeout(r, 80));
+    const [{ default: html2canvas }] = await Promise.all([
+      import("html2canvas"),
+      new Promise((r) => setTimeout(r, 30)),
+    ]);
     const el = shareRef.current;
     if (!el) return;
     try {
-      const { default: html2canvas } = await import("html2canvas");
-      const canvas = await html2canvas(el, { backgroundColor: "#ffffff", scale: 2 });
+      const imgs = el.querySelectorAll("img");
+      await Promise.all(Array.from(imgs).map((img) => img.complete ? Promise.resolve() : new Promise((r) => { img.onload = r; img.onerror = r; })));
+      const canvas = await html2canvas(el, { backgroundColor: setor === "cliente" ? "#000000" : "#ffffff", scale: 1.5, useCORS: true, logging: false });
       canvas.toBlob(async (blob) => {
         if (!blob) return;
         const file = new File([blob], `${peca.modelo.replace(/\s+/g, "-")}.png`, { type: "image/png" });
