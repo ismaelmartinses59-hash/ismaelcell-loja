@@ -671,7 +671,7 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
         )}
 
         {/* Card oculto para gerar imagem de compartilhamento */}
-        {sharingPeca && (
+        {sharingPeca && setor === "lojista" && (
           <div style={{ position: "fixed", left: "-9999px", top: 0 }}>
             <div ref={shareRef} style={{ width: 480, background: "#ffffff", fontFamily: "Inter, sans-serif", padding: 32, borderRadius: 16 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28, paddingBottom: 16, borderBottom: "2px solid #2563eb" }}>
@@ -697,6 +697,29 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
               </div>
               <div style={{ paddingTop: 14, borderTop: "1px solid #e5e7eb", fontSize: 12, color: "#9ca3af", textAlign: "center" }}>
                 Ismael Cell · Assistência Técnica · {shareDate}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {sharingPeca && setor === "cliente" && (
+          <div style={{ position: "fixed", left: "-9999px", top: 0 }}>
+            <div ref={shareRef} style={{ width: 600, height: 900, position: "relative", fontFamily: "Inter, sans-serif", overflow: "hidden" }}>
+              <img src={`${BASE}/share-bg-cliente.png`} crossOrigin="anonymous" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} />
+              {/* Box 1: Modelo */}
+              <div style={{ position: "absolute", left: "4%", top: "32%", width: "44%", height: "10%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 10px" }}>
+                <div style={{ fontSize: 11, color: "#7dd3fc", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Modelo</div>
+                <div style={{ fontSize: 20, color: "#ffffff", fontWeight: 700, textAlign: "center", lineHeight: 1.1, textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>{sharingPeca.modelo}</div>
+              </div>
+              {/* Box 2: Qualidade */}
+              <div style={{ position: "absolute", left: "4%", top: "44.5%", width: "44%", height: "10%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 10px" }}>
+                <div style={{ fontSize: 11, color: "#7dd3fc", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Qualidade</div>
+                <div style={{ fontSize: 18, color: "#ffffff", fontWeight: 700, textAlign: "center", textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>{sharingPeca.qualidade}</div>
+              </div>
+              {/* Box 3: Valor */}
+              <div style={{ position: "absolute", left: "4%", top: "57%", width: "44%", height: "10%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 10px" }}>
+                <div style={{ fontSize: 11, color: "#7dd3fc", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Valor</div>
+                <div style={{ fontSize: 26, color: "#4ade80", fontWeight: 800, textAlign: "center", letterSpacing: "-0.5px", textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}>{formatMoney(sharingPeca.valor)}</div>
               </div>
             </div>
           </div>
