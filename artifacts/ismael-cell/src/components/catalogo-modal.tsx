@@ -266,6 +266,8 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [sharingPeca, setSharingPeca] = useState<Peca | null>(null);
   const [shareDate, setShareDate] = useState("");
+  const [sharePreview, setSharePreview] = useState<{ url: string; file: File; modelo: string } | null>(null);
+  const [generatingShare, setGeneratingShare] = useState(false);
   const shareRef = useRef<HTMLDivElement>(null);
   const html2canvasRef = useRef<typeof import("html2canvas").default | null>(null);
   const bgImgRef = useRef<HTMLImageElement | null>(null);
@@ -364,49 +366,60 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   });
 
   // ── Share ─────────────────────────────────────────────────────────────────────
+  // Etapa 1: gera a imagem (pode demorar). NÃO chama navigator.share aqui
+  // porque o iOS exige que share seja chamado num gesto fresco do usuário.
   const handleShare = useCallback(async (peca: Peca) => {
     setShareDate(new Date().toLocaleDateString("pt-BR"));
     setSharingPeca(peca);
+    setGeneratingShare(true);
     try {
-      // Garante que html2canvas e a imagem de fundo estão prontos
       const html2canvas = html2canvasRef.current ?? (await import("html2canvas")).default;
       html2canvasRef.current = html2canvas;
       if (setor === "cliente" && bgImgRef.current && !bgImgRef.current.complete) {
         await new Promise((r) => { bgImgRef.current!.onload = r; bgImgRef.current!.onerror = r; });
       }
-      // Espera o React renderizar o card oculto
       await new Promise((r) => requestAnimationFrame(() => r(null)));
       const el = shareRef.current;
-      if (!el) { setSharingPeca(null); return; }
+      if (!el) { setSharingPeca(null); setGeneratingShare(false); return; }
       const canvas = await html2canvas(el, { backgroundColor: setor === "cliente" ? "#000000" : "#ffffff", scale: 1.5, useCORS: true, logging: false });
-      canvas.toBlob(async (blob) => {
-        if (!blob) { setSharingPeca(null); return; }
+      canvas.toBlob((blob) => {
+        if (!blob) { setSharingPeca(null); setGeneratingShare(false); return; }
         const file = new File([blob], `${peca.modelo.replace(/\s+/g, "-")}.png`, { type: "image/png" });
-        try {
-          if (navigator.canShare?.({ files: [file] })) {
-            await navigator.share({ files: [file], title: `${peca.modelo} — Ismael Cell` });
-          } else {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url; a.download = file.name; a.click();
-            URL.revokeObjectURL(url);
-          }
-        } catch (err: any) {
-          // Usuário cancelou ou bloqueou — oferece download como fallback
-          if (err?.name !== "AbortError") {
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url; a.download = file.name; a.click();
-            URL.revokeObjectURL(url);
-          }
-        }
+        const url = URL.createObjectURL(blob);
+        setSharePreview({ url, file, modelo: peca.modelo });
         setSharingPeca(null);
+        setGeneratingShare(false);
       }, "image/png");
     } catch {
       setSharingPeca(null);
+      setGeneratingShare(false);
       toast({ title: "Não foi possível gerar a imagem", variant: "destructive" });
     }
   }, [toast, setor]);
+
+  // Etapa 2: o usuário toca em "Compartilhar" no preview — gesto fresco.
+  const confirmShare = useCallback(async () => {
+    if (!sharePreview) return;
+    const { file, modelo, url } = sharePreview;
+    try {
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `${modelo} — Ismael Cell` });
+      } else {
+        const a = document.createElement("a");
+        a.href = url; a.download = file.name; a.click();
+      }
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        const a = document.createElement("a");
+        a.href = url; a.download = file.name; a.click();
+      }
+    }
+  }, [sharePreview]);
+
+  const closeSharePreview = useCallback(() => {
+    if (sharePreview) URL.revokeObjectURL(sharePreview.url);
+    setSharePreview(null);
+  }, [sharePreview]);
 
   const lowStock = pecas.filter((p) => p.quantidade <= 1);
   const pendentes = garantias.filter((g) => g.status === "pendente");
@@ -698,6 +711,31 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
               })}
             </div>
           </>
+        )}
+
+        {/* Indicador de geração */}
+        {generatingShare && (
+          <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center">
+            <div className="bg-white rounded-2xl px-6 py-5 flex items-center gap-3 shadow-xl">
+              <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm font-medium">Gerando imagem...</span>
+            </div>
+          </div>
+        )}
+
+        {/* Preview com botão para compartilhar (gesto fresco do usuário) */}
+        {sharePreview && (
+          <div className="fixed inset-0 z-[60] bg-black/70 flex flex-col items-center justify-center p-4" onClick={closeSharePreview}>
+            <div className="bg-white rounded-2xl p-3 max-w-sm w-full shadow-2xl flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
+              <img src={sharePreview.url} alt="Preview" className="w-full rounded-xl max-h-[60vh] object-contain bg-gray-100" />
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={closeSharePreview}>Cancelar</Button>
+                <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => { confirmShare(); }}>
+                  <Share2 className="w-4 h-4 mr-1.5" /> Compartilhar
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* Card oculto para gerar imagem de compartilhamento */}
