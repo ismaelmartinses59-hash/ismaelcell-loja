@@ -454,8 +454,8 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                 </div>
               )}
               {search.trim() && pecasLoading && <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>}
-              {search.trim() && !pecasLoading && pecas.filter((p) => p.quantidade <= 1).length === 0 && <div className="text-center py-10 text-muted-foreground text-sm">Nenhuma peça com estoque baixo encontrada para "<strong>{search}</strong>".</div>}
-              {search.trim() && pecas.filter((p) => p.quantidade <= 1).map((peca) => (
+              {search.trim() && !pecasLoading && pecas.length === 0 && <div className="text-center py-10 text-muted-foreground text-sm">Nenhuma peça encontrada para "<strong>{search}</strong>".</div>}
+              {search.trim() && pecas.map((peca) => (
                 <div key={peca.id}>
                   {editingId === peca.id ? (
                     <PecaForm initial={peca} onSave={(data) => editMutation.mutate({ id: peca.id, data })} onCancel={() => setEditingId(null)} loading={editMutation.isPending} />
