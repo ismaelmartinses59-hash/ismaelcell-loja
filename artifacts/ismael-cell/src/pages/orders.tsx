@@ -160,18 +160,16 @@ export default function Orders() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {!isCliente && (
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex items-center gap-1 text-primary border-primary/30 hover:bg-primary/5"
-                onClick={() => setShowCatalogo(true)}
-                title="Catálogo de Peças"
-              >
-                <Package className="h-4 w-4" />
-                <span className="hidden sm:inline">Peças</span>
-              </Button>
-            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex items-center gap-1 text-primary border-primary/30 hover:bg-primary/5"
+              onClick={() => setShowCatalogo(true)}
+              title="Catálogo de Peças"
+            >
+              <Package className="h-4 w-4" />
+              <span className="hidden sm:inline">Peças</span>
+            </Button>
             <Button
               size="sm"
               variant="outline"
