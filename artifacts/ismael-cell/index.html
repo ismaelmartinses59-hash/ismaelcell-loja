@@ -86,10 +86,17 @@
         var splash = document.getElementById('splash');
         var msg = document.getElementById('splash-msg');
         var reloaded = sessionStorage.getItem('_splashReload') === '1';
+        var timers = [];
+
+        function clearTimers() {
+          for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
+          timers = [];
+        }
 
         function hideSplash() {
-          if (!splash) return;
+          clearTimers();
           sessionStorage.removeItem('_splashReload');
+          if (!splash) return;
           splash.classList.add('fade-out');
           setTimeout(function() { if (splash && splash.parentNode) splash.remove(); }, 450);
         }
@@ -101,21 +108,24 @@
         }
 
         if (!reloaded) {
-          setTimeout(function() {
+          timers.push(setTimeout(function() {
             if (msg) { msg.style.display = 'block'; msg.textContent = 'Conectando ao servidor...'; }
-          }, 5000);
-          setTimeout(function() {
+          }, 5000));
+          timers.push(setTimeout(function() {
             if (msg) msg.textContent = 'Acordando o servidor (15s)...';
-          }, 15000);
-          setTimeout(function() {
-            sessionStorage.setItem('_splashReload', '1');
-            window.location.reload();
-          }, 35000);
+          }, 15000));
+          timers.push(setTimeout(function() {
+            // Só recarrega se o splash ainda estiver visível (app não carregou)
+            if (splash && splash.parentNode && !splash.classList.contains('fade-out')) {
+              sessionStorage.setItem('_splashReload', '1');
+              window.location.reload();
+            }
+          }, 35000));
         } else {
-          setTimeout(function() {
+          timers.push(setTimeout(function() {
             if (msg) { msg.style.display = 'block'; msg.textContent = 'Quase lá...'; }
-          }, 3000);
-          setTimeout(function() { showRetryButton(); }, 15000);
+          }, 3000));
+          timers.push(setTimeout(function() { showRetryButton(); }, 15000));
         }
 
         window.__hideSplash = hideSplash;
