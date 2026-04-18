@@ -105,11 +105,17 @@
             if (msg) { msg.style.display = 'block'; msg.textContent = 'Conectando ao servidor...'; }
           }, 5000);
           setTimeout(function() {
+            if (msg) msg.textContent = 'Acordando o servidor (15s)...';
+          }, 15000);
+          setTimeout(function() {
             sessionStorage.setItem('_splashReload', '1');
             window.location.reload();
-          }, 18000);
+          }, 35000);
         } else {
-          setTimeout(function() { showRetryButton(); }, 3000);
+          setTimeout(function() {
+            if (msg) { msg.style.display = 'block'; msg.textContent = 'Quase lá...'; }
+          }, 3000);
+          setTimeout(function() { showRetryButton(); }, 15000);
         }
 
         window.__hideSplash = hideSplash;
