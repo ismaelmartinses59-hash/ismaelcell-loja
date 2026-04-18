@@ -83,15 +83,42 @@
     <script>
       (function() {
         var splash = document.getElementById('splash');
+        var mounted = false;
         function hideSplash() {
+          mounted = true;
           if (!splash) return;
           splash.classList.add('fade-out');
           setTimeout(function() { if (splash && splash.parentNode) splash.remove(); }, 400);
         }
-        // Failsafe: o splash some sozinho em 3s no máximo, mesmo que o React demore.
-        // Sem reload automático, sem mensagens de "servidor dormindo".
+        // O splash some sozinho em 3s, sem esperar a API.
         setTimeout(hideSplash, 3000);
         window.__hideSplash = hideSplash;
+
+        // Recuperação: se a tela ficar branca (React não conseguiu montar
+        // por causa de SW/cache antigo), mostra botão para limpar tudo.
+        setTimeout(function() {
+          var root = document.getElementById('root');
+          if (root && root.children.length > 0) return; // App montou, ok
+          var rec = document.createElement('div');
+          rec.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0f172a;color:#fff;font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:16px;';
+          rec.innerHTML = '<div style="font-size:18px;font-weight:700;">Não conseguiu abrir?</div>'
+            + '<div style="font-size:13px;opacity:0.7;max-width:280px;">Toque abaixo para limpar o cache e tentar novamente.</div>'
+            + '<button id="__recBtn" style="background:#2563eb;color:#fff;border:none;padding:12px 28px;border-radius:24px;font-size:14px;font-weight:700;cursor:pointer;">Recuperar app</button>';
+          document.body.appendChild(rec);
+          document.getElementById('__recBtn').onclick = async function() {
+            try {
+              if ('serviceWorker' in navigator) {
+                var regs = await navigator.serviceWorker.getRegistrations();
+                for (var i = 0; i < regs.length; i++) await regs[i].unregister();
+              }
+              if ('caches' in window) {
+                var keys = await caches.keys();
+                await Promise.all(keys.map(function(k) { return caches.delete(k); }));
+              }
+            } catch(e) {}
+            window.location.reload();
+          };
+        }, 6000);
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
