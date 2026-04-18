@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -267,6 +267,20 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   const [sharingPeca, setSharingPeca] = useState<Peca | null>(null);
   const [shareDate, setShareDate] = useState("");
   const shareRef = useRef<HTMLDivElement>(null);
+  const html2canvasRef = useRef<typeof import("html2canvas").default | null>(null);
+  const bgImgRef = useRef<HTMLImageElement | null>(null);
+
+  // Pré-carrega html2canvas e a imagem de fundo assim que o modal abre,
+  // para que o clique em "compartilhar" não perca o gesto do usuário (iOS).
+  useEffect(() => {
+    if (!open) return;
+    import("html2canvas").then((m) => { html2canvasRef.current = m.default; });
+    if (setor === "cliente" && !bgImgRef.current) {
+      const img = new Image();
+      img.src = `${BASE}/share-bg-cliente.png`;
+      bgImgRef.current = img;
+    }
+  }, [open, setor]);
 
   // Garantias state
   const [showGarantiaForm, setShowGarantiaForm] = useState(false);
@@ -353,26 +367,38 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   const handleShare = useCallback(async (peca: Peca) => {
     setShareDate(new Date().toLocaleDateString("pt-BR"));
     setSharingPeca(peca);
-    const [{ default: html2canvas }] = await Promise.all([
-      import("html2canvas"),
-      new Promise((r) => setTimeout(r, 30)),
-    ]);
-    const el = shareRef.current;
-    if (!el) return;
     try {
-      const imgs = el.querySelectorAll("img");
-      await Promise.all(Array.from(imgs).map((img) => img.complete ? Promise.resolve() : new Promise((r) => { img.onload = r; img.onerror = r; })));
+      // Garante que html2canvas e a imagem de fundo estão prontos
+      const html2canvas = html2canvasRef.current ?? (await import("html2canvas")).default;
+      html2canvasRef.current = html2canvas;
+      if (setor === "cliente" && bgImgRef.current && !bgImgRef.current.complete) {
+        await new Promise((r) => { bgImgRef.current!.onload = r; bgImgRef.current!.onerror = r; });
+      }
+      // Espera o React renderizar o card oculto
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const el = shareRef.current;
+      if (!el) { setSharingPeca(null); return; }
       const canvas = await html2canvas(el, { backgroundColor: setor === "cliente" ? "#000000" : "#ffffff", scale: 1.5, useCORS: true, logging: false });
       canvas.toBlob(async (blob) => {
-        if (!blob) return;
+        if (!blob) { setSharingPeca(null); return; }
         const file = new File([blob], `${peca.modelo.replace(/\s+/g, "-")}.png`, { type: "image/png" });
-        if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], title: `${peca.modelo} — Ismael Cell` });
-        } else {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url; a.download = file.name; a.click();
-          URL.revokeObjectURL(url);
+        try {
+          if (navigator.canShare?.({ files: [file] })) {
+            await navigator.share({ files: [file], title: `${peca.modelo} — Ismael Cell` });
+          } else {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = file.name; a.click();
+            URL.revokeObjectURL(url);
+          }
+        } catch (err: any) {
+          // Usuário cancelou ou bloqueou — oferece download como fallback
+          if (err?.name !== "AbortError") {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url; a.download = file.name; a.click();
+            URL.revokeObjectURL(url);
+          }
         }
         setSharingPeca(null);
       }, "image/png");
@@ -380,7 +406,7 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
       setSharingPeca(null);
       toast({ title: "Não foi possível gerar a imagem", variant: "destructive" });
     }
-  }, [toast]);
+  }, [toast, setor]);
 
   const lowStock = pecas.filter((p) => p.quantidade <= 1);
   const pendentes = garantias.filter((g) => g.status === "pendente");
