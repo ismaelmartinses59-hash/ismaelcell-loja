@@ -90,7 +90,8 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
   const calcularSugestao = (custoStr: string) => {
     const c = parseFloat(custoStr.replace(",", "."));
     if (isNaN(c) || c <= 0) { setPrecoSugerido(null); return; }
-    let preco = c <= 55 ? c + 25 : c <= 80 ? c + 35 : c + 50;
+    const maoDeObra = c <= 90 ? 40 : 30;
+    let preco = c * 2 + maoDeObra;
     preco = Math.round(preco / 5) * 5;
     setPrecoSugerido(preco);
   };
