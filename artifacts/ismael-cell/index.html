@@ -78,56 +78,19 @@
       <div class="splash-dots">
         <span></span><span></span><span></span>
       </div>
-      <div id="splash-msg" style="color:rgba(255,255,255,0.6);font-size:13px;margin-top:4px;display:none;">Conectando ao servidor...</div>
     </div>
     <div id="root"></div>
     <script>
       (function() {
         var splash = document.getElementById('splash');
-        var msg = document.getElementById('splash-msg');
-        var reloaded = sessionStorage.getItem('_splashReload') === '1';
-        var timers = [];
-
-        function clearTimers() {
-          for (var i = 0; i < timers.length; i++) clearTimeout(timers[i]);
-          timers = [];
-        }
-
         function hideSplash() {
-          clearTimers();
-          sessionStorage.removeItem('_splashReload');
           if (!splash) return;
           splash.classList.add('fade-out');
-          setTimeout(function() { if (splash && splash.parentNode) splash.remove(); }, 450);
+          setTimeout(function() { if (splash && splash.parentNode) splash.remove(); }, 400);
         }
-
-        function showRetryButton() {
-          if (!msg) return;
-          msg.style.display = 'block';
-          msg.innerHTML = 'Servidor dormindo... <br><button onclick="sessionStorage.setItem(\'_splashReload\',\'1\');window.location.reload();" style="margin-top:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.5);color:#fff;padding:8px 22px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;">Tentar novamente</button>';
-        }
-
-        if (!reloaded) {
-          timers.push(setTimeout(function() {
-            if (msg) { msg.style.display = 'block'; msg.textContent = 'Conectando ao servidor...'; }
-          }, 5000));
-          timers.push(setTimeout(function() {
-            if (msg) msg.textContent = 'Acordando o servidor (15s)...';
-          }, 15000));
-          timers.push(setTimeout(function() {
-            // Só recarrega se o splash ainda estiver visível (app não carregou)
-            if (splash && splash.parentNode && !splash.classList.contains('fade-out')) {
-              sessionStorage.setItem('_splashReload', '1');
-              window.location.reload();
-            }
-          }, 35000));
-        } else {
-          timers.push(setTimeout(function() {
-            if (msg) { msg.style.display = 'block'; msg.textContent = 'Quase lá...'; }
-          }, 3000));
-          timers.push(setTimeout(function() { showRetryButton(); }, 15000));
-        }
-
+        // Failsafe: o splash some sozinho em 3s no máximo, mesmo que o React demore.
+        // Sem reload automático, sem mensagens de "servidor dormindo".
+        setTimeout(hideSplash, 3000);
         window.__hideSplash = hideSplash;
       })();
     </script>
