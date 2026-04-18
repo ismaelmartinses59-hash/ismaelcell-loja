@@ -250,9 +250,10 @@ function StatusBadge({ status }: { status: string }) {
 interface CatalogoModalProps {
   open: boolean;
   onClose: () => void;
+  setor: "cliente" | "lojista";
 }
 
-export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
+export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [aba, setAba] = useState<"pecas" | "garantias" | "historico">("pecas");
@@ -273,8 +274,12 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
 
   // ── Queries ──────────────────────────────────────────────────────────────────
   const { data: pecas = [], isLoading: pecasLoading } = useQuery<Peca[]>({
-    queryKey: ["pecas", search],
-    queryFn: () => apiFetch(`/api/pecas${search ? `?search=${encodeURIComponent(search)}` : ""}`),
+    queryKey: ["pecas", setor, search],
+    queryFn: () => {
+      const params = new URLSearchParams({ setor });
+      if (search) params.set("search", search);
+      return apiFetch(`/api/pecas?${params}`);
+    },
     enabled: open,
   });
 
@@ -296,7 +301,7 @@ export function CatalogoModal({ open, onClose }: CatalogoModalProps) {
 
   // ── Peça mutations ────────────────────────────────────────────────────────────
   const addMutation = useMutation({
-    mutationFn: (data: Omit<Peca, "id">) => apiFetch("/api/pecas", { method: "POST", body: JSON.stringify(data) }),
+    mutationFn: (data: Omit<Peca, "id">) => apiFetch("/api/pecas", { method: "POST", body: JSON.stringify({ ...data, setor }) }),
     onSuccess: () => { invalidatePecas(); setShowAdd(false); toast({ title: "Peça adicionada!" }); },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
