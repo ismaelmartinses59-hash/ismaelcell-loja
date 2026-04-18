@@ -85,16 +85,33 @@
       (function() {
         var splash = document.getElementById('splash');
         var msg = document.getElementById('splash-msg');
+        var reloaded = sessionStorage.getItem('_splashReload') === '1';
+
         function hideSplash() {
           if (!splash) return;
+          sessionStorage.removeItem('_splashReload');
           splash.classList.add('fade-out');
           setTimeout(function() { if (splash && splash.parentNode) splash.remove(); }, 450);
         }
-        setTimeout(function() { if (msg) msg.style.display = 'block'; }, 4000);
-        setTimeout(function() {
-          if (msg) msg.textContent = 'Recarregando...';
-          setTimeout(function() { window.location.reload(); }, 2000);
-        }, 12000);
+
+        function showRetryButton() {
+          if (!msg) return;
+          msg.style.display = 'block';
+          msg.innerHTML = 'Servidor dormindo... <br><button onclick="sessionStorage.setItem(\'_splashReload\',\'1\');window.location.reload();" style="margin-top:12px;background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.5);color:#fff;padding:8px 22px;border-radius:20px;font-size:13px;font-weight:600;cursor:pointer;">Tentar novamente</button>';
+        }
+
+        if (!reloaded) {
+          setTimeout(function() {
+            if (msg) { msg.style.display = 'block'; msg.textContent = 'Conectando ao servidor...'; }
+          }, 5000);
+          setTimeout(function() {
+            sessionStorage.setItem('_splashReload', '1');
+            window.location.reload();
+          }, 18000);
+        } else {
+          setTimeout(function() { showRetryButton(); }, 3000);
+        }
+
         window.__hideSplash = hideSplash;
       })();
     </script>
