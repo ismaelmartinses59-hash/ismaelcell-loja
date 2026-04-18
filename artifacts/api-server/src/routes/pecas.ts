@@ -1,33 +1,44 @@
 import { Router, type IRouter } from "express";
-import { eq, ilike, or, sql } from "drizzle-orm";
+import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { db, pecasTable, vendasTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
 router.get("/pecas", async (req, res): Promise<void> => {
   const search = req.query.search as string | undefined;
-  let query = db.select().from(pecasTable).$dynamic();
+  const setor = (req.query.setor as string) || "lojista";
+  const conditions = [eq(pecasTable.setor, setor)];
   if (search) {
-    query = query.where(
-      or(
-        ilike(pecasTable.modelo, `%${search}%`),
-        ilike(pecasTable.qualidade, `%${search}%`),
-      )
+    const s = or(
+      ilike(pecasTable.modelo, `%${search}%`),
+      ilike(pecasTable.qualidade, `%${search}%`),
     );
+    if (s) conditions.push(s);
   }
-  const rows = await query.orderBy(sql`${pecasTable.modelo} asc`);
+  const rows = await db
+    .select()
+    .from(pecasTable)
+    .where(and(...conditions))
+    .orderBy(sql`${pecasTable.modelo} asc`);
   res.json(rows);
 });
 
 router.post("/pecas", async (req, res): Promise<void> => {
-  const { modelo, qualidade, valor, quantidade } = req.body;
+  const { modelo, qualidade, valor, quantidade, setor } = req.body;
   if (!modelo || !qualidade || !valor) {
     res.status(400).json({ error: "modelo, qualidade e valor são obrigatórios" });
     return;
   }
+  const setorFinal = setor === "cliente" ? "cliente" : "lojista";
   const [peca] = await db
     .insert(pecasTable)
-    .values({ modelo: String(modelo), qualidade: String(qualidade), valor: String(valor), quantidade: parseInt(quantidade) || 0 })
+    .values({
+      modelo: String(modelo),
+      qualidade: String(qualidade),
+      valor: String(valor),
+      quantidade: parseInt(quantidade) || 0,
+      setor: setorFinal,
+    })
     .returning();
   res.status(201).json(peca);
 });
