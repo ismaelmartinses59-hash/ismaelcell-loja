@@ -546,17 +546,15 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                           </Button>
                         </div>
                       </div>
-                      {search.trim() && (
-                        <Button
-                          size="sm"
-                          disabled={peca.quantidade === 0 || venderMutation.isPending}
-                          onClick={() => venderMutation.mutate(peca.id)}
-                          className="w-full h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
-                        >
-                          <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
-                          {peca.quantidade === 0 ? "Sem estoque" : "Registrar Venda (-1 un.)"}
-                        </Button>
-                      )}
+                      <Button
+                        size="sm"
+                        disabled={peca.quantidade === 0 || venderMutation.isPending}
+                        onClick={() => venderMutation.mutate(peca.id)}
+                        className="w-full h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
+                      >
+                        <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+                        {peca.quantidade === 0 ? "Esgotado" : "Vendido (-1 un.)"}
+                      </Button>
                     </div>
                   )}
                 </div>
