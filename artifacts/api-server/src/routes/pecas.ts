@@ -77,6 +77,26 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
     qualidade: atual.qualidade,
     valor: atual.valor,
   });
+  // Estoque compartilhado: decrementa também a peça gêmea no outro setor
+  const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
+  const gemeas = await db
+    .select()
+    .from(pecasTable)
+    .where(
+      and(
+        eq(pecasTable.setor, outroSetor),
+        eq(pecasTable.modelo, atual.modelo),
+        eq(pecasTable.qualidade, atual.qualidade),
+      ),
+    );
+  for (const g of gemeas) {
+    if (g.quantidade > 0) {
+      await db
+        .update(pecasTable)
+        .set({ quantidade: g.quantidade - 1 })
+        .where(eq(pecasTable.id, g.id));
+    }
+  }
   res.json(peca);
 });
 
