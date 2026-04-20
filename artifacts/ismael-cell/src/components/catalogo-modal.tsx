@@ -314,6 +314,13 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   });
 
   const invalidatePecas = () => qc.invalidateQueries({ queryKey: ["pecas"] });
+  const invalidateVendas = () => qc.invalidateQueries({ queryKey: ["vendas"] });
+  const [deletingVendaId, setDeletingVendaId] = useState<number | null>(null);
+  const deleteVendaMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/vendas/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidateVendas(); invalidatePecas(); setDeletingVendaId(null); toast({ title: "Venda apagada" }); },
+    onError: () => toast({ title: "Erro ao apagar venda", variant: "destructive" }),
+  });
   const invalidateGarantias = () => qc.invalidateQueries({ queryKey: ["garantias-peca"] });
 
   // ── Peça mutations ────────────────────────────────────────────────────────────
@@ -695,8 +702,9 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                 const hora = new Date(v.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                 const dia = new Date(v.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
                 const valorFmt = parseFloat(v.valor.replace(",", ".")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+                const isConfirming = deletingVendaId === v.id;
                 return (
-                  <div key={v.id} className="border rounded-xl px-3 py-2.5 bg-white flex items-center gap-3">
+                  <div key={v.id} className={`border rounded-xl px-3 py-2.5 flex items-center gap-3 ${isConfirming ? "bg-red-50 border-red-200" : "bg-white"}`}>
                     <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
                       <ShoppingBag className="w-4 h-4 text-green-600" />
                     </div>
@@ -710,6 +718,18 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                       <div className="font-bold text-green-600 text-sm">{valorFmt}</div>
                       <div className="text-xs text-muted-foreground">{periodo === "dia" ? hora : `${dia} ${hora}`}</div>
                     </div>
+                    {isConfirming ? (
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setDeletingVendaId(null)}>Não</Button>
+                        <Button size="sm" variant="destructive" className="h-7 px-2 text-xs" disabled={deleteVendaMutation.isPending} onClick={() => deleteVendaMutation.mutate(v.id)}>
+                          {deleteVendaMutation.isPending ? "..." : "Sim"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => setDeletingVendaId(v.id)} title="Apagar venda">
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    )}
                   </div>
                 );
               })}
