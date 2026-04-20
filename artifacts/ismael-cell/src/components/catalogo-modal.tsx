@@ -264,6 +264,7 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   const [showAdd, setShowAdd] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
   const [sharingPeca, setSharingPeca] = useState<Peca | null>(null);
   const [shareDate, setShareDate] = useState("");
   const [sharePreview, setSharePreview] = useState<{ url: string; file: File; modelo: string } | null>(null);
@@ -516,7 +517,10 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                       </div>
                     </div>
                   ) : (
-                    <div className={`border rounded-xl p-3 bg-white space-y-2 ${peca.quantidade === 0 ? "border-gray-300 opacity-70" : peca.quantidade <= 1 ? "border-amber-300 bg-amber-50/40" : ""}`}>
+                    <div
+                      className={`border rounded-xl p-3 bg-white space-y-2 cursor-pointer ${peca.quantidade === 0 ? "border-gray-300 opacity-70" : peca.quantidade <= 1 ? "border-amber-300 bg-amber-50/40" : ""}`}
+                      onClick={() => setExpandedId((cur) => (cur === peca.id ? null : peca.id))}
+                    >
                       <div className="flex items-center gap-3">
                         <div className="flex-1 min-w-0">
                           <div className="font-semibold text-sm truncate flex items-center gap-2">
@@ -534,7 +538,7 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                           <div className={`text-lg font-bold ${peca.quantidade === 0 ? "text-gray-400" : peca.quantidade <= 1 ? "text-amber-600" : "text-green-600"}`}>{peca.quantidade}</div>
                           <div className="text-xs text-muted-foreground">un. estoque</div>
                         </div>
-                        <div className="flex gap-1 shrink-0">
+                        <div className="flex gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
                           <Button size="icon" variant="ghost" className="h-7 w-7 text-green-600 hover:text-green-700 hover:bg-green-50" onClick={() => handleShare(peca)} title="Compartilhar">
                             <Share2 className="w-3.5 h-3.5" />
                           </Button>
@@ -546,15 +550,17 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                           </Button>
                         </div>
                       </div>
-                      <Button
-                        size="sm"
-                        disabled={peca.quantidade === 0 || venderMutation.isPending}
-                        onClick={() => venderMutation.mutate(peca.id)}
-                        className="w-full h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
-                      >
-                        <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
-                        {peca.quantidade === 0 ? "Esgotado" : "Vendido (-1 un.)"}
-                      </Button>
+                      {expandedId === peca.id && (
+                        <Button
+                          size="sm"
+                          disabled={peca.quantidade === 0 || venderMutation.isPending}
+                          onClick={(e) => { e.stopPropagation(); venderMutation.mutate(peca.id); }}
+                          className="w-full h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
+                        >
+                          <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+                          {peca.quantidade === 0 ? "Esgotado" : "Vendido (-1 un.)"}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
