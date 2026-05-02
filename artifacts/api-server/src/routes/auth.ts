@@ -18,8 +18,13 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  if (email === adminEmail && password === adminPassword) {
-    res.json({ success: true, email });
+  const emailNorm = email.trim().toLowerCase();
+  const passwordNorm = password.trim();
+  const adminEmailNorm = adminEmail.trim().toLowerCase();
+  const adminPasswordNorm = adminPassword.trim();
+
+  if (emailNorm === adminEmailNorm && passwordNorm === adminPasswordNorm) {
+    res.json({ success: true, email: emailNorm });
     return;
   }
 
