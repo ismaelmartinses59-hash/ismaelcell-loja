@@ -93,8 +93,8 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
     .where(
       and(
         eq(pecasTable.setor, outroSetor),
-        eq(pecasTable.modelo, atual.modelo),
-        eq(pecasTable.qualidade, atual.qualidade),
+        sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
+        sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
       ),
     );
   for (const g of gemeas) {
