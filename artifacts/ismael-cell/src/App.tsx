@@ -8,7 +8,16 @@ import Login from "@/pages/login";
 import Orders from "@/pages/orders";
 import Status from "@/pages/status";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 0,
+      refetchOnMount: "always",
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
+    },
+  },
+});
 
 function Router() {
   return (
