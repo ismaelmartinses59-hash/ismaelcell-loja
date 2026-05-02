@@ -21,6 +21,7 @@ interface Peca {
   modelo: string;
   qualidade: string;
   valor: string;
+  valorCusto?: string;
   quantidade: number;
 }
 
@@ -84,7 +85,7 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
   const [valor, setValor] = useState(initial?.valor ?? "");
   const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 1));
-  const [custo, setCusto] = useState("");
+  const [custo, setCusto] = useState(initial?.valorCusto ?? "");
   const [precoSugerido, setPrecoSugerido] = useState<number | null>(null);
 
   const calcularSugestao = (custoStr: string) => {
@@ -104,7 +105,7 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
     if (!modelo.trim() || !qualidade || !valor.trim()) return;
     const qtd = parseInt(quantidade) || 0;
     if (qtd < 1) return;
-    onSave({ modelo: modelo.trim(), qualidade, valor: valor.trim(), quantidade: qtd });
+    onSave({ modelo: modelo.trim(), qualidade, valor: valor.trim(), valorCusto: custo.trim(), quantidade: qtd });
   };
 
   const lower = modelo.toLowerCase();
@@ -300,6 +301,26 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
     enabled: open,
   });
 
+  // Lista completa do setor (sem filtro de busca) para calcular totais
+  const { data: pecasTodas = [] } = useQuery<Peca[]>({
+    queryKey: ["pecas", setor, ""],
+    queryFn: () => apiFetch(`/api/pecas?setor=${setor}`),
+    enabled: open,
+  });
+
+  const totaisEstoque = pecasTodas.reduce(
+    (acc, p) => {
+      const custo = parseFloat((p.valorCusto ?? "").replace(",", "."));
+      const venda = parseFloat((p.valor ?? "").replace(",", "."));
+      const qtd = p.quantidade || 0;
+      if (!isNaN(custo)) acc.custo += custo * qtd;
+      if (!isNaN(venda)) acc.venda += venda * qtd;
+      return acc;
+    },
+    { custo: 0, venda: 0 },
+  );
+  const fmtBRL = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
   const { data: garantias = [], isLoading: garantiasLoading } = useQuery<GarantiaPeca[]>({
     queryKey: ["garantias-peca"],
     queryFn: () => apiFetch("/api/garantias-peca"),
@@ -476,6 +497,18 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
         {aba === "pecas" && (
           <>
             <div className="px-4 pt-3 pb-2 shrink-0 space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-xl border bg-blue-50 border-blue-200 px-3 py-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Custo total</div>
+                  <div className="text-base font-extrabold text-blue-800 leading-tight">{fmtBRL(totaisEstoque.custo)}</div>
+                  <div className="text-[10px] text-blue-700/70">{pecasTodas.reduce((a, p) => a + (p.quantidade || 0), 0)} un. em estoque</div>
+                </div>
+                <div className="rounded-xl border bg-green-50 border-green-200 px-3 py-2">
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-green-700">Venda total</div>
+                  <div className="text-base font-extrabold text-green-800 leading-tight">{fmtBRL(totaisEstoque.venda)}</div>
+                  <div className="text-[10px] text-green-700/70">Lucro: {fmtBRL(totaisEstoque.venda - totaisEstoque.custo)}</div>
+                </div>
+              </div>
               {lowStock.length > 0 && (
                 <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
                   <AlertTriangle className="w-3.5 h-3.5 shrink-0" />

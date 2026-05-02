@@ -24,7 +24,7 @@ router.get("/pecas", async (req, res): Promise<void> => {
 });
 
 router.post("/pecas", async (req, res): Promise<void> => {
-  const { modelo, qualidade, valor, quantidade, setor } = req.body;
+  const { modelo, qualidade, valor, valorCusto, quantidade, setor } = req.body;
   if (!modelo || !qualidade || !valor) {
     res.status(400).json({ error: "modelo, qualidade e valor são obrigatórios" });
     return;
@@ -36,6 +36,7 @@ router.post("/pecas", async (req, res): Promise<void> => {
       modelo: String(modelo),
       qualidade: String(qualidade),
       valor: String(valor),
+      valorCusto: valorCusto != null ? String(valorCusto) : "",
       quantidade: parseInt(quantidade) || 0,
       setor: setorFinal,
     })
@@ -46,14 +47,21 @@ router.post("/pecas", async (req, res): Promise<void> => {
 router.put("/pecas/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
-  const { modelo, qualidade, valor, quantidade } = req.body;
+  const { modelo, qualidade, valor, valorCusto, quantidade } = req.body;
   if (!modelo || !qualidade || !valor) {
     res.status(400).json({ error: "modelo, qualidade e valor são obrigatórios" });
     return;
   }
+  const updates: Record<string, unknown> = {
+    modelo: String(modelo),
+    qualidade: String(qualidade),
+    valor: String(valor),
+    quantidade: parseInt(quantidade) || 0,
+  };
+  if (valorCusto !== undefined) updates.valorCusto = String(valorCusto);
   const [peca] = await db
     .update(pecasTable)
-    .set({ modelo: String(modelo), qualidade: String(qualidade), valor: String(valor), quantidade: parseInt(quantidade) || 0 })
+    .set(updates)
     .where(eq(pecasTable.id, id))
     .returning();
   if (!peca) { res.status(404).json({ error: "Peça não encontrada" }); return; }
