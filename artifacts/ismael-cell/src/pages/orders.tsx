@@ -14,7 +14,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield, Package } from "lucide-react";
+import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield, Package, HandCoins } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
 const VISIBLE_SECONDS = 10;
@@ -28,6 +29,16 @@ export default function Orders() {
   const [showFaturamento, setShowFaturamento] = useState(false);
   const [showGarantia, setShowGarantia] = useState(false);
   const [showCatalogo, setShowCatalogo] = useState(false);
+  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber">("pecas");
+  const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+  interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
+  const { data: contasReceber = [] } = useQuery<ContaResumo[]>({
+    queryKey: ["contas-receber"],
+    queryFn: () => fetch(`${BASE_URL}/api/contas-receber`).then((r) => r.ok ? r.json() : []),
+    refetchInterval: 30000,
+  });
+  const contasAbertas = contasReceber.filter((c) => c.conta.closedAt === null && c.saldo > 0);
+  const totalAReceber = contasAbertas.reduce((a, c) => a + c.saldo, 0);
 
   // Auto-hide: seconds remaining (0 = hidden, >0 = visible countdown)
   const [secondsLeft, setSecondsLeft] = useState(0);
@@ -118,7 +129,7 @@ export default function Orders() {
     <div className="min-h-screen bg-muted/30 pb-24">
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} onClose={() => setShowGarantia(false)} />
-      <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} />
+      <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} />
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -164,7 +175,7 @@ export default function Orders() {
               size="sm"
               variant="outline"
               className="flex items-center gap-1 text-primary border-primary/30 hover:bg-primary/5"
-              onClick={() => setShowCatalogo(true)}
+              onClick={() => { setCatalogoTab("pecas"); setShowCatalogo(true); }}
               title="Catálogo de Peças"
             >
               <Package className="h-4 w-4" />
@@ -203,7 +214,7 @@ export default function Orders() {
 
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
             <Card>
               <CardContent className="p-3 flex flex-col items-center justify-center text-center">
                 <span className="text-2xl font-bold">{stats.total}</span>
@@ -243,6 +254,21 @@ export default function Orders() {
                 <Shield className="h-4 w-4 text-yellow-600 mb-1" />
                 <span className="text-xl font-bold text-yellow-700">{stats.comGarantia}</span>
                 <span className="text-xs font-medium text-yellow-600 uppercase">Garantia</span>
+              </CardContent>
+            </Card>
+            <Card
+              className="border-orange-200 bg-orange-50/40 cursor-pointer hover:bg-orange-100/60 transition-colors"
+              onClick={() => { setCatalogoTab("receber"); setShowCatalogo(true); }}
+            >
+              <CardContent className="p-3 flex flex-col items-center justify-center text-center">
+                <HandCoins className="h-4 w-4 text-orange-600 mb-1" />
+                <span className="text-xl font-bold text-orange-700">{contasAbertas.length}</span>
+                <span className="text-xs font-medium text-orange-600 uppercase">A Receber</span>
+                {totalAReceber > 0 && (
+                  <span className="text-[10px] font-semibold text-orange-700/80 mt-0.5">
+                    {totalAReceber.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                  </span>
+                )}
               </CardContent>
             </Card>
           </div>
