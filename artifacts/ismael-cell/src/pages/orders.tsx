@@ -214,7 +214,7 @@ export default function Orders() {
 
         {/* Stats */}
         {stats && (
-          <div className="grid grid-cols-3 sm:grid-cols-7 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             <Card>
               <CardContent className="p-3 flex flex-col items-center justify-center text-center">
                 <span className="text-2xl font-bold">{stats.total}</span>
@@ -256,22 +256,34 @@ export default function Orders() {
                 <span className="text-xs font-medium text-yellow-600 uppercase">Garantia</span>
               </CardContent>
             </Card>
-            <Card
-              className="border-orange-200 bg-orange-50/40 cursor-pointer hover:bg-orange-100/60 transition-colors"
-              onClick={() => { setCatalogoTab("receber"); setShowCatalogo(true); }}
-            >
-              <CardContent className="p-3 flex flex-col items-center justify-center text-center">
-                <HandCoins className="h-4 w-4 text-orange-600 mb-1" />
-                <span className="text-xl font-bold text-orange-700">{contasAbertas.length}</span>
-                <span className="text-xs font-medium text-orange-600 uppercase">A Receber</span>
-                {totalAReceber > 0 && (
-                  <span className="text-[10px] font-semibold text-orange-700/80 mt-0.5">
-                    {totalAReceber.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
-                  </span>
-                )}
-              </CardContent>
-            </Card>
           </div>
+        )}
+
+        {stats && (
+          <Card
+            className="border-orange-200 bg-orange-50/40 cursor-pointer hover:bg-orange-100/60 transition-colors"
+            onClick={() => { setCatalogoTab("receber"); setShowCatalogo(true); }}
+          >
+            <CardContent className="p-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-full bg-orange-100 flex items-center justify-center">
+                  <HandCoins className="h-4.5 w-4.5 text-orange-600" />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-orange-600 uppercase tracking-wide">A Receber</div>
+                  <div className="text-[11px] text-orange-700/70">
+                    {contasAbertas.length} {contasAbertas.length === 1 ? "conta aberta" : "contas abertas"}
+                  </div>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-extrabold text-orange-700 leading-none">
+                  {totalAReceber.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </div>
+                <div className="text-[10px] text-orange-600/70 mt-0.5">tocar para abrir</div>
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Mobile: collapsible form */}
