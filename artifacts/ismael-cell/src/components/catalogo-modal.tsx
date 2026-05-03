@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
@@ -257,7 +257,17 @@ interface CatalogoModalProps {
 export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias" | "historico">("pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber">("pecas");
+  const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
+  const [fiadoNome, setFiadoNome] = useState("");
+  const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
+  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado">("choose");
+  const [pagandoContaId, setPagandoContaId] = useState<number | null>(null);
+  const [pagamentoValor, setPagamentoValor] = useState("");
+  const [expandedContaId, setExpandedContaId] = useState<number | null>(null);
+  const [deletingContaId, setDeletingContaId] = useState<number | null>(null);
+  const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
+  const [deletingPagamentoId, setDeletingPagamentoId] = useState<number | null>(null);
   const [periodo, setPeriodo] = useState<"dia" | "semana" | "mes">("dia");
 
   // Peças state
@@ -362,18 +372,71 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
 
+  const invalidateContas = () => qc.invalidateQueries({ queryKey: ["contas-receber"] });
   const venderMutation = useMutation({
-    mutationFn: (id: number) => apiFetch(`/api/pecas/${id}/vender`, { method: "POST" }),
-    onSuccess: (peca: Peca) => {
+    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string }) =>
+      apiFetch(`/api/pecas/${args.id}/vender`, {
+        method: "POST",
+        body: JSON.stringify({
+          fiado: args.fiado ?? false,
+          nomeDevedor: args.nomeDevedor ?? "",
+          tipoDevedor: args.tipoDevedor ?? "cliente",
+        }),
+      }),
+    onSuccess: (peca: Peca, vars) => {
       invalidatePecas();
+      invalidateVendas();
+      if (vars.fiado) invalidateContas();
+      const tipoLabel = vars.fiado ? `📒 Fiado p/ ${vars.nomeDevedor}` : "✅ Vendida à vista";
       if (peca.quantidade === 0) {
-        toast({ title: "✅ Vendida! Estoque esgotado.", description: `${peca.modelo} — sem unidades restantes.` });
+        toast({ title: `${tipoLabel} — Estoque esgotado.`, description: `${peca.modelo}` });
       } else {
-        toast({ title: `✅ Vendida! Restam ${peca.quantidade} un.`, description: peca.modelo });
+        toast({ title: `${tipoLabel} — Restam ${peca.quantidade} un.`, description: peca.modelo });
       }
+      setVenderDialogPeca(null);
+      setFiadoNome("");
+      setFiadoStep("choose");
     },
-    onError: () => toast({ title: "Sem estoque disponível", variant: "destructive" }),
+    onError: () => toast({ title: "Erro ao registrar venda", variant: "destructive" }),
   });
+
+  // ── Contas a Receber ──────────────────────────────────────────────────────────
+  interface ContaResumo {
+    conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
+    itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; createdAt: string }>;
+    pagamentos: Array<{ id: number; valor: string; createdAt: string }>;
+    totalItens: number;
+    totalPago: number;
+    saldo: number;
+  }
+  const { data: contas = [], isLoading: contasLoading } = useQuery<ContaResumo[]>({
+    queryKey: ["contas-receber"],
+    queryFn: () => apiFetch("/api/contas-receber"),
+    enabled: open,
+  });
+  const pagarMutation = useMutation({
+    mutationFn: ({ contaId, valor }: { contaId: number; valor: string }) =>
+      apiFetch(`/api/contas-receber/${contaId}/pagamento`, { method: "POST", body: JSON.stringify({ valor }) }),
+    onSuccess: () => { invalidateContas(); setPagandoContaId(null); setPagamentoValor(""); toast({ title: "💰 Pagamento registrado!" }); },
+    onError: () => toast({ title: "Erro ao registrar pagamento", variant: "destructive" }),
+  });
+  const apagarContaMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/contas-receber/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidateContas(); setDeletingContaId(null); toast({ title: "Conta apagada" }); },
+    onError: () => toast({ title: "Erro ao apagar conta", variant: "destructive" }),
+  });
+  const apagarItemMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/contas-receber/itens/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidateContas(); setDeletingItemId(null); toast({ title: "Item removido" }); },
+    onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
+  });
+  const apagarPagamentoMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/contas-receber/pagamentos/${id}`, { method: "DELETE" }),
+    onSuccess: () => { invalidateContas(); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
+    onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
+  });
+  const totalAReceber = contas.reduce((a, c) => a + (c.saldo > 0 ? c.saldo : 0), 0);
+  const contasAbertas = contas.filter((c) => c.conta.closedAt === null);
 
   // ── Garantia mutations ────────────────────────────────────────────────────────
   const addGarantiaMutation = useMutation({
@@ -490,6 +553,15 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
             >
               <ShoppingBag className="w-3.5 h-3.5" /> Histórico
             </button>
+            <button
+              onClick={() => setAba("receber")}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "receber" ? "bg-white shadow text-orange-600" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <HandCoins className="w-3.5 h-3.5" /> A Receber
+              {contasAbertas.length > 0 && (
+                <span className="bg-orange-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{contasAbertas.length}</span>
+              )}
+            </button>
           </div>
         </DialogHeader>
 
@@ -594,7 +666,7 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
                         <Button
                           size="sm"
                           disabled={peca.quantidade === 0 || venderMutation.isPending}
-                          onClick={(e) => { e.stopPropagation(); venderMutation.mutate(peca.id); }}
+                          onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); }}
                           className="w-full h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
                         >
                           <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
@@ -768,6 +840,266 @@ export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
               })}
             </div>
           </>
+        )}
+
+        {/* ── ABA A RECEBER ──────────────────────────────────────────────── */}
+        {aba === "receber" && (
+          <>
+            <div className="px-4 pt-3 pb-2 shrink-0">
+              <div className="rounded-xl border bg-orange-50 border-orange-200 px-3 py-2.5">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-orange-700">Total a receber</div>
+                <div className="text-2xl font-extrabold text-orange-800 leading-tight">{fmtBRL(totalAReceber)}</div>
+                <div className="text-[10px] text-orange-700/70">
+                  {contasAbertas.length} {contasAbertas.length === 1 ? "conta aberta" : "contas abertas"} · Para adicionar, vá na aba Peças e venda como FIADO
+                </div>
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+              {contasLoading && <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>}
+              {!contasLoading && contas.length === 0 && (
+                <div className="text-center py-10 text-muted-foreground text-sm">
+                  <HandCoins className="w-8 h-8 mx-auto mb-3 opacity-20" />
+                  <p className="font-medium">Nenhuma conta a receber</p>
+                  <p className="text-xs mt-1">Vá na aba Peças, clique em uma peça e escolha FIADO ao vender.</p>
+                </div>
+              )}
+              {contas.map((c) => {
+                const aberta = c.conta.closedAt === null && c.saldo > 0;
+                const expanded = expandedContaId === c.conta.id;
+                const isPagando = pagandoContaId === c.conta.id;
+                const isDeleting = deletingContaId === c.conta.id;
+                return (
+                  <div key={c.conta.id} className={`border rounded-xl overflow-hidden ${aberta ? "bg-white border-orange-200" : "bg-gray-50 border-gray-200 opacity-70"}`}>
+                    <button
+                      type="button"
+                      onClick={() => setExpandedContaId(expanded ? null : c.conta.id)}
+                      className="w-full px-3 py-2.5 flex items-center gap-3 text-left"
+                    >
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${c.conta.tipo === "lojista" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
+                        {c.conta.tipo === "lojista" ? <Store className="w-4 h-4" /> : <User className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-bold text-sm truncate">{c.conta.nome}</div>
+                        <div className="text-[11px] text-muted-foreground">
+                          {c.itens.length} {c.itens.length === 1 ? "item" : "itens"} · {c.conta.tipo === "lojista" ? "Lojista" : "Cliente"}
+                          {!aberta && " · ✓ Quitada"}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className={`font-extrabold text-base ${aberta ? "text-orange-700" : "text-green-700"}`}>{fmtBRL(c.saldo)}</div>
+                        {c.totalPago > 0 && <div className="text-[10px] text-muted-foreground">Pago: {fmtBRL(c.totalPago)}</div>}
+                      </div>
+                    </button>
+                    {expanded && (
+                      <div className="border-t bg-gray-50 px-3 py-2.5 space-y-2.5">
+                        {/* Botões de ação */}
+                        {aberta && !isPagando && !isDeleting && (
+                          <div className="flex gap-2">
+                            <Button size="sm" className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold" onClick={() => { setPagandoContaId(c.conta.id); setPagamentoValor(""); }}>
+                              <Wallet className="w-3.5 h-3.5 mr-1.5" /> AV (Receber)
+                            </Button>
+                            <Button size="sm" variant="outline" className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeletingContaId(c.conta.id)}>
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        )}
+                        {!aberta && !isDeleting && (
+                          <Button size="sm" variant="outline" className="w-full h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeletingContaId(c.conta.id)}>
+                            <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Apagar conta quitada
+                          </Button>
+                        )}
+
+                        {/* Form de pagamento */}
+                        {isPagando && (
+                          <div className="bg-white border border-green-200 rounded-lg p-2.5 space-y-2">
+                            <div className="text-xs font-semibold text-green-800">Quanto recebeu agora? (Saldo: {fmtBRL(c.saldo)})</div>
+                            <div className="flex gap-2">
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Ex: 100"
+                                value={pagamentoValor}
+                                onChange={(e) => setPagamentoValor(e.target.value)}
+                                className="h-9 text-sm"
+                                autoFocus
+                              />
+                              <Button size="sm" className="h-9 bg-green-600 hover:bg-green-700 text-white" disabled={!pagamentoValor || pagarMutation.isPending} onClick={() => pagarMutation.mutate({ contaId: c.conta.id, valor: pagamentoValor })}>
+                                <Check className="w-4 h-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setPagandoContaId(null); setPagamentoValor(""); }}>
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                            <div className="flex gap-1">
+                              <button type="button" onClick={() => setPagamentoValor(String(c.saldo))} className="text-[10px] text-green-700 hover:underline font-medium">
+                                Receber tudo ({fmtBRL(c.saldo)})
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Confirmação de apagar conta */}
+                        {isDeleting && (
+                          <div className="bg-red-50 border border-red-200 rounded-lg p-2.5 space-y-2">
+                            <div className="text-xs font-semibold text-red-800">Apagar a conta inteira de {c.conta.nome}?</div>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="ghost" className="flex-1 h-8" onClick={() => setDeletingContaId(null)}>Não</Button>
+                              <Button size="sm" variant="destructive" className="flex-1 h-8" disabled={apagarContaMutation.isPending} onClick={() => apagarContaMutation.mutate(c.conta.id)}>
+                                {apagarContaMutation.isPending ? "..." : "Sim, apagar"}
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Itens */}
+                        {c.itens.length > 0 && (
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Peças</div>
+                            <div className="space-y-1">
+                              {c.itens.map((item) => {
+                                const dia = new Date(item.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                const isDel = deletingItemId === item.id;
+                                return (
+                                  <div key={item.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : "bg-white"}`}>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="font-semibold truncate">{item.modelo}</div>
+                                      <div className="text-[10px] text-muted-foreground">{item.qualidade} · {dia}</div>
+                                    </div>
+                                    <div className="font-bold text-orange-700">{formatMoney(item.valor)}</div>
+                                    {isDel ? (
+                                      <div className="flex gap-0.5">
+                                        <Button size="icon" variant="ghost" className="h-6 w-6 text-xs" onClick={() => setDeletingItemId(null)}><X className="w-3 h-3" /></Button>
+                                        <Button size="icon" variant="destructive" className="h-6 w-6" disabled={apagarItemMutation.isPending} onClick={() => apagarItemMutation.mutate(item.id)}><Check className="w-3 h-3" /></Button>
+                                      </div>
+                                    ) : (
+                                      <button type="button" onClick={() => setDeletingItemId(item.id)} className="text-red-400 hover:text-red-600 p-0.5">
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Pagamentos */}
+                        {c.pagamentos.length > 0 && (
+                          <div>
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Pagamentos (AV)</div>
+                            <div className="space-y-1">
+                              {c.pagamentos.map((p) => {
+                                const dia = new Date(p.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                const isDel = deletingPagamentoId === p.id;
+                                return (
+                                  <div key={p.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : "bg-green-50 border border-green-100"}`}>
+                                    <DollarSign className="w-3.5 h-3.5 text-green-600 shrink-0" />
+                                    <div className="flex-1 text-[10px] text-muted-foreground">{dia}</div>
+                                    <div className="font-bold text-green-700">{formatMoney(p.valor)}</div>
+                                    {isDel ? (
+                                      <div className="flex gap-0.5">
+                                        <Button size="icon" variant="ghost" className="h-6 w-6 text-xs" onClick={() => setDeletingPagamentoId(null)}><X className="w-3 h-3" /></Button>
+                                        <Button size="icon" variant="destructive" className="h-6 w-6" disabled={apagarPagamentoMutation.isPending} onClick={() => apagarPagamentoMutation.mutate(p.id)}><Check className="w-3 h-3" /></Button>
+                                      </div>
+                                    ) : (
+                                      <button type="button" onClick={() => setDeletingPagamentoId(p.id)} className="text-red-400 hover:text-red-600 p-0.5">
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
+        {venderDialogPeca && (
+          <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">Vendendo</div>
+                  <div className="font-bold text-base">{venderDialogPeca.modelo}</div>
+                  <div className="text-xs text-muted-foreground">{venderDialogPeca.qualidade} · {formatMoney(venderDialogPeca.valor)}</div>
+                </div>
+                <button type="button" className="text-muted-foreground hover:text-foreground p-1" onClick={() => setVenderDialogPeca(null)} disabled={venderMutation.isPending}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {fiadoStep === "choose" && (
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <Button
+                    className="h-16 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
+                    disabled={venderMutation.isPending}
+                    onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false })}
+                  >
+                    <DollarSign className="w-5 h-5" />
+                    <span className="font-bold text-sm">À VISTA</span>
+                  </Button>
+                  <Button
+                    className="h-16 flex flex-col items-center justify-center bg-orange-500 hover:bg-orange-600 text-white gap-0.5"
+                    disabled={venderMutation.isPending}
+                    onClick={() => setFiadoStep("fiado")}
+                  >
+                    <HandCoins className="w-5 h-5" />
+                    <span className="font-bold text-sm">FIADO</span>
+                  </Button>
+                </div>
+              )}
+
+              {fiadoStep === "fiado" && (
+                <div className="space-y-2.5 pt-1">
+                  <div>
+                    <label className="text-xs font-semibold text-muted-foreground">Quem ficou devendo?</label>
+                    <div className="flex gap-1 mt-1 mb-2">
+                      <button type="button" onClick={() => setFiadoTipo("cliente")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${fiadoTipo === "cliente" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                        <User className="w-3.5 h-3.5" /> Cliente
+                      </button>
+                      <button type="button" onClick={() => setFiadoTipo("lojista")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${fiadoTipo === "lojista" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                        <Store className="w-3.5 h-3.5" /> Lojista
+                      </button>
+                    </div>
+                    <Input
+                      placeholder="Nome de quem ficou devendo"
+                      value={fiadoNome}
+                      onChange={(e) => setFiadoNome(e.target.value)}
+                      autoFocus
+                      list="fiado-nomes"
+                      className="h-10"
+                    />
+                    <datalist id="fiado-nomes">
+                      {[...new Set(contas.filter((c) => c.conta.tipo === fiadoTipo).map((c) => c.conta.nome))].map((n) => (
+                        <option key={n} value={n} />
+                      ))}
+                    </datalist>
+                    <div className="text-[10px] text-muted-foreground mt-1">
+                      Se já existe uma conta aberta com esse nome, a peça vai entrar nela.
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button variant="ghost" className="flex-1" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
+                    <Button
+                      className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
+                      disabled={!fiadoNome.trim() || venderMutation.isPending}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: fiadoNome.trim(), tipoDevedor: fiadoTipo })}
+                    >
+                      {venderMutation.isPending ? "..." : "Confirmar"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Indicador de geração */}

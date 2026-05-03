@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
-import { db, pecasTable, vendasTable } from "@workspace/db";
+import { db, pecasTable, vendasTable, contasReceberItensTable } from "@workspace/db";
+import { findOrCreateConta } from "./contas-receber";
 
 const router: IRouter = Router();
 
@@ -74,17 +75,37 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   const [atual] = await db.select().from(pecasTable).where(eq(pecasTable.id, id));
   if (!atual) { res.status(404).json({ error: "Peça não encontrada" }); return; }
   if (atual.quantidade <= 0) { res.status(400).json({ error: "Sem estoque disponível" }); return; }
+  const fiado = req.body?.fiado === true;
+  const nomeDevedor = String(req.body?.nomeDevedor ?? "").trim();
+  const tipoDevedor = req.body?.tipoDevedor === "lojista" ? "lojista" : "cliente";
+  if (fiado && !nomeDevedor) {
+    res.status(400).json({ error: "Nome do devedor obrigatório no fiado" });
+    return;
+  }
   const [peca] = await db
     .update(pecasTable)
     .set({ quantidade: atual.quantidade - 1 })
     .where(eq(pecasTable.id, id))
     .returning();
-  await db.insert(vendasTable).values({
-    pecaId: id,
-    modelo: atual.modelo,
-    qualidade: atual.qualidade,
-    valor: atual.valor,
-  });
+  const [venda] = await db
+    .insert(vendasTable)
+    .values({
+      pecaId: id,
+      modelo: atual.modelo,
+      qualidade: atual.qualidade,
+      valor: atual.valor,
+    })
+    .returning();
+  if (fiado) {
+    const contaId = await findOrCreateConta(nomeDevedor, tipoDevedor);
+    await db.insert(contasReceberItensTable).values({
+      contaId,
+      vendaId: venda.id,
+      modelo: atual.modelo,
+      qualidade: atual.qualidade,
+      valor: atual.valor,
+    });
+  }
   // Estoque compartilhado: decrementa também a peça gêmea no outro setor
   const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
   const gemeas = await db
