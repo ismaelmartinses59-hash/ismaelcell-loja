@@ -557,15 +557,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             >
               <ShoppingBag className="w-3.5 h-3.5" /> Histórico
             </button>
-            <button
-              onClick={() => setAba("receber")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "receber" ? "bg-white shadow text-orange-600" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <HandCoins className="w-3.5 h-3.5" /> A Receber
-              {contasAbertas.length > 0 && (
-                <span className="bg-orange-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{contasAbertas.length}</span>
-              )}
-            </button>
           </div>
           )}
         </DialogHeader>
