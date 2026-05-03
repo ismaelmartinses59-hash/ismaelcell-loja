@@ -129,7 +129,7 @@ export default function Orders() {
     <div className="min-h-screen bg-muted/30 pb-24">
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} onClose={() => setShowGarantia(false)} />
-      <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} />
+      <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber"} />
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">

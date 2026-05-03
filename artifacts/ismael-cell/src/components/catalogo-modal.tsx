@@ -253,9 +253,10 @@ interface CatalogoModalProps {
   onClose: () => void;
   setor: "cliente" | "lojista";
   initialTab?: "pecas" | "garantias" | "historico" | "receber";
+  soloTab?: boolean;
 }
 
-export function CatalogoModal({ open, onClose, setor, initialTab }: CatalogoModalProps) {
+export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber">(initialTab ?? "pecas");
@@ -530,6 +531,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab }: CatalogoModa
           </DialogTitle>
 
           {/* Tabs */}
+          {!soloTab && (
           <div className="flex gap-1 bg-muted rounded-lg p-1">
             <button
               onClick={() => setAba("pecas")}
@@ -565,6 +567,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab }: CatalogoModa
               )}
             </button>
           </div>
+          )}
         </DialogHeader>
 
         {/* ── ABA PEÇAS ──────────────────────────────────────────────────────── */}
