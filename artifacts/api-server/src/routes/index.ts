@@ -5,6 +5,7 @@ import authRouter from "./auth";
 import pecasRouter from "./pecas";
 import garantiasPecaRouter from "./garantias-peca";
 import vendasRouter from "./vendas";
+import contasReceberRouter from "./contas-receber";
 
 const router: IRouter = Router();
 
@@ -14,5 +15,6 @@ router.use(authRouter);
 router.use(pecasRouter);
 router.use(garantiasPecaRouter);
 router.use(vendasRouter);
+router.use(contasReceberRouter);
 
 export default router;

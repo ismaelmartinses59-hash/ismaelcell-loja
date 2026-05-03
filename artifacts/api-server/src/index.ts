@@ -8,6 +8,34 @@ async function ensureSchema(): Promise<void> {
     await db.execute(
       sql`ALTER TABLE pecas ADD COLUMN IF NOT EXISTS valor_custo text NOT NULL DEFAULT ''`,
     );
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS contas_receber (
+        id serial PRIMARY KEY,
+        nome text NOT NULL,
+        tipo text NOT NULL DEFAULT 'cliente',
+        created_at timestamp NOT NULL DEFAULT now(),
+        closed_at timestamp
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS contas_receber_itens (
+        id serial PRIMARY KEY,
+        conta_id integer NOT NULL,
+        venda_id integer,
+        modelo text NOT NULL,
+        qualidade text NOT NULL,
+        valor text NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS contas_receber_pagamentos (
+        id serial PRIMARY KEY,
+        conta_id integer NOT NULL,
+        valor text NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
     logger.info("Schema check ok");
   } catch (err) {
     logger.error({ err }, "Schema check failed");
