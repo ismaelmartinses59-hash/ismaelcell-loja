@@ -252,12 +252,14 @@ interface CatalogoModalProps {
   open: boolean;
   onClose: () => void;
   setor: "cliente" | "lojista";
+  initialTab?: "pecas" | "garantias" | "historico" | "receber";
 }
 
-export function CatalogoModal({ open, onClose, setor }: CatalogoModalProps) {
+export function CatalogoModal({ open, onClose, setor, initialTab }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber">("pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber">(initialTab ?? "pecas");
+  useEffect(() => { if (open && initialTab) setAba(initialTab); }, [open, initialTab]);
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
