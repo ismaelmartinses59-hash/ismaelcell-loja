@@ -246,6 +246,129 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
+// ─── Preview Lojista Dialog ───────────────────────────────────────────────────
+
+interface PreviewLojistaDialogProps {
+  open: boolean;
+  data: Omit<Peca, "id"> | null;
+  onConfirm: (precoLojista: string) => void;
+  onCancel: () => void;
+  onVoltar: () => void;
+  loading: boolean;
+}
+
+function sugestaoPrecoLojista(custoStr: string): string {
+  const c = parseFloat((custoStr ?? "").replace(",", "."));
+  if (isNaN(c) || c <= 0) return "";
+  let preco = c * 1.7;
+  preco = Math.round(preco / 5) * 5;
+  return String(preco).replace(".", ",");
+}
+
+function PreviewLojistaDialog({ open, data, onConfirm, onCancel, onVoltar, loading }: PreviewLojistaDialogProps) {
+  const [precoLojista, setPrecoLojista] = useState("");
+  const sugestao = data ? sugestaoPrecoLojista(data.valorCusto ?? "") : "";
+
+  useEffect(() => {
+    if (open && data) {
+      const s = sugestaoPrecoLojista(data.valorCusto ?? "");
+      setPrecoLojista(s);
+    }
+  }, [open, data]);
+
+  if (!data) return null;
+
+  const podeConfirmar = precoLojista.trim().length > 0 && !loading;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !loading) onCancel(); }}>
+      <DialogContent className="max-w-md p-0 overflow-hidden">
+        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 text-white px-5 py-4">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Store className="w-5 h-5" />
+              Cadastrar também no Lojista?
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-blue-100 mt-1">
+            Vamos criar a peça gêmea no setor Lojista. Só falta o preço.
+          </p>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <div className="bg-muted/40 rounded-xl border p-3 space-y-2">
+            <div className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Produto</div>
+            <div className="font-semibold text-base">{data.modelo}</div>
+            <div className="grid grid-cols-2 gap-2 text-xs pt-1">
+              <div className="bg-white border rounded-lg px-2.5 py-1.5">
+                <div className="text-[10px] font-medium text-muted-foreground uppercase">Qualidade</div>
+                <div className="font-semibold">{data.qualidade}</div>
+              </div>
+              <div className="bg-white border rounded-lg px-2.5 py-1.5">
+                <div className="text-[10px] font-medium text-muted-foreground uppercase">Estoque</div>
+                <div className="font-semibold">{data.quantidade} un.</div>
+              </div>
+              <div className="bg-white border rounded-lg px-2.5 py-1.5">
+                <div className="text-[10px] font-medium text-muted-foreground uppercase">Custo</div>
+                <div className="font-semibold text-blue-700">
+                  {data.valorCusto ? formatMoney(data.valorCusto) : "—"}
+                </div>
+              </div>
+              <div className="bg-white border rounded-lg px-2.5 py-1.5">
+                <div className="text-[10px] font-medium text-muted-foreground uppercase">Preço cliente</div>
+                <div className="font-semibold text-green-700">{formatMoney(data.valor)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-3 space-y-2">
+            <label className="text-xs font-bold uppercase tracking-wide text-amber-800 flex items-center gap-1.5">
+              <DollarSign className="w-3.5 h-3.5" />
+              Preço lojista (R$)
+            </label>
+            <Input
+              autoFocus
+              placeholder="Ex: 85,00"
+              value={precoLojista}
+              onChange={(e) => setPrecoLojista(e.target.value)}
+              className="bg-white text-base font-semibold"
+            />
+            {sugestao && (
+              <button
+                type="button"
+                onClick={() => setPrecoLojista(sugestao)}
+                className="text-xs text-amber-800 hover:text-amber-900 underline"
+              >
+                💡 Sugestão baseada no custo: R$ {sugestao}
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-col gap-2 pt-1">
+            <Button
+              size="lg"
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              onClick={() => onConfirm(precoLojista.trim())}
+              disabled={!podeConfirmar}
+            >
+              <Check className="w-4 h-4 mr-1.5" />
+              {loading ? "Salvando..." : "Confirmar e salvar nos dois"}
+            </Button>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="flex-1" onClick={onVoltar} disabled={loading}>
+                <Pencil className="w-3.5 h-3.5 mr-1" /> Voltar e editar
+              </Button>
+              <Button size="sm" variant="ghost" className="flex-1 text-muted-foreground" onClick={onCancel} disabled={loading}>
+                <X className="w-3.5 h-3.5 mr-1" /> Cancelar
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 interface CatalogoModalProps {
@@ -358,11 +481,48 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const invalidateGarantias = () => qc.invalidateQueries({ queryKey: ["garantias-peca"] });
 
   // ── Peça mutations ────────────────────────────────────────────────────────────
+  const [previewData, setPreviewData] = useState<Omit<Peca, "id"> | null>(null);
+  const [savingTwin, setSavingTwin] = useState(false);
+
   const addMutation = useMutation({
     mutationFn: (data: Omit<Peca, "id">) => apiFetch("/api/pecas", { method: "POST", body: JSON.stringify({ ...data, setor }) }),
     onSuccess: () => { invalidatePecas(); setShowAdd(false); toast({ title: "Peça adicionada!" }); },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
+
+  const handleAddSubmit = (data: Omit<Peca, "id">) => {
+    if (setor === "cliente") {
+      setPreviewData(data);
+    } else {
+      addMutation.mutate(data);
+    }
+  };
+
+  const confirmTwin = async (precoLojista: string) => {
+    if (!previewData) return;
+    setSavingTwin(true);
+    try {
+      await apiFetch("/api/pecas/twin", {
+        method: "POST",
+        body: JSON.stringify({
+          modelo: previewData.modelo,
+          qualidade: previewData.qualidade,
+          quantidade: previewData.quantidade,
+          valorCusto: previewData.valorCusto,
+          valorCliente: previewData.valor,
+          valorLojista: precoLojista,
+        }),
+      });
+      invalidatePecas();
+      setPreviewData(null);
+      setShowAdd(false);
+      toast({ title: "Cadastrado nos dois setores!", description: previewData.modelo });
+    } catch {
+      toast({ title: "Erro ao salvar", description: "Nada foi salvo, tente novamente.", variant: "destructive" });
+    } finally {
+      setSavingTwin(false);
+    }
+  };
   const editMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Omit<Peca, "id"> }) =>
       apiFetch(`/api/pecas/${id}`, { method: "PUT", body: JSON.stringify(data) }),
@@ -593,8 +753,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 </Button>
               </div>
               {showAdd && (
-                <PecaForm onSave={(data) => addMutation.mutate(data)} onCancel={() => setShowAdd(false)} loading={addMutation.isPending} />
+                <PecaForm
+                  onSave={handleAddSubmit}
+                  onCancel={() => { setShowAdd(false); setPreviewData(null); }}
+                  loading={addMutation.isPending || savingTwin}
+                />
               )}
+              <PreviewLojistaDialog
+                open={previewData !== null}
+                data={previewData}
+                onConfirm={confirmTwin}
+                onCancel={() => { setPreviewData(null); setShowAdd(false); }}
+                onVoltar={() => setPreviewData(null)}
+                loading={savingTwin}
+              />
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">

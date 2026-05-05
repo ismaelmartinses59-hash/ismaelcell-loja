@@ -1,0 +1,99 @@
+Quero implementar uma nova funcionalidade no meu sistema web de peças para celular.
+
+## Objetivo:
+Atualmente tenho duas áreas separadas:
+
+1. Área Cliente Final  
+2. Área Logística / Lojista
+
+Hoje preciso cadastrar o mesmo produto nas duas áreas manualmente. Quero eliminar retrabalho.
+
+---
+
+## Novo fluxo desejado:
+
+### Cadastro será iniciado pela Área Cliente Final.
+
+Quando eu cadastrar uma peça na área cliente e clicar em salvar, o sistema NÃO deve salvar direto ainda.
+
+Ele deve abrir uma tela/modal de PRÉ-VISUALIZAÇÃO para cadastro automático na área Logística / Lojista.
+
+---
+
+## Dados que devem ser copiados automaticamente da área Cliente para a pré-visualização:
+
+- Nome da peça  
+- Modelo compatível  
+- Qualidade  
+- Quantidade em estoque  
+- Valor de custo  
+- Categoria (se existir)  
+- Observações (se existir)
+
+---
+
+## Campo que deve ficar em branco para eu preencher manualmente:
+
+- Preço lojista
+
+Esse campo será digitado por mim na pré-visualização.
+
+---
+
+## Tela de pré-visualização:
+
+Quero uma interface limpa e profissional mostrando:
+
+### Produto:
+Tela Samsung A14
+
+### Dados copiados:
+- Qualidade: OLED
+- Estoque: 3
+- Custo: R$50
+- Preço cliente: R$180
+
+### Campo editável:
+- Preço lojista: [input]
+
+### Botões:
+- Confirmar e salvar
+- Cancelar
+- Voltar para editar
+
+---
+
+## Ao clicar Confirmar e salvar:
+
+O sistema deve:
+
+### Na Área Cliente:
+Salvar normalmente com preço cliente.
+
+### Na Área Logística / Lojista:
+Criar automaticamente outro cadastro com os mesmos dados, mudando apenas o preço lojista informado na prévia.
+
+---
+
+## Regras importantes:
+
+1. As áreas devem continuar separadas.  
+2. Não misturar layout cliente com lojista.  
+3. Não alterar meu fluxo atual de cadastro.  
+4. Apenas adicionar essa etapa intermediária inteligente.  
+5. O estoque pode permanecer vinculado entre os dois cadastros se possível.
+
+---
+
+## Extra desejado:
+
+Se possível, sugerir automaticamente preço lojista baseado no custo, mas permitir editar manualmente.
+
+Exemplo:
+Custo R$50 → sugestão R$85
+
+---
+
+## Prioridade:
+
+Quero isso rápido, funcional e bonito visualmente, sem quebrar nada que já existe no sistema.

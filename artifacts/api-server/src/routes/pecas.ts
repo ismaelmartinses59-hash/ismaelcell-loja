@@ -45,6 +45,39 @@ router.post("/pecas", async (req, res): Promise<void> => {
   res.status(201).json(peca);
 });
 
+router.post("/pecas/twin", async (req, res): Promise<void> => {
+  const { modelo, qualidade, valorCliente, valorLojista, valorCusto, quantidade } = req.body;
+  if (!modelo || !qualidade || !valorCliente || !valorLojista) {
+    res.status(400).json({ error: "modelo, qualidade, valorCliente e valorLojista são obrigatórios" });
+    return;
+  }
+  try {
+    const [cliente, lojista] = await db.transaction(async (tx) => {
+      const [c] = await tx.insert(pecasTable).values({
+        modelo: String(modelo),
+        qualidade: String(qualidade),
+        valor: String(valorCliente),
+        valorCusto: valorCusto != null ? String(valorCusto) : "",
+        quantidade: parseInt(quantidade) || 0,
+        setor: "cliente",
+      }).returning();
+      const [l] = await tx.insert(pecasTable).values({
+        modelo: String(modelo),
+        qualidade: String(qualidade),
+        valor: String(valorLojista),
+        valorCusto: valorCusto != null ? String(valorCusto) : "",
+        quantidade: parseInt(quantidade) || 0,
+        setor: "lojista",
+      }).returning();
+      return [c, l];
+    });
+    res.status(201).json({ cliente, lojista });
+  } catch (err) {
+    req.log.error({ err }, "twin create failed");
+    res.status(500).json({ error: "Falha ao criar peças (nada foi salvo)" });
+  }
+});
+
 router.put("/pecas/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
