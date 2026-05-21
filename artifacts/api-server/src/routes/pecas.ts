@@ -162,6 +162,40 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   res.json(peca);
 });
 
+router.post("/pecas/:id/devolver", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const [atual] = await db.select().from(pecasTable).where(eq(pecasTable.id, id));
+  if (!atual) { res.status(404).json({ error: "Peça não encontrada" }); return; }
+  if (atual.quantidade <= 0) { res.status(400).json({ error: "Sem estoque para devolver" }); return; }
+  const [peca] = await db
+    .update(pecasTable)
+    .set({ quantidade: atual.quantidade - 1 })
+    .where(eq(pecasTable.id, id))
+    .returning();
+  // Estoque compartilhado: decrementa também a gêmea no outro setor
+  const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
+  const gemeas = await db
+    .select()
+    .from(pecasTable)
+    .where(
+      and(
+        eq(pecasTable.setor, outroSetor),
+        sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
+        sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
+      ),
+    );
+  for (const g of gemeas) {
+    if (g.quantidade > 0) {
+      await db
+        .update(pecasTable)
+        .set({ quantidade: g.quantidade - 1 })
+        .where(eq(pecasTable.id, g.id));
+    }
+  }
+  res.json(peca);
+});
+
 router.delete("/pecas/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
