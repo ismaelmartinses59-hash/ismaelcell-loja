@@ -384,6 +384,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const qc = useQueryClient();
   const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber">(initialTab ?? "pecas");
   useEffect(() => { if (open && initialTab) setAba(initialTab); }, [open, initialTab]);
+  useEffect(() => {
+    if (!open) {
+      setSearch("");
+      setShowAdd(false);
+      setEditingId(null);
+      setDeletingId(null);
+      setExpandedId(null);
+      setPreviewData(null);
+      setVenderDialogPeca(null);
+      setDevolverDialogPeca(null);
+    }
+  }, [open]);
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
