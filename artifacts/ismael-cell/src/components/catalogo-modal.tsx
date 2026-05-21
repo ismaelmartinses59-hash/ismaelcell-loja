@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 
@@ -536,6 +536,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   });
 
   const invalidateContas = () => qc.invalidateQueries({ queryKey: ["contas-receber"] });
+  const [devolverDialogPeca, setDevolverDialogPeca] = useState<Peca | null>(null);
+  const devolverMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/pecas/${id}/devolver`, { method: "POST" }),
+    onSuccess: (peca: Peca) => {
+      invalidatePecas();
+      toast({ title: "Devolvida ao fornecedor", description: `${peca.modelo} — Restam ${peca.quantidade} un.` });
+      setDevolverDialogPeca(null);
+    },
+    onError: () => toast({ title: "Erro ao devolver", variant: "destructive" }),
+  });
   const venderMutation = useMutation({
     mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string }) =>
       apiFetch(`/api/pecas/${args.id}/vender`, {
@@ -831,15 +841,28 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         </div>
                       </div>
                       {expandedId === peca.id && (
-                        <Button
-                          size="sm"
-                          disabled={peca.quantidade === 0 || venderMutation.isPending}
-                          onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); }}
-                          className="w-full h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
-                        >
-                          <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
-                          {peca.quantidade === 0 ? "Esgotado" : "Vendido (-1 un.)"}
-                        </Button>
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            disabled={peca.quantidade === 0 || venderMutation.isPending}
+                            onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); }}
+                            className="flex-1 h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
+                          >
+                            <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
+                            {peca.quantidade === 0 ? "Esgotado" : "Vendido (-1 un.)"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={peca.quantidade === 0 || devolverMutation.isPending}
+                            onClick={(e) => { e.stopPropagation(); setDevolverDialogPeca(peca); }}
+                            className="h-8 text-xs font-semibold border-orange-300 text-orange-700 hover:bg-orange-50 disabled:opacity-40"
+                            title="Devolver ao fornecedor (peça com defeito)"
+                          >
+                            <Undo2 className="w-3.5 h-3.5 mr-1.5" />
+                            Devolver
+                          </Button>
+                        </div>
                       )}
                     </div>
                   )}
@@ -1187,6 +1210,51 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })}
             </div>
           </>
+        )}
+
+        {/* ── Diálogo Devolução ao Fornecedor ─────────────────────────── */}
+        {devolverDialogPeca && (
+          <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !devolverMutation.isPending && setDevolverDialogPeca(null)}>
+            <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                    <Undo2 className="w-5 h-5 text-orange-600" />
+                  </div>
+                  <div>
+                    <div className="text-xs text-muted-foreground">Devolver ao fornecedor</div>
+                    <div className="font-bold text-base">{devolverDialogPeca.modelo}</div>
+                  </div>
+                </div>
+                <button type="button" className="text-muted-foreground hover:text-foreground p-1" onClick={() => setDevolverDialogPeca(null)} disabled={devolverMutation.isPending}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-900 space-y-1.5">
+                <p className="font-medium">Confirmar devolução de 1 unidade?</p>
+                <ul className="text-xs space-y-1 text-orange-800/90 pl-4 list-disc">
+                  <li>Estoque vai diminuir 1 unidade</li>
+                  <li>Sai do <strong>Custo Total</strong> ({devolverDialogPeca.valorCusto ? formatMoney(devolverDialogPeca.valorCusto) : "—"})</li>
+                  <li>Sai do <strong>Venda Total</strong> ({formatMoney(devolverDialogPeca.valor)})</li>
+                </ul>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setDevolverDialogPeca(null)} disabled={devolverMutation.isPending}>
+                  Cancelar
+                </Button>
+                <Button
+                  className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
+                  onClick={() => devolverMutation.mutate(devolverDialogPeca.id)}
+                  disabled={devolverMutation.isPending}
+                >
+                  <Undo2 className="w-4 h-4 mr-1.5" />
+                  {devolverMutation.isPending ? "Devolvendo..." : "Confirmar"}
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
