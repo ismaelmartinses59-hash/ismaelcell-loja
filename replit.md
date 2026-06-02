@@ -77,5 +77,6 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 - `EditOrderBody` type and `OrderTipo` const/type are also defined manually in that file
 - After editing `api.ts`, run `cd lib/api-client-react && npx tsc --build` to update declarations
 - `tipo` column in DB defaults to `"lojista"`; accepted values: `"lojista"` | `"cliente"`
+- **Vendored API client for external hosting**: `artifacts/ismael-cell/src/api-client/` is a COPY of `lib/api-client-react/src/` so the frontend builds self-contained on Vercel/etc (no pnpm workspace needed). Vite aliases `@workspace/api-client-react` → this copy. If you edit `lib/api-client-react/src/generated/api.ts` (manual hooks), re-copy the files into `src/api-client/` or the deployed frontend will be stale.
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
