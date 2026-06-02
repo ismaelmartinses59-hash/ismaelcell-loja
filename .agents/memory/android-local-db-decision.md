@@ -16,7 +16,16 @@ The owner wants to reduce recurring hosting cost. We explored several paths:
 
 **Final direction:** Migrate OFF Replit hosting to a cheaper **external all-in-one
 provider**, keeping ALL current features. Budget target ~R$20–30/month. Provider
-choice was delegated to the agent ("escolha por mim a melhor relação custo/facilidade").
+choice was delegated to the agent — **chosen: Railway** (app + managed Postgres in
+one project, no sleeping, ~$5/mo Hobby ≈ R$25–30). Deploy method: connect a GitHub
+repo to Railway.
+
+**Status:** the single-service standalone setup is IMPLEMENTED and verified locally
+(API server now serves the built frontend on one origin; DB tables auto-create on
+boot via an idempotent schema check; root has standalone build + start scripts).
+Auth is client-side localStorage only (no server session/cookie), and CORS is open,
+so cross-origin is not a concern. Remaining work is the actual external deploy
+(needs the owner's GitHub + Railway accounts; best finished on the shop computer).
 
 **Recommended architecture (to keep it cheap + simple + avoid cross-domain auth pain):**
 - Single web service that serves BOTH the built frontend (Vite static) AND the

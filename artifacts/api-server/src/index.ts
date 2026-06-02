@@ -5,6 +5,58 @@ import { sql } from "drizzle-orm";
 
 async function ensureSchema(): Promise<void> {
   try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS orders (
+        id serial PRIMARY KEY,
+        codigo text NOT NULL UNIQUE,
+        modelo text NOT NULL,
+        linha text NOT NULL,
+        servico text NOT NULL,
+        valor text NOT NULL,
+        tempo text NOT NULL,
+        status text NOT NULL DEFAULT 'aguardando',
+        tipo text NOT NULL DEFAULT 'lojista',
+        nome_cliente text,
+        senha_dispo text,
+        garantia text,
+        data_servico text,
+        data_conclusao timestamp,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pecas (
+        id serial PRIMARY KEY,
+        modelo text NOT NULL,
+        qualidade text NOT NULL,
+        valor text NOT NULL,
+        valor_custo text NOT NULL DEFAULT '',
+        quantidade integer NOT NULL DEFAULT 0,
+        setor text NOT NULL DEFAULT 'lojista',
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS vendas (
+        id serial PRIMARY KEY,
+        peca_id integer NOT NULL,
+        modelo text NOT NULL,
+        qualidade text NOT NULL,
+        valor text NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS garantias_peca (
+        id serial PRIMARY KEY,
+        modelo text NOT NULL,
+        qualidade text NOT NULL,
+        lojista text NOT NULL,
+        motivo text NOT NULL,
+        status text NOT NULL DEFAULT 'pendente',
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
     await db.execute(
       sql`ALTER TABLE pecas ADD COLUMN IF NOT EXISTS valor_custo text NOT NULL DEFAULT ''`,
     );
