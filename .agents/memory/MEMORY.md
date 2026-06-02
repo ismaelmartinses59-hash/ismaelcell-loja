@@ -1,0 +1,1 @@
+- [Android local-DB direction](android-local-db-decision.md) — owner chose offline Android app (on-device DB, WhatsApp status message, migrate data) to drop hosting cost; build only on replit.com (not iOS app).
