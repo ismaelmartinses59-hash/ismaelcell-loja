@@ -1,1 +1,1 @@
-- [Android local-DB direction](android-local-db-decision.md) — owner chose offline Android app (on-device DB, WhatsApp status message, migrate data) to drop hosting cost; build only on replit.com (not iOS app).
+- [Hosting direction](android-local-db-decision.md) — offline ruled out (owner needs multi-device sync); plan = migrate off Replit to a cheap all-in-one external host (1 web service serving frontend+API + managed Postgres). Deploy needs owner's account, best on shop PC.
