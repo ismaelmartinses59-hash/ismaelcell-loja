@@ -86,20 +86,49 @@ router.put("/pecas/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "modelo, qualidade e valor são obrigatórios" });
     return;
   }
+  const novaQuantidade = parseInt(quantidade) || 0;
   const updates: Record<string, unknown> = {
     modelo: String(modelo),
     qualidade: String(qualidade),
     valor: String(valor),
-    quantidade: parseInt(quantidade) || 0,
+    quantidade: novaQuantidade,
   };
   if (valorCusto !== undefined) updates.valorCusto = String(valorCusto);
-  const [peca] = await db
-    .update(pecasTable)
-    .set(updates)
-    .where(eq(pecasTable.id, id))
-    .returning();
-  if (!peca) { res.status(404).json({ error: "Peça não encontrada" }); return; }
-  res.json(peca);
+  try {
+    const peca = await db.transaction(async (tx) => {
+      const [atual] = await tx.select().from(pecasTable).where(eq(pecasTable.id, id));
+      if (!atual) return null;
+      const [atualizada] = await tx
+        .update(pecasTable)
+        .set(updates)
+        .where(eq(pecasTable.id, id))
+        .returning();
+      // Estoque compartilhado: espelha quantidade + modelo/qualidade na peça gêmea
+      // do outro setor (encontrada pelo modelo+qualidade ORIGINAIS), mantendo o par
+      // sincronizado e preservando o valor próprio de cada setor.
+      const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
+      await tx
+        .update(pecasTable)
+        .set({
+          quantidade: novaQuantidade,
+          modelo: String(modelo),
+          qualidade: String(qualidade),
+        })
+        .where(
+          and(
+            eq(pecasTable.setor, outroSetor),
+            sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
+            sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
+          ),
+        );
+      return atualizada;
+    });
+    if (!peca) { res.status(404).json({ error: "Peça não encontrada" }); return; }
+    res.json(peca);
+  } catch (err) {
+    req.log.error({ err }, "peca update failed");
+    res.status(500).json({ error: "Falha ao atualizar peça (nada foi salvo)" });
+  }
 });
 
 router.post("/pecas/:id/vender", async (req, res): Promise<void> => {

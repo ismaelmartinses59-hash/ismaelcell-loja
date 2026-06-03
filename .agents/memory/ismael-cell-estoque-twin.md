@@ -13,6 +13,11 @@ a part has a "twin" = the row in the opposite setor with the same `modelo` + `qu
 twin. Existing examples: `/pecas/:id/vender`, `/pecas/:id/devolver`, and `/caixa`
 (peça-linked entrada). Decrements are guarded with `quantidade > 0`.
 
+**Edit endpoint (`PUT /pecas/:id`):** mirrors `quantidade` AND `modelo`/`qualidade`
+(renames) to the twin, found by the ORIGINAL pre-edit modelo+qualidade, so the pair stays
+linked after a rename. It does NOT copy `valor`/`valorCusto` (each setor keeps its own
+price). Match the twin by the pre-update values, never the new ones.
+
 **Caixa coupling:** a peça-linked `entrada` in `/caixa` ALSO inserts a row into `vendas`
 (so it shows in the Vendas list), and `DELETE /caixa/:id` reverts both the stock (peça +
 twin) and the venda. These multi-write flows are wrapped in `db.transaction(...)` for
