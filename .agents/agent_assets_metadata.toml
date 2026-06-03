@@ -6,3 +6,9 @@ id = "bTXReYjjOmmjsQbBSGZLO"
 uri = "file://ismael-cell-codigo.tar.gz"
 type = "unspecified"
 title = "Código do Ismael Cell (.tar.gz)"
+
+[[outputs]]
+id = "qajaIbhOmzfzI7h73-CXu"
+uri = "file://IDEIAS-MELHORIAS.md"
+type = "text"
+title = "Ideias de melhorias — Ismael Cell"
