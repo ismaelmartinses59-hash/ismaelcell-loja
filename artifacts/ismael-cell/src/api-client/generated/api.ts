@@ -650,3 +650,138 @@ export const useDeleteOrder = <
   };
   return useMutation(mutationOptions);
 };
+
+// ─── caixa ──────────────────────────────────────────────────────────────────
+
+export type CaixaMovimento = {
+  id: number;
+  tipo: "entrada" | "saida";
+  valor: string;
+  motivo: string;
+  pecaId: number | null;
+  vendaId: number | null;
+  modelo: string | null;
+  createdAt: string;
+};
+
+export type CaixaResumo = {
+  movimentos: CaixaMovimento[];
+  totalEntradas: number;
+  totalSaidas: number;
+  saldo: number;
+};
+
+export type ListCaixaParams = {
+  periodo?: string;
+  inicio?: string;
+  fim?: string;
+};
+
+export const getListCaixaQueryKey = (params?: ListCaixaParams) => {
+  return [`/api/caixa`, ...(params ? [params] : [])] as const;
+};
+
+export const listCaixa = async (
+  params?: ListCaixaParams,
+  options?: RequestInit,
+): Promise<CaixaResumo> => {
+  const search = new URLSearchParams();
+  if (params?.periodo) search.set("periodo", params.periodo);
+  if (params?.inicio) search.set("inicio", params.inicio);
+  if (params?.fim) search.set("fim", params.fim);
+  const qs = search.toString();
+  return customFetch<CaixaResumo>(`/api/caixa${qs ? `?${qs}` : ""}`, {
+    ...options,
+    method: "GET",
+  });
+};
+
+export function useListCaixa<
+  TData = Awaited<ReturnType<typeof listCaixa>>,
+  TError = ErrorType<unknown>,
+>(params?: ListCaixaParams, options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listCaixa>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getListCaixaQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCaixa>>> = ({
+    signal,
+  }) => listCaixa(params, { signal, ...requestOptions });
+  const query = useQuery({
+    queryKey,
+    queryFn,
+    ...queryOptions,
+  }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey };
+}
+
+export type CreateCaixaBody = {
+  tipo: "entrada" | "saida";
+  valor: string;
+  motivo: string;
+  pecaId?: number | null;
+};
+
+export const createCaixa = async (
+  data: CreateCaixaBody,
+  options?: RequestInit,
+): Promise<CaixaMovimento> => {
+  return customFetch<CaixaMovimento>(`/api/caixa`, {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+};
+
+export const useCreateCaixa = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCaixa>>,
+    TError,
+    { data: CreateCaixaBody },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["createCaixa"],
+    mutationFn: ({ data }: { data: CreateCaixaBody }) =>
+      createCaixa(data, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
+
+export const deleteCaixa = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(`/api/caixa/${id}`, {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const useDeleteCaixa = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCaixa>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["deleteCaixa"],
+    mutationFn: ({ id }: { id: number }) => deleteCaixa(id, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
