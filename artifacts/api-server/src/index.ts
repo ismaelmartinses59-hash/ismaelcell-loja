@@ -88,6 +88,18 @@ async function ensureSchema(): Promise<void> {
         created_at timestamp NOT NULL DEFAULT now()
       )
     `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS caixa (
+        id serial PRIMARY KEY,
+        tipo text NOT NULL,
+        valor text NOT NULL,
+        motivo text NOT NULL,
+        peca_id integer,
+        venda_id integer,
+        modelo text,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
     logger.info("Schema check ok");
   } catch (err) {
     logger.error({ err }, "Schema check failed");

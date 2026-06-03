@@ -35,6 +35,10 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 - `garantia` (text, nullable) — warranty period
 - `data_servico` (text, nullable) — service date (YYYY-MM-DD)
 
+### DB Fields (caixa table)
+- `id`, `tipo` (`entrada` | `saida`), `valor` (text), `motivo` (text), `pecaId` (nullable), `vendaId` (nullable), `modelo` (nullable), `createdAt`
+- Caixa is ÚNICO/unified (not scoped by `tipo` cliente/lojista). When an `entrada` is linked to a peça, it decrements that peça + its twin and inserts a row into `vendas`; deleting that movimento reverts both stock and the venda (all inside a DB transaction).
+
 ### Status Values
 `aguardando` | `em andamento` | `concluido` | `problema` | `encerrado`
 
@@ -55,6 +59,7 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 - WhatsApp sharing: links to `/status/:codigo` for each order
 - Public order status page (no login required)
 - Dashboard stats: total, aguardando, em andamento, concluido, problema (filtered by tipo)
+- **Caixa** (cash register/ledger): unified entradas/saídas with required motivo; period filters (7/15/30 days + custom date range); shows totalEntradas, totalSaidas, saldo. An entrada can be linked to a peça (autocomplete with stock qty) which baixa o estoque (peça + gêmea) and registers a venda; delete reverts both.
 
 ### Routes (frontend)
 - `/` — Login
@@ -71,6 +76,9 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 - `DELETE /api/orders/:id` — delete order
 - `POST /api/orders/:id/reactivate` — reactivate concluded order
 - `GET /api/orders/stats?tipo=lojista|cliente` — dashboard stats filtered by tipo
+- `GET /api/caixa?periodo=7|15|30|365` or `?inicio=YYYY-MM-DD&fim=YYYY-MM-DD` — movimentos + totalEntradas + totalSaidas + saldo
+- `POST /api/caixa` — create entrada/saida (`tipo`, `valor`, `motivo`, optional `pecaId` to baixa estoque + create venda)
+- `DELETE /api/caixa/:id` — delete movimento (reverts venda + stock if `vendaId` present)
 
 ### Important implementation notes
 - `useDeleteOrder`, `useEditOrder`, `useReactivateOrder` are manually appended to `lib/api-client-react/src/generated/api.ts` — do NOT regenerate blindly

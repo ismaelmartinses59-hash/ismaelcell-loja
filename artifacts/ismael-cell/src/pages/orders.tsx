@@ -10,11 +10,12 @@ import { OrderCard } from "@/components/order-card";
 import { FaturamentoModal } from "@/components/faturamento-modal";
 import { GarantiaModal } from "@/components/garantia-modal";
 import { CatalogoModal } from "@/components/catalogo-modal";
+import { CaixaModal } from "@/components/caixa-modal";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield, Package, HandCoins } from "lucide-react";
+import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield, Package, HandCoins, Wallet } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
@@ -29,6 +30,7 @@ export default function Orders() {
   const [showFaturamento, setShowFaturamento] = useState(false);
   const [showGarantia, setShowGarantia] = useState(false);
   const [showCatalogo, setShowCatalogo] = useState(false);
+  const [showCaixa, setShowCaixa] = useState(false);
   const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
@@ -130,6 +132,7 @@ export default function Orders() {
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} onClose={() => setShowGarantia(false)} />
       <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber"} />
+      <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -180,6 +183,16 @@ export default function Orders() {
             >
               <Package className="h-4 w-4" />
               <span className="hidden sm:inline">Peças</span>
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="flex items-center gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              onClick={() => setShowCaixa(true)}
+              title="Caixa"
+            >
+              <Wallet className="h-4 w-4" />
+              <span className="hidden sm:inline">Caixa</span>
             </Button>
             <Button
               size="sm"
