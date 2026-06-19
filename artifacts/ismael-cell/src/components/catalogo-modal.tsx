@@ -71,6 +71,44 @@ function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("pt-BR");
 }
 
+// Normaliza nome p/ comparação: minúsculo, sem acento, espaços únicos
+function normNome(s: string): string {
+  return (s ?? "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
+}
+
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  let cur = new Array<number>(n + 1);
+  for (let i = 1; i <= m; i++) {
+    cur[0] = i;
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      cur[j] = Math.min(cur[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+    }
+    [prev, cur] = [cur, prev];
+  }
+  return prev[n];
+}
+
+// Considera nomes "parecidos" p/ sugerir juntar numa conta só
+function nomeSimilar(a: string, b: string): boolean {
+  const x = normNome(a), y = normNome(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (x.length >= 3 && (y.includes(x) || x.includes(y))) return true;
+  const xf = x.split(" ")[0], yf = y.split(" ")[0];
+  if (xf.length >= 3 && xf === yf) return true;
+  return levenshtein(x, y) <= 2 && Math.min(x.length, y.length) >= 4;
+}
+
 // ─── Peca Form ────────────────────────────────────────────────────────────────
 
 interface PecaFormProps {
@@ -652,6 +690,58 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const totalAReceber = contas.reduce((a, c) => a + (c.saldo > 0 ? c.saldo : 0), 0);
   const contasAbertas = contas.filter((c) => c.conta.closedAt === null);
 
+  // Sugestão de conta existente ao digitar o nome do devedor (juntar tudo numa nota só)
+  const servNomeNorm = normNome(servNome);
+  const contaExataServ =
+    servNome.trim().length >= 2
+      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === servTipo && normNome(c.conta.nome) === servNomeNorm)
+      : undefined;
+  const contaSugeridaServ =
+    !contaExataServ && servNome.trim().length >= 2
+      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === servTipo && nomeSimilar(servNome, c.conta.nome))
+      : undefined;
+
+  // Mesmas sugestões para o fluxo de venda FIADO de peça
+  const fiadoNomeNorm = normNome(fiadoNome);
+  const contaExataFiado =
+    fiadoNome.trim().length >= 2
+      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === fiadoTipo && normNome(c.conta.nome) === fiadoNomeNorm)
+      : undefined;
+  const contaSugeridaFiado =
+    !contaExataFiado && fiadoNome.trim().length >= 2
+      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === fiadoTipo && nomeSimilar(fiadoNome, c.conta.nome))
+      : undefined;
+
+  // Compartilhar extrato detalhado da conta no WhatsApp
+  const compartilharContaWhatsApp = (c: ContaResumo) => {
+    const fmtDT = (iso: string) =>
+      new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+    const itensOrdenados = [...c.itens].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const pagsOrdenados = [...c.pagamentos].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    const linhas: string[] = [];
+    linhas.push("📱 *ISMAEL CELL* — Assistência Técnica");
+    linhas.push(`Extrato de: *${c.conta.nome}*`);
+    linhas.push("");
+    linhas.push("*Itens / Serviços:*");
+    itensOrdenados.forEach((item) => {
+      const ql = item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : "";
+      linhas.push(`• ${item.modelo}${ql} — ${formatMoney(item.valor)} — ${fmtDT(item.createdAt)}`);
+    });
+    if (pagsOrdenados.length > 0) {
+      linhas.push("");
+      linhas.push("*Pagamentos recebidos:*");
+      pagsOrdenados.forEach((p) => {
+        linhas.push(`• ${formatMoney(p.valor)} — ${fmtDT(p.createdAt)}`);
+      });
+    }
+    linhas.push("");
+    linhas.push(`Total: ${fmtBRL(c.totalItens)}`);
+    if (c.totalPago > 0) linhas.push(`Já pago: ${fmtBRL(c.totalPago)}`);
+    linhas.push(c.saldo > 0 ? `*Saldo devedor: ${fmtBRL(c.saldo)}*` : "*✅ Conta quitada — nada a pagar*");
+    const text = linhas.join("\n");
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
+  };
+
   // ── Garantia mutations ────────────────────────────────────────────────────────
   const addGarantiaMutation = useMutation({
     mutationFn: (data: { modelo: string; qualidade: string; lojista: string; motivo: string }) =>
@@ -1119,6 +1209,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       <option key={n} value={n} />
                     ))}
                   </datalist>
+                  {contaExataServ && (
+                    <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800">
+                      ✅ Vai somar na conta aberta de <b>{contaExataServ.conta.nome}</b> (saldo atual {fmtBRL(contaExataServ.saldo)}). Tudo numa nota só.
+                    </div>
+                  )}
+                  {contaSugeridaServ && (
+                    <button
+                      type="button"
+                      onClick={() => setServNome(contaSugeridaServ.conta.nome)}
+                      className="w-full text-left rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-2 text-[11px] text-amber-900 hover:bg-amber-100"
+                    >
+                      💡 Já existe <b>{contaSugeridaServ.conta.nome}</b> devendo {fmtBRL(contaSugeridaServ.saldo)}. Toque para usar essa conta e juntar tudo numa nota só.
+                    </button>
+                  )}
                   <Input
                     placeholder="Serviço (ex: Remoção de conta Google)"
                     value={servDescricao}
@@ -1137,7 +1241,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     size="sm"
                     className="w-full h-9 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold"
                     disabled={!servNome.trim() || !servDescricao.trim() || !servValor.trim() || novoServicoMutation.isPending}
-                    onClick={() => novoServicoMutation.mutate({ nome: servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim() })}
+                    onClick={() => novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim() })}
                   >
                     <Check className="w-4 h-4 mr-1.5" /> {novoServicoMutation.isPending ? "Salvando..." : "Lançar no A Receber"}
                   </Button>
@@ -1230,6 +1334,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         {!aberta && !isDeleting && (
                           <Button size="sm" variant="outline" className="w-full h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeletingContaId(c.conta.id)}>
                             <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Apagar conta quitada
+                          </Button>
+                        )}
+
+                        {/* Compartilhar extrato no WhatsApp */}
+                        {!isPagando && !isDeleting && addItemContaId !== c.conta.id && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="w-full h-8 text-xs text-green-700 border-green-300 hover:bg-green-50 font-semibold"
+                            onClick={() => compartilharContaWhatsApp(c)}
+                          >
+                            <Share2 className="w-3.5 h-3.5 mr-1.5" /> Compartilhar no WhatsApp
                           </Button>
                         )}
 
@@ -1451,16 +1567,32 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         <option key={n} value={n} />
                       ))}
                     </datalist>
-                    <div className="text-[10px] text-muted-foreground mt-1">
-                      Se já existe uma conta aberta com esse nome, a peça vai entrar nela.
-                    </div>
+                    {contaExataFiado && (
+                      <div className="mt-1.5 rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800">
+                        ✅ Vai entrar na conta aberta de <b>{contaExataFiado.conta.nome}</b> (saldo atual {fmtBRL(contaExataFiado.saldo)}). Tudo numa nota só.
+                      </div>
+                    )}
+                    {contaSugeridaFiado && (
+                      <button
+                        type="button"
+                        onClick={() => setFiadoNome(contaSugeridaFiado.conta.nome)}
+                        className="mt-1.5 w-full text-left rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-2 text-[11px] text-amber-900 hover:bg-amber-100"
+                      >
+                        💡 Já existe <b>{contaSugeridaFiado.conta.nome}</b> devendo {fmtBRL(contaSugeridaFiado.saldo)}. Toque para usar essa conta e juntar tudo numa nota só.
+                      </button>
+                    )}
+                    {!contaExataFiado && !contaSugeridaFiado && (
+                      <div className="text-[10px] text-muted-foreground mt-1">
+                        Se já existe uma conta aberta com esse nome, a peça vai entrar nela.
+                      </div>
+                    )}
                   </div>
                   <div className="flex gap-2 pt-1">
                     <Button variant="ghost" className="flex-1" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
                     <Button
                       className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                       disabled={!fiadoNome.trim() || venderMutation.isPending}
-                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: fiadoNome.trim(), tipoDevedor: fiadoTipo })}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: contaExataFiado ? contaExataFiado.conta.nome : fiadoNome.trim(), tipoDevedor: fiadoTipo })}
                     >
                       {venderMutation.isPending ? "..." : "Confirmar"}
                     </Button>

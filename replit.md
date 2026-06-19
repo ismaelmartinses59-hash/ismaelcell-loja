@@ -60,6 +60,8 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 - Public order status page (no login required)
 - Dashboard stats: total, aguardando, em andamento, concluido, problema (filtered by tipo)
 - **Caixa** (cash register/ledger): unified entradas/saídas with required motivo; period filters (7/15/30 days + custom date range); shows totalEntradas, totalSaidas, saldo. An entrada can be linked to a peça (autocomplete with stock qty) which baixa o estoque (peça + gêmea) and registers a venda; delete reverts both.
+- **A Receber — sugestão de nota única**: ao digitar o nome do devedor (form de serviço fiado e diálogo FIADO de peça), o app detecta uma conta aberta com nome igual (aviso verde "vai somar na conta") ou parecido (botão âmbar para usar a conta existente) para manter tudo numa nota só. Quando há match exato, o frontend envia o `conta.nome` canônico para garantir o merge no backend (`findOrCreateConta` só casa por `LOWER(TRIM)`).
+- **A Receber — compartilhar no WhatsApp**: botão por conta que abre o WhatsApp (`wa.me`) com um extrato detalhado (cada item/serviço com data e hora e valor, pagamentos, total e saldo devedor).
 
 ### Routes (frontend)
 - `/` — Login
