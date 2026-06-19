@@ -724,7 +724,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     try {
       // Desenha a imagem pixel a pixel (canvas 2D) — sai idêntico em qualquer
       // aparelho. NÃO usa html2canvas (renderiza torto no Safari do iPhone).
-      const blob = await generateExtratoBlob({ nome: c.conta.nome, saldo: c.saldo, itens: c.itens });
+      const blob = await generateExtratoBlob({
+        nome: c.conta.nome,
+        saldo: c.saldo,
+        itens: c.itens,
+        pagamentos: c.pagamentos,
+        totalItens: c.totalItens,
+        totalPago: c.totalPago,
+      });
       const nomeArq = c.conta.nome.replace(/\s+/g, "-");
       const file = new File([blob], `extrato-${nomeArq}.png`, { type: "image/png" });
       const url = URL.createObjectURL(blob);
