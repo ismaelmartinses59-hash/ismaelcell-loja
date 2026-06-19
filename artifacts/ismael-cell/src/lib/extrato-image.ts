@@ -10,10 +10,19 @@ export interface ExtratoItem {
   createdAt: string;
 }
 
+export interface ExtratoPagamento {
+  id: string | number;
+  valor: string;
+  createdAt: string;
+}
+
 export interface ExtratoData {
   nome: string;
   saldo: number;
   itens: ExtratoItem[];
+  pagamentos?: ExtratoPagamento[];
+  totalItens?: number;
+  totalPago?: number;
 }
 
 const FONT = "Arial, Helvetica, sans-serif";
@@ -155,12 +164,43 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
   const itens = [...data.itens].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
-  const n = Math.max(itens.length, 1);
+  const pagamentos = [...(data.pagamentos ?? [])].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+  const nItens = Math.max(itens.length, 1);
+  const nPag = pagamentos.length;
+  const hasPag = nPag > 0;
+  const totalItens = data.totalItens ?? itens.reduce((s, it) => s + (parseFloat(it.valor.replace(",", ".")) || 0), 0);
+  const totalPago = data.totalPago ?? pagamentos.reduce((s, p) => s + (parseFloat(p.valor.replace(",", ".")) || 0), 0);
 
+  // ── Geometria (px lógicos) ──
   const W = 640;
-  const itemsTop = 328;
-  const itemsBottom = itemsTop + n * 66;
-  const H = 612 + n * 66;
+  const CX = 50; // conteúdo do painel
+  const CW = 540;
+  const RIGHT = CX + CW; // 590
+
+  const titleTop = 136;
+  const infoTop = titleTop + 34 + 20; // 190
+  const itemsBarTop = infoTop + 64 + 20; // 274
+  const itemsTop = itemsBarTop + 42 + 12; // 328
+  const itemsBottom = itemsTop + nItens * 66;
+
+  const pagBarTop = itemsBottom + 16;
+  const pagTop = pagBarTop + 42 + 12;
+  const PAG_ROW = 48;
+  const pagBottom = hasPag ? pagTop + nPag * PAG_ROW : itemsBottom;
+
+  const divTop = pagBottom + 16;
+  const totalTop = divTop + 32 + 16;
+  const totalH = totalPago > 0 ? 100 : 78;
+  const totalBottom = totalTop + totalH;
+
+  const panelTop = 112;
+  const panelBottom = totalBottom + 24;
+  const panelH = panelBottom - panelTop;
+
+  const footerTop = panelBottom + 18;
+  const H = footerTop + 100;
 
   const S = 2; // nitidez (saída ~1280px de largura)
   const canvas = document.createElement("canvas");
@@ -198,68 +238,59 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
   txt(ctx, "ASSISTÊNCIA TÉCNICA ESPECIALIZADA", 320, 70, "700 12px", "#9db8e6", "center", "top");
 
   // Painel branco
-  const panelTop = 112;
-  const panelH = 382 + n * 66;
   rrPath(ctx, 26, panelTop, 588, panelH, 18);
   ctx.fillStyle = "#ffffff";
   ctx.fill();
 
   // Título
-  txt(ctx, "EXTRATO DE DÉBITO", 320, 136 + 17, "800 28px", "#0c2256", "center", "middle");
+  txt(ctx, "EXTRATO DE DÉBITO", 320, titleTop + 17, "800 28px", "#0c2256", "center", "middle");
 
   // Caixas: Cliente + Data de emissão
-  const boxTop = 190;
   const drawInfoBox = (
     x: number,
     icon: (c: CanvasRenderingContext2D) => void,
     label: string,
     value: string,
-    valueMaxW: number,
   ) => {
-    rrPath(ctx, x, boxTop, 263, 64, 10);
+    rrPath(ctx, x, infoTop, 263, 64, 10);
     ctx.strokeStyle = "#e2e8f0";
     ctx.lineWidth = 1;
     ctx.stroke();
     ctx.fillStyle = "#0c2256";
     ctx.beginPath();
-    ctx.arc(x + 30, boxTop + 32, 18, 0, 2 * Math.PI);
+    ctx.arc(x + 30, infoTop + 32, 18, 0, 2 * Math.PI);
     ctx.fill();
-    strokeIcon(ctx, x + 30, boxTop + 32, 9, icon);
-    txt(ctx, label, x + 58, boxTop + 13, "700 10px", "#64748b", "left", "top");
+    strokeIcon(ctx, x + 30, infoTop + 32, 9, icon);
+    txt(ctx, label, x + 58, infoTop + 13, "700 10px", "#64748b", "left", "top");
     ctx.font = `800 16px ${FONT}`;
-    txt(ctx, fitText(ctx, value, valueMaxW), x + 58, boxTop + 31, "800 16px", "#0c2256", "left", "top");
+    txt(ctx, fitText(ctx, value, 191), x + 58, infoTop + 31, "800 16px", "#0c2256", "left", "top");
   };
-  drawInfoBox(50, iconPerson, "CLIENTE", nome, 191);
-  drawInfoBox(327, iconCalendar, "DATA DE EMISSÃO", new Date().toLocaleDateString("pt-BR"), 191);
+  drawInfoBox(CX, iconPerson, "CLIENTE", nome);
+  drawInfoBox(327, iconCalendar, "DATA DE EMISSÃO", new Date().toLocaleDateString("pt-BR"));
 
-  // Barra de seção
-  const secTop = 274;
-  rrPath(ctx, 50, secTop, 540, 42, 8);
+  // Barra de seção (Produtos)
+  rrPath(ctx, CX, itemsBarTop, CW, 42, 8);
   ctx.fillStyle = "#0c2256";
   ctx.fill();
-  strokeIcon(ctx, 64 + 9, secTop + 12 + 9, 9, iconClipboard);
-  txt(ctx, "PRODUTOS E SERVIÇOS", 92, secTop + 21, "700 16px", "#ffffff", "left", "middle");
+  strokeIcon(ctx, CX + 14 + 9, itemsBarTop + 12 + 9, 9, iconClipboard);
+  txt(ctx, "PRODUTOS E SERVIÇOS", CX + 42, itemsBarTop + 21, "700 16px", "#ffffff", "left", "middle");
 
   // Lista de itens
-  rrPath(ctx, 50, itemsTop, 540, n * 66, 10);
+  rrPath(ctx, CX, itemsTop, CW, nItens * 66, 10);
   ctx.strokeStyle = "#e2e8f0";
   ctx.lineWidth = 1;
   ctx.stroke();
-
   itens.forEach((item, i) => {
     const top = itemsTop + i * 66;
-    // ícone
     ctx.fillStyle = "#0c2256";
     ctx.beginPath();
-    ctx.arc(64 + 20, top + 13 + 20, 20, 0, 2 * Math.PI);
+    ctx.arc(CX + 14 + 20, top + 13 + 20, 20, 0, 2 * Math.PI);
     ctx.fill();
-    strokeIcon(ctx, 64 + 20, top + 13 + 20, 10, iconClipboard);
-    // nome (com qualidade)
+    strokeIcon(ctx, CX + 14 + 20, top + 13 + 20, 10, iconClipboard);
     const nomeItem =
       item.modelo + (item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : "");
     ctx.font = `800 16px ${FONT}`;
-    txt(ctx, fitText(ctx, nomeItem, 356), 116, top + 13, "800 16px", "#0c2256", "left", "top");
-    // data
+    txt(ctx, fitText(ctx, nomeItem, 356), CX + 66, top + 13, "800 16px", "#0c2256", "left", "top");
     const d = new Date(item.createdAt).toLocaleString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
@@ -267,25 +298,60 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
       hour: "2-digit",
       minute: "2-digit",
     });
-    txt(ctx, d, 116, top + 36, "400 12px", "#64748b", "left", "top");
-    // valor
-    txt(ctx, "Valor", 574, top + 15, "600 11px", "#64748b", "right", "top");
-    txt(ctx, formatMoney(item.valor), 574, top + 29, "800 18px", "#16a34a", "right", "top");
-    // separador
+    txt(ctx, d, CX + 66, top + 36, "400 12px", "#64748b", "left", "top");
+    txt(ctx, "Valor", RIGHT - 16, top + 15, "600 11px", "#64748b", "right", "top");
+    txt(ctx, formatMoney(item.valor), RIGHT - 16, top + 29, "800 18px", "#16a34a", "right", "top");
     if (i < itens.length - 1) {
       ctx.strokeStyle = "#e2e8f0";
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
       ctx.beginPath();
-      ctx.moveTo(50, top + 66);
-      ctx.lineTo(590, top + 66);
+      ctx.moveTo(CX, top + 66);
+      ctx.lineTo(RIGHT, top + 66);
       ctx.stroke();
       ctx.setLineDash([]);
     }
   });
 
+  // Seção PAGAMENTOS (AV)
+  if (hasPag) {
+    rrPath(ctx, CX, pagBarTop, CW, 42, 8);
+    ctx.fillStyle = "#16a34a";
+    ctx.fill();
+    txt(ctx, "$", CX + 23, pagBarTop + 21, "800 18px", "#ffffff", "center", "middle");
+    txt(ctx, "PAGAMENTOS (AV)", CX + 42, pagBarTop + 21, "700 16px", "#ffffff", "left", "middle");
+
+    rrPath(ctx, CX, pagTop, CW, nPag * PAG_ROW, 10);
+    ctx.fillStyle = "#f0fdf4";
+    ctx.fill();
+    ctx.strokeStyle = "#bbf7d0";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    pagamentos.forEach((p, i) => {
+      const top = pagTop + i * PAG_ROW;
+      const cy = top + PAG_ROW / 2;
+      ctx.fillStyle = "#16a34a";
+      ctx.beginPath();
+      ctx.arc(CX + 14 + 14, cy, 14, 0, 2 * Math.PI);
+      ctx.fill();
+      txt(ctx, "$", CX + 14 + 14, cy, "800 15px", "#ffffff", "center", "middle");
+      const d = new Date(p.createdAt).toLocaleDateString("pt-BR");
+      txt(ctx, `Pagamento em ${d}`, CX + 56, cy, "600 14px", "#166534", "left", "middle");
+      txt(ctx, formatMoney(p.valor), RIGHT - 16, cy, "800 16px", "#16a34a", "right", "middle");
+      if (i < nPag - 1) {
+        ctx.strokeStyle = "#bbf7d0";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath();
+        ctx.moveTo(CX, top + PAG_ROW);
+        ctx.lineTo(RIGHT, top + PAG_ROW);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    });
+  }
+
   // Divisor $
-  const divTop = itemsBottom + 16;
   ctx.fillStyle = "#2f86ff";
   ctx.beginPath();
   ctx.arc(320, divTop + 16, 16, 0, 2 * Math.PI);
@@ -293,8 +359,7 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
   txt(ctx, "$", 320, divTop + 16, "800 16px", "#ffffff", "center", "middle");
 
   // Total
-  const totalTop = itemsBottom + 64;
-  rrPath(ctx, 50, totalTop, 540, 78, 12);
+  rrPath(ctx, CX, totalTop, CW, totalH, 12);
   ctx.fillStyle = "#eafaf1";
   ctx.fill();
   ctx.strokeStyle = "#bbf7d0";
@@ -302,14 +367,28 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
   ctx.stroke();
   ctx.fillStyle = "#16a34a";
   ctx.beginPath();
-  ctx.arc(50 + 18 + 23, totalTop + 16 + 23, 23, 0, 2 * Math.PI);
+  ctx.arc(CX + 18 + 23, totalTop + 16 + 23, 23, 0, 2 * Math.PI);
   ctx.fill();
-  strokeIcon(ctx, 50 + 18 + 23, totalTop + 16 + 23, 11, iconWallet);
-  txt(ctx, "VALOR TOTAL DO DÉBITO", 128, totalTop + 15, "700 13px", "#166534", "left", "top");
-  txt(ctx, fmtBRL(saldo), 128, totalTop + 33, "800 30px", "#16a34a", "left", "top");
+  strokeIcon(ctx, CX + 18 + 23, totalTop + 16 + 23, 11, iconWallet);
+  if (totalPago > 0) {
+    txt(ctx, "VALOR TOTAL DO DÉBITO", 128, totalTop + 13, "700 13px", "#166534", "left", "top");
+    txt(ctx, fmtBRL(saldo), 128, totalTop + 30, "800 28px", "#16a34a", "left", "top");
+    txt(
+      ctx,
+      `Total dos itens: ${fmtBRL(totalItens)}   •   Pago (AV): ${fmtBRL(totalPago)}`,
+      128,
+      totalTop + 70,
+      "600 12px",
+      "#64748b",
+      "left",
+      "top",
+    );
+  } else {
+    txt(ctx, "VALOR TOTAL DO DÉBITO", 128, totalTop + 15, "700 13px", "#166534", "left", "top");
+    txt(ctx, fmtBRL(saldo), 128, totalTop + 33, "800 30px", "#16a34a", "left", "top");
+  }
 
   // Rodapé
-  const footerTop = (totalTop + 78 + 24) + 18;
   ctx.font = `800 18px ${FONT}`;
   const fa = "ISMAEL ";
   const fwa = ctx.measureText(fa).width;
