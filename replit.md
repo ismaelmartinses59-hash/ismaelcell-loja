@@ -76,6 +76,8 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 - `DELETE /api/orders/:id` — delete order
 - `POST /api/orders/:id/reactivate` — reactivate concluded order
 - `GET /api/orders/stats?tipo=lojista|cliente` — dashboard stats filtered by tipo
+- `POST /api/contas-receber/:id/item` — add a manual item/service (`descricao`, `valor`) to an existing debtor account; reopens it if it was quitada
+- `POST /api/contas-receber/novo-servico` — create/reuse a debtor account by `nome`+`tipo` and add a manual service item (`descricao`, `valor`) — fiado without selling a peça
 - `GET /api/caixa?periodo=7|15|30|365` or `?inicio=YYYY-MM-DD&fim=YYYY-MM-DD` — movimentos + totalEntradas + totalSaidas + saldo
 - `POST /api/caixa` — create entrada/saida (`tipo`, `valor`, `motivo`, optional `pecaId` to baixa estoque + create venda)
 - `DELETE /api/caixa/:id` — delete movimento (reverts venda + stock if `vendaId` present)
