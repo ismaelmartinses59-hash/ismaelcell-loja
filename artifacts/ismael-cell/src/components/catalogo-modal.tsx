@@ -7,7 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { ExtratoCard } from "@/components/extrato-card";
+import { generateExtratoBlob } from "@/lib/extrato-image";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -477,8 +477,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const shareRef = useRef<HTMLDivElement>(null);
   const html2canvasRef = useRef<typeof import("html2canvas").default | null>(null);
   const bgImgRef = useRef<HTMLImageElement | null>(null);
-  const [sharingConta, setSharingConta] = useState<ContaResumo | null>(null);
-  const extratoShareRef = useRef<HTMLDivElement>(null);
+
+  // Revoga o object URL do preview anterior quando troca ou desmonta (evita leak).
+  useEffect(() => {
+    return () => { if (sharePreview) URL.revokeObjectURL(sharePreview.url); };
+  }, [sharePreview]);
 
   // Pré-carrega html2canvas e a imagem de fundo assim que o modal abre,
   // para que o clique em "compartilhar" não perca o gesto do usuário (iOS).
@@ -717,30 +720,17 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
 
   // Compartilhar extrato de débito como IMAGEM (cartão Ismael Cell, gerado dinamicamente)
   const handleShareExtrato = useCallback(async (c: ContaResumo) => {
-    setSharingConta(c);
     setGeneratingShare(true);
     try {
-      const html2canvas = html2canvasRef.current ?? (await import("html2canvas")).default;
-      html2canvasRef.current = html2canvas;
-      // Garante que as fontes carregaram antes de medir (evita texto torto)
-      if (document.fonts?.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
-      // 2 frames para garantir que o card oculto já foi montado/medido
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
-      const el = extratoShareRef.current;
-      if (!el) { setSharingConta(null); setGeneratingShare(false); return; }
-      const canvas = await html2canvas(el, { backgroundColor: "#071536", scale: 2, useCORS: true, logging: false });
-      canvas.toBlob((blob) => {
-        if (!blob) { setSharingConta(null); setGeneratingShare(false); return; }
-        const nomeArq = c.conta.nome.replace(/\s+/g, "-");
-        const file = new File([blob], `extrato-${nomeArq}.png`, { type: "image/png" });
-        const url = URL.createObjectURL(blob);
-        setSharePreview({ url, file, modelo: `Extrato de ${c.conta.nome}` });
-        setSharingConta(null);
-        setGeneratingShare(false);
-      }, "image/png");
+      // Desenha a imagem pixel a pixel (canvas 2D) — sai idêntico em qualquer
+      // aparelho. NÃO usa html2canvas (renderiza torto no Safari do iPhone).
+      const blob = await generateExtratoBlob({ nome: c.conta.nome, saldo: c.saldo, itens: c.itens });
+      const nomeArq = c.conta.nome.replace(/\s+/g, "-");
+      const file = new File([blob], `extrato-${nomeArq}.png`, { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      setSharePreview({ url, file, modelo: `Extrato de ${c.conta.nome}` });
+      setGeneratingShare(false);
     } catch {
-      setSharingConta(null);
       setGeneratingShare(false);
       toast({ title: "Não foi possível gerar a imagem", variant: "destructive" });
     }
@@ -1688,17 +1678,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           </div>
         )}
 
-        {/* Card oculto: EXTRATO DE DÉBITO (gerado dinamicamente p/ compartilhar como imagem) */}
-        {sharingConta && (
-          <div style={{ position: "fixed", left: "-9999px", top: 0 }}>
-            <ExtratoCard
-              ref={extratoShareRef}
-              nome={sharingConta.conta.nome}
-              saldo={sharingConta.saldo}
-              itens={sharingConta.itens}
-            />
-          </div>
-        )}
       </DialogContent>
     </Dialog>
   );

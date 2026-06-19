@@ -1,40 +1,33 @@
 ---
-name: html2canvas 1.4.1 layout quirks
-description: How to build share-image cards that html2canvas 1.4.1 renders correctly (Ismael Cell extrato/peça share cards)
+name: Share-image rendering (extrato / peça cards)
+description: html2canvas mis-renders on iOS Safari; the debtor "extrato" is now drawn pixel-by-pixel on a Canvas 2D. How to verify share images.
 ---
 
-# html2canvas 1.4.1 only renders ABSOLUTE positioning reliably
+# html2canvas is NOT reliable for the EXTRATO share image — use Canvas 2D
 
-When generating share IMAGES from off-screen DOM via html2canvas `^1.4.1`
-(the "EXTRATO DE DÉBITO" / peça share cards), the captured PNG comes out broken
-even though the live DOM looks perfect.
+The Ismael Cell "A Receber → Compartilhar no WhatsApp" button must produce a
+branded "EXTRATO DE DÉBITO" PNG. html2canvas `^1.4.1` was tried 3 ways
+(flexbox, table-cell, and pure absolute-positioning with explicit left/top/width).
+ALL three looked perfect on desktop Chrome but rendered TORTO on the user's
+iPhone (Safari): icons overlapping text, labels clipped at the top, the client
+name falling out of its box. **Desktop verification does NOT prove iOS works for
+html2canvas** — its text/box layout differs per browser engine.
 
-**What FAILS in the canvas output (verified by repeated attempts):**
-- `display:flex; align-items:center` — children overlap, text stacks on icons.
-- `display:table / table-cell; vertical-align:middle` — ALSO breaks (icons overlap text).
-- `inline-block` + `vertical-align:middle` — ALSO breaks the same way.
-In short: any layout that relies on the inline/flex/table layout engine for
-vertical centering is mis-computed by html2canvas 1.4.1.
+**Final solution that works everywhere:** draw the whole receipt pixel-by-pixel
+on an HTMLCanvasElement (Canvas 2D `fillText`/`arc`/`rect`/`fillRect`). Canvas 2D
+is deterministic across browsers, so desktop output == iPhone output.
+- Lives in `artifacts/ismael-cell/src/lib/extrato-image.ts`
+  (`generateExtratoBlob({nome, saldo, itens}) → Promise<Blob>`).
+- `handleShareExtrato` in catalogo-modal.tsx calls it directly (no hidden DOM card,
+  no html2canvas). The old `ExtratoCard` component was deleted.
+- Icons are drawn as vector paths mapped from lucide viewBox(24) into a centered
+  square via `strokeIcon`; long client/item names are ellipsized with `measureText`.
+- Output is scaled 2x (`ctx.scale(2,2)`, canvas 1280px wide) for crispness.
 
-**What WORKS (the only reliable recipe):**
-- Build each "icon + text" unit with a `position:relative` parent and
-  `position:absolute` children placed with explicit `left`/`top`/`width` (px).
-  Icons get an absolute circle (`position:absolute`) with the `<svg>` absolutely
-  positioned inside it (`left = (circle-icon)/2`). Text goes in block flow with
-  `marginLeft` to clear the icon, or its own absolute `left/top/width`.
-- Prefer explicit `left`+`width` over `right` for safety (the proven peça card uses
-  only left/top). `right` mostly works but left/width removes all doubt.
-- Center a single line of text vertically with `lineHeight` == container height
-  (NOT vertical-align). Center horizontally with `textAlign`.
-- Give EVERY text node an explicit `lineHeight` (px) so nothing overlaps.
-- Use a guaranteed font (`Arial, Helvetica, sans-serif`) and `await document.fonts.ready`
-  before capture; solid `background` color (not gradient); wait ~2 rAF after mount.
+**Peça share cards** (cliente/lojista) STILL use html2canvas (`handleShare`,
+`shareRef`) and are fine — only the extrato moved to Canvas 2D.
 
-**How to verify without login/data:** add a TEMP wouter route (e.g. /extrato-preview)
-that renders the card component with mock data, runs html2canvas in a useEffect, and
-shows `canvas.toDataURL()` in an `<img>`. Screenshot it via app_preview, then remove
-the temp route. This shows the ACTUAL canvas output, not the (always-fine) DOM.
-
-**Where:** the card lives in `artifacts/ismael-cell/src/components/extrato-card.tsx`
-(reusable `ExtratoCard`, forwardRef) — keep it as the single source; never reintroduce
-flex/table-cell in capture-critical regions.
+**How to verify a share image without login/data:** add a TEMP wouter route
+(e.g. /extrato-preview) that calls the generator with mock data and shows the
+blob in an `<img>`, screenshot via app_preview, then remove the temp route.
+With Canvas 2D this desktop check is now a valid proxy for the iPhone.
