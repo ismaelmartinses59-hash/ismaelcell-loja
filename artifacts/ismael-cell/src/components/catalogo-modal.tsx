@@ -713,7 +713,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       : undefined;
 
   // Compartilhar extrato detalhado da conta no WhatsApp
-  const compartilharContaWhatsApp = (c: ContaResumo) => {
+  const compartilharContaWhatsApp = async (c: ContaResumo) => {
     const fmtDT = (iso: string) =>
       new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
     const itensOrdenados = [...c.itens].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
@@ -739,6 +739,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     if (c.totalPago > 0) linhas.push(`Já pago: ${fmtBRL(c.totalPago)}`);
     linhas.push(c.saldo > 0 ? `*Saldo devedor: ${fmtBRL(c.saldo)}*` : "*✅ Conta quitada — nada a pagar*");
     const text = linhas.join("\n");
+
+    // Compartilhamento nativo (iOS/Android): abre a folha do sistema p/ escolher
+    // WhatsApp e depois pesquisar/selecionar o contato. wa.me só como fallback no PC.
+    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+      try {
+        await navigator.share({ text });
+        return;
+      } catch (err) {
+        // Usuário cancelou a folha de compartilhamento → não abrir o fallback
+        if ((err as { name?: string })?.name === "AbortError") return;
+      }
+    }
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
   };
 
