@@ -476,6 +476,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const shareRef = useRef<HTMLDivElement>(null);
   const html2canvasRef = useRef<typeof import("html2canvas").default | null>(null);
   const bgImgRef = useRef<HTMLImageElement | null>(null);
+  const [sharingConta, setSharingConta] = useState<ContaResumo | null>(null);
+  const extratoShareRef = useRef<HTMLDivElement>(null);
 
   // Pré-carrega html2canvas e a imagem de fundo assim que o modal abre,
   // para que o clique em "compartilhar" não perca o gesto do usuário (iOS).
@@ -712,47 +714,34 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === fiadoTipo && nomeSimilar(fiadoNome, c.conta.nome))
       : undefined;
 
-  // Compartilhar extrato detalhado da conta no WhatsApp
-  const compartilharContaWhatsApp = async (c: ContaResumo) => {
-    const fmtDT = (iso: string) =>
-      new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
-    const itensOrdenados = [...c.itens].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    const pagsOrdenados = [...c.pagamentos].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-    const linhas: string[] = [];
-    linhas.push("📱 *ISMAEL CELL* — Assistência Técnica");
-    linhas.push(`Extrato de: *${c.conta.nome}*`);
-    linhas.push("");
-    linhas.push("*Itens / Serviços:*");
-    itensOrdenados.forEach((item) => {
-      const ql = item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : "";
-      linhas.push(`• ${item.modelo}${ql} — ${formatMoney(item.valor)} — ${fmtDT(item.createdAt)}`);
-    });
-    if (pagsOrdenados.length > 0) {
-      linhas.push("");
-      linhas.push("*Pagamentos recebidos:*");
-      pagsOrdenados.forEach((p) => {
-        linhas.push(`• ${formatMoney(p.valor)} — ${fmtDT(p.createdAt)}`);
-      });
+  // Compartilhar extrato de débito como IMAGEM (cartão Ismael Cell, gerado dinamicamente)
+  const handleShareExtrato = useCallback(async (c: ContaResumo) => {
+    setSharingConta(c);
+    setGeneratingShare(true);
+    try {
+      const html2canvas = html2canvasRef.current ?? (await import("html2canvas")).default;
+      html2canvasRef.current = html2canvas;
+      // 2 frames para garantir que o card oculto já foi montado/medido
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const el = extratoShareRef.current;
+      if (!el) { setSharingConta(null); setGeneratingShare(false); return; }
+      const canvas = await html2canvas(el, { backgroundColor: "#071536", scale: 2, useCORS: true, logging: false });
+      canvas.toBlob((blob) => {
+        if (!blob) { setSharingConta(null); setGeneratingShare(false); return; }
+        const nomeArq = c.conta.nome.replace(/\s+/g, "-");
+        const file = new File([blob], `extrato-${nomeArq}.png`, { type: "image/png" });
+        const url = URL.createObjectURL(blob);
+        setSharePreview({ url, file, modelo: `Extrato de ${c.conta.nome}` });
+        setSharingConta(null);
+        setGeneratingShare(false);
+      }, "image/png");
+    } catch {
+      setSharingConta(null);
+      setGeneratingShare(false);
+      toast({ title: "Não foi possível gerar a imagem", variant: "destructive" });
     }
-    linhas.push("");
-    linhas.push(`Total: ${fmtBRL(c.totalItens)}`);
-    if (c.totalPago > 0) linhas.push(`Já pago: ${fmtBRL(c.totalPago)}`);
-    linhas.push(c.saldo > 0 ? `*Saldo devedor: ${fmtBRL(c.saldo)}*` : "*✅ Conta quitada — nada a pagar*");
-    const text = linhas.join("\n");
-
-    // Compartilhamento nativo (iOS/Android): abre a folha do sistema p/ escolher
-    // WhatsApp e depois pesquisar/selecionar o contato. wa.me só como fallback no PC.
-    if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
-      try {
-        await navigator.share({ text });
-        return;
-      } catch (err) {
-        // Usuário cancelou a folha de compartilhamento → não abrir o fallback
-        if ((err as { name?: string })?.name === "AbortError") return;
-      }
-    }
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, "_blank");
-  };
+  }, [toast]);
 
   // ── Garantia mutations ────────────────────────────────────────────────────────
   const addGarantiaMutation = useMutation({
@@ -1355,9 +1344,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             size="sm"
                             variant="outline"
                             className="w-full h-8 text-xs text-green-700 border-green-300 hover:bg-green-50 font-semibold"
-                            onClick={() => compartilharContaWhatsApp(c)}
+                            disabled={generatingShare}
+                            onClick={() => handleShareExtrato(c)}
                           >
-                            <Share2 className="w-3.5 h-3.5 mr-1.5" /> Compartilhar no WhatsApp
+                            <Share2 className="w-3.5 h-3.5 mr-1.5" /> {generatingShare ? "Gerando..." : "Compartilhar no WhatsApp"}
                           </Button>
                         )}
 
@@ -1691,6 +1681,115 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 <div style={{ fontSize: 11, color: "#7dd3fc", fontWeight: 600, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Valor</div>
                 <div style={{ fontSize: 26, color: "#4ade80", fontWeight: 800, textAlign: "center", letterSpacing: "-0.5px", textShadow: "0 1px 6px rgba(0,0,0,0.7)" }}>{formatMoney(sharingPeca.valor)}</div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Card oculto: EXTRATO DE DÉBITO (gerado dinamicamente p/ compartilhar como imagem) */}
+        {sharingConta && (
+          <div style={{ position: "fixed", left: "-9999px", top: 0 }}>
+            <div
+              ref={extratoShareRef}
+              style={{ width: 640, fontFamily: "Inter, sans-serif", background: "linear-gradient(165deg, #0c2256 0%, #071536 100%)", padding: 24, boxSizing: "border-box" }}
+            >
+              {/* Cabeçalho / logo */}
+              <div style={{ textAlign: "center", padding: "6px 0 18px" }}>
+                <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: 1, lineHeight: 1 }}>
+                  <span style={{ color: "#ffffff" }}>ISMAEL </span>
+                  <span style={{ color: "#2f86ff" }}>CELL</span>
+                </div>
+                <div style={{ marginTop: 8, color: "#9db8e6", fontSize: 12, fontWeight: 600, letterSpacing: 2 }}>— ASSISTÊNCIA TÉCNICA ESPECIALIZADA —</div>
+              </div>
+
+              {/* Painel branco */}
+              <div style={{ background: "#ffffff", borderRadius: 18, padding: 22 }}>
+                <div style={{ textAlign: "center", fontSize: 28, fontWeight: 800, color: "#0c2256", letterSpacing: 0.5, marginBottom: 18 }}>EXTRATO DE DÉBITO</div>
+
+                {/* Cliente + Data de emissão */}
+                <div style={{ display: "flex", gap: 12, marginBottom: 18 }}>
+                  <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#0c2256", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: 0.5 }}>CLIENTE:</div>
+                      <div style={{ fontSize: 15, color: "#0c2256", fontWeight: 800, lineHeight: 1.1 }}>{sharingConta.conta.nome}</div>
+                    </div>
+                  </div>
+                  <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
+                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#0c2256", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: 0.5 }}>DATA DE EMISSÃO:</div>
+                      <div style={{ fontSize: 15, color: "#0c2256", fontWeight: 800, lineHeight: 1.1 }}>{new Date().toLocaleDateString("pt-BR")}</div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Cabeçalho da seção */}
+                <div style={{ background: "#0c2256", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="6" y="3" width="12" height="4" rx="1" /><path d="M6 5H4v16h16V5h-2" /></svg>
+                  <span style={{ color: "#fff", fontWeight: 700, fontSize: 16, letterSpacing: 0.5 }}>PRODUTOS E SERVIÇOS</span>
+                </div>
+
+                {/* Itens dinâmicos */}
+                <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, overflow: "hidden" }}>
+                  {[...sharingConta.itens]
+                    .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+                    .map((item, idx, arr) => (
+                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderBottom: idx < arr.length - 1 ? "1px dashed #e2e8f0" : "none" }}>
+                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#0c2256", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="6" y="3" width="12" height="4" rx="1" /><path d="M6 5H4v16h16V5h-2" /></svg>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: "#0c2256", lineHeight: 1.2 }}>
+                            • {item.modelo}{item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : ""}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
+                            Data: {new Date(item.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                        <div style={{ borderLeft: "1px solid #e2e8f0", paddingLeft: 14, textAlign: "right", flexShrink: 0 }}>
+                          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Valor:</div>
+                          <div style={{ fontSize: 17, color: "#16a34a", fontWeight: 800 }}>{formatMoney(item.valor)}</div>
+                        </div>
+                      </div>
+                    ))}
+                </div>
+
+                {/* Divisor $ */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0" }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#2f86ff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16 }}>$</div>
+                </div>
+
+                {/* Total */}
+                <div style={{ background: "#eafaf1", border: "1px solid #bbf7d0", borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M16 12h.01M2 10h20" /></svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 13, color: "#166534", fontWeight: 700, letterSpacing: 0.5 }}>VALOR TOTAL DO DÉBITO</div>
+                    <div style={{ fontSize: 30, color: "#16a34a", fontWeight: 800, lineHeight: 1.1 }}>{fmtBRL(sharingConta.saldo)}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Rodapé */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 6px 4px" }}>
+                <div style={{ fontSize: 18, fontWeight: 800 }}>
+                  <span style={{ color: "#fff" }}>ISMAEL </span>
+                  <span style={{ color: "#2f86ff" }}>CELL</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#25d366", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 0 0-8.5 15.2L2 22l4.9-1.4A10 10 0 1 0 12 2zm0 2a8 8 0 0 1 0 16 8 8 0 0 1-4.1-1.1l-.3-.2-2.9.8.8-2.8-.2-.3A8 8 0 0 1 12 4zm4.5 9.8c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1l-.7.9c-.1.1-.2.2-.4.1a6.5 6.5 0 0 1-3.2-2.8c-.1-.2 0-.3.1-.4l.3-.4c.1-.1.1-.2.2-.4s0-.3 0-.4l-.7-1.7c-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3a2.7 2.7 0 0 0-.8 2 4.7 4.7 0 0 0 1 2.5 10.7 10.7 0 0 0 4.1 3.6c1.5.6 2 .6 2.7.5.4 0 1.4-.6 1.6-1.1s.2-1 .1-1.1l-.4-.3z" /></svg>
+                  </div>
+                  <div style={{ color: "#fff", fontSize: 18, fontWeight: 800 }}>89 98144-8787</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "center", color: "#9db8e6", fontSize: 11, paddingTop: 6 }}>Documento gerado automaticamente pelo sistema de gestão da ISMAEL CELL.</div>
+              <div style={{ textAlign: "center", color: "#2f86ff", fontSize: 11, fontWeight: 700, paddingTop: 2 }}>ISMAEL CELL – CONFIANÇA QUE CONECTA!</div>
             </div>
           </div>
         )}
