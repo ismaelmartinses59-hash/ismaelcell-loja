@@ -721,6 +721,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     try {
       const html2canvas = html2canvasRef.current ?? (await import("html2canvas")).default;
       html2canvasRef.current = html2canvas;
+      // Garante que as fontes carregaram antes de medir (evita texto torto)
+      if (document.fonts?.ready) { try { await document.fonts.ready; } catch { /* ignore */ } }
       // 2 frames para garantir que o card oculto já foi montado/medido
       await new Promise((r) => requestAnimationFrame(() => r(null)));
       await new Promise((r) => requestAnimationFrame(() => r(null)));
@@ -1690,47 +1692,53 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           <div style={{ position: "fixed", left: "-9999px", top: 0 }}>
             <div
               ref={extratoShareRef}
-              style={{ width: 640, fontFamily: "Inter, sans-serif", background: "linear-gradient(165deg, #0c2256 0%, #071536 100%)", padding: 24, boxSizing: "border-box" }}
+              style={{ width: 640, fontFamily: "Arial, Helvetica, sans-serif", background: "#0c2256", padding: 26, boxSizing: "border-box" }}
             >
               {/* Cabeçalho / logo */}
-              <div style={{ textAlign: "center", padding: "6px 0 18px" }}>
-                <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: 1, lineHeight: 1 }}>
+              <div style={{ textAlign: "center", paddingBottom: 22 }}>
+                <div style={{ fontSize: 40, fontWeight: 800, letterSpacing: 1, lineHeight: "44px", whiteSpace: "nowrap" }}>
                   <span style={{ color: "#ffffff" }}>ISMAEL </span>
                   <span style={{ color: "#2f86ff" }}>CELL</span>
                 </div>
-                <div style={{ marginTop: 8, color: "#9db8e6", fontSize: 12, fontWeight: 600, letterSpacing: 2 }}>— ASSISTÊNCIA TÉCNICA ESPECIALIZADA —</div>
+                <div style={{ color: "#9db8e6", fontSize: 12, fontWeight: 700, letterSpacing: 2, lineHeight: "20px", whiteSpace: "nowrap" }}>ASSISTÊNCIA TÉCNICA ESPECIALIZADA</div>
               </div>
 
               {/* Painel branco */}
-              <div style={{ background: "#ffffff", borderRadius: 18, padding: 22 }}>
-                <div style={{ textAlign: "center", fontSize: 28, fontWeight: 800, color: "#0c2256", letterSpacing: 0.5, marginBottom: 18 }}>EXTRATO DE DÉBITO</div>
+              <div style={{ background: "#ffffff", borderRadius: 18, padding: 24, boxSizing: "border-box" }}>
+                <div style={{ textAlign: "center", fontSize: 28, fontWeight: 800, color: "#0c2256", letterSpacing: 0.5, lineHeight: "34px", paddingBottom: 20 }}>EXTRATO DE DÉBITO</div>
 
-                {/* Cliente + Data de emissão */}
-                <div style={{ display: "flex", gap: 12, marginBottom: 18 }}>
-                  <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#0c2256", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
+                {/* Cliente + Data de emissão (table p/ html2canvas) */}
+                <div style={{ display: "table", width: "100%", borderCollapse: "separate", borderSpacing: 0, marginBottom: 20 }}>
+                  <div style={{ display: "table-row" }}>
+                    <div style={{ display: "table-cell", width: "50%", verticalAlign: "top", paddingRight: 7 }}>
+                      <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, boxSizing: "border-box" }}>
+                        <div style={{ display: "inline-block", width: 36, height: 36, borderRadius: "50%", background: "#0c2256", textAlign: "center", lineHeight: "36px", verticalAlign: "middle" }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" style={{ verticalAlign: "middle" }}><circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 4-6 8-6s8 2 8 6" /></svg>
+                        </div>
+                        <div style={{ display: "inline-block", verticalAlign: "middle", paddingLeft: 10, width: "calc(100% - 48px)" }}>
+                          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: 0.5, lineHeight: "14px" }}>CLIENTE</div>
+                          <div style={{ fontSize: 16, color: "#0c2256", fontWeight: 800, lineHeight: "20px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sharingConta.conta.nome}</div>
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: 0.5 }}>CLIENTE:</div>
-                      <div style={{ fontSize: 15, color: "#0c2256", fontWeight: 800, lineHeight: 1.1 }}>{sharingConta.conta.nome}</div>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, border: "1px solid #e2e8f0", borderRadius: 10, padding: "10px 12px", display: "flex", alignItems: "center", gap: 10 }}>
-                    <div style={{ width: 34, height: 34, borderRadius: "50%", background: "#0c2256", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: 0.5 }}>DATA DE EMISSÃO:</div>
-                      <div style={{ fontSize: 15, color: "#0c2256", fontWeight: 800, lineHeight: 1.1 }}>{new Date().toLocaleDateString("pt-BR")}</div>
+                    <div style={{ display: "table-cell", width: "50%", verticalAlign: "top", paddingLeft: 7 }}>
+                      <div style={{ border: "1px solid #e2e8f0", borderRadius: 10, padding: 12, boxSizing: "border-box" }}>
+                        <div style={{ display: "inline-block", width: 36, height: 36, borderRadius: "50%", background: "#0c2256", textAlign: "center", lineHeight: "36px", verticalAlign: "middle" }}>
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" style={{ verticalAlign: "middle" }}><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></svg>
+                        </div>
+                        <div style={{ display: "inline-block", verticalAlign: "middle", paddingLeft: 10, width: "calc(100% - 48px)" }}>
+                          <div style={{ fontSize: 10, color: "#64748b", fontWeight: 700, letterSpacing: 0.5, lineHeight: "14px" }}>DATA DE EMISSÃO</div>
+                          <div style={{ fontSize: 16, color: "#0c2256", fontWeight: 800, lineHeight: "20px" }}>{new Date().toLocaleDateString("pt-BR")}</div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
 
                 {/* Cabeçalho da seção */}
-                <div style={{ background: "#0c2256", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="6" y="3" width="12" height="4" rx="1" /><path d="M6 5H4v16h16V5h-2" /></svg>
-                  <span style={{ color: "#fff", fontWeight: 700, fontSize: 16, letterSpacing: 0.5 }}>PRODUTOS E SERVIÇOS</span>
+                <div style={{ background: "#0c2256", borderRadius: 8, padding: "11px 14px", marginBottom: 12, boxSizing: "border-box" }}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" style={{ verticalAlign: "middle", marginRight: 9 }}><rect x="6" y="3" width="12" height="4" rx="1" /><path d="M6 5H4v16h16V5h-2" /></svg>
+                  <span style={{ color: "#fff", fontWeight: 700, fontSize: 16, letterSpacing: 0.5, verticalAlign: "middle" }}>PRODUTOS E SERVIÇOS</span>
                 </div>
 
                 {/* Itens dinâmicos */}
@@ -1738,58 +1746,60 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   {[...sharingConta.itens]
                     .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
                     .map((item, idx, arr) => (
-                      <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 14px", borderBottom: idx < arr.length - 1 ? "1px dashed #e2e8f0" : "none" }}>
-                        <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#0c2256", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="6" y="3" width="12" height="4" rx="1" /><path d="M6 5H4v16h16V5h-2" /></svg>
-                        </div>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 16, fontWeight: 800, color: "#0c2256", lineHeight: 1.2 }}>
-                            • {item.modelo}{item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : ""}
-                          </div>
-                          <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>
-                            Data: {new Date(item.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                      <div key={item.id} style={{ display: "table", width: "100%", padding: "13px 14px", boxSizing: "border-box", borderBottom: idx < arr.length - 1 ? "1px dashed #e2e8f0" : "none" }}>
+                        <div style={{ display: "table-cell", width: 40, verticalAlign: "middle" }}>
+                          <div style={{ width: 40, height: 40, borderRadius: "50%", background: "#0c2256", textAlign: "center", lineHeight: "40px" }}>
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" style={{ verticalAlign: "middle" }}><rect x="6" y="3" width="12" height="4" rx="1" /><path d="M6 5H4v16h16V5h-2" /></svg>
                           </div>
                         </div>
-                        <div style={{ borderLeft: "1px solid #e2e8f0", paddingLeft: 14, textAlign: "right", flexShrink: 0 }}>
-                          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Valor:</div>
-                          <div style={{ fontSize: 17, color: "#16a34a", fontWeight: 800 }}>{formatMoney(item.valor)}</div>
+                        <div style={{ display: "table-cell", verticalAlign: "middle", paddingLeft: 12 }}>
+                          <div style={{ fontSize: 16, fontWeight: 800, color: "#0c2256", lineHeight: "20px" }}>
+                            {item.modelo}{item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : ""}
+                          </div>
+                          <div style={{ fontSize: 12, color: "#64748b", lineHeight: "16px", marginTop: 3 }}>
+                            {new Date(item.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                        <div style={{ display: "table-cell", verticalAlign: "middle", textAlign: "right", whiteSpace: "nowrap", paddingLeft: 12 }}>
+                          <div style={{ fontSize: 11, color: "#64748b", fontWeight: 600, lineHeight: "14px" }}>Valor</div>
+                          <div style={{ fontSize: 18, color: "#16a34a", fontWeight: 800, lineHeight: "22px" }}>{formatMoney(item.valor)}</div>
                         </div>
                       </div>
                     ))}
                 </div>
 
                 {/* Divisor $ */}
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "center", margin: "16px 0" }}>
-                  <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#2f86ff", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 16 }}>$</div>
+                <div style={{ textAlign: "center", margin: "16px 0" }}>
+                  <div style={{ display: "inline-block", width: 32, height: 32, borderRadius: "50%", background: "#2f86ff", color: "#fff", textAlign: "center", lineHeight: "32px", fontWeight: 800, fontSize: 16 }}>$</div>
                 </div>
 
                 {/* Total */}
-                <div style={{ background: "#eafaf1", border: "1px solid #bbf7d0", borderRadius: 12, padding: "14px 18px", display: "flex", alignItems: "center", gap: 14 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: "#16a34a", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M16 12h.01M2 10h20" /></svg>
+                <div style={{ background: "#eafaf1", border: "1px solid #bbf7d0", borderRadius: 12, padding: "16px 18px", boxSizing: "border-box" }}>
+                  <div style={{ display: "inline-block", width: 46, height: 46, borderRadius: "50%", background: "#16a34a", textAlign: "center", lineHeight: "46px", verticalAlign: "middle" }}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" style={{ verticalAlign: "middle" }}><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M16 12h.01M2 10h20" /></svg>
                   </div>
-                  <div>
-                    <div style={{ fontSize: 13, color: "#166534", fontWeight: 700, letterSpacing: 0.5 }}>VALOR TOTAL DO DÉBITO</div>
-                    <div style={{ fontSize: 30, color: "#16a34a", fontWeight: 800, lineHeight: 1.1 }}>{fmtBRL(sharingConta.saldo)}</div>
+                  <div style={{ display: "inline-block", verticalAlign: "middle", paddingLeft: 14 }}>
+                    <div style={{ fontSize: 13, color: "#166534", fontWeight: 700, letterSpacing: 0.5, lineHeight: "17px" }}>VALOR TOTAL DO DÉBITO</div>
+                    <div style={{ fontSize: 30, color: "#16a34a", fontWeight: 800, lineHeight: "36px" }}>{fmtBRL(sharingConta.saldo)}</div>
                   </div>
                 </div>
               </div>
 
               {/* Rodapé */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 6px 4px" }}>
-                <div style={{ fontSize: 18, fontWeight: 800 }}>
+              <div style={{ display: "table", width: "100%", padding: "18px 4px 4px", boxSizing: "border-box" }}>
+                <div style={{ display: "table-cell", verticalAlign: "middle", fontSize: 18, fontWeight: 800, whiteSpace: "nowrap" }}>
                   <span style={{ color: "#fff" }}>ISMAEL </span>
                   <span style={{ color: "#2f86ff" }}>CELL</span>
                 </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#25d366", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 2a10 10 0 0 0-8.5 15.2L2 22l4.9-1.4A10 10 0 1 0 12 2zm0 2a8 8 0 0 1 0 16 8 8 0 0 1-4.1-1.1l-.3-.2-2.9.8.8-2.8-.2-.3A8 8 0 0 1 12 4zm4.5 9.8c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1l-.7.9c-.1.1-.2.2-.4.1a6.5 6.5 0 0 1-3.2-2.8c-.1-.2 0-.3.1-.4l.3-.4c.1-.1.1-.2.2-.4s0-.3 0-.4l-.7-1.7c-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3a2.7 2.7 0 0 0-.8 2 4.7 4.7 0 0 0 1 2.5 10.7 10.7 0 0 0 4.1 3.6c1.5.6 2 .6 2.7.5.4 0 1.4-.6 1.6-1.1s.2-1 .1-1.1l-.4-.3z" /></svg>
+                <div style={{ display: "table-cell", verticalAlign: "middle", textAlign: "right", whiteSpace: "nowrap" }}>
+                  <div style={{ display: "inline-block", width: 30, height: 30, borderRadius: "50%", background: "#25d366", textAlign: "center", lineHeight: "30px", verticalAlign: "middle", marginRight: 8 }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff" style={{ verticalAlign: "middle" }}><path d="M12 2a10 10 0 0 0-8.5 15.2L2 22l4.9-1.4A10 10 0 1 0 12 2zm0 2a8 8 0 0 1 0 16 8 8 0 0 1-4.1-1.1l-.3-.2-2.9.8.8-2.8-.2-.3A8 8 0 0 1 12 4zm4.5 9.8c-.2-.1-1.4-.7-1.6-.8s-.4-.1-.5.1l-.7.9c-.1.1-.2.2-.4.1a6.5 6.5 0 0 1-3.2-2.8c-.1-.2 0-.3.1-.4l.3-.4c.1-.1.1-.2.2-.4s0-.3 0-.4l-.7-1.7c-.2-.4-.4-.4-.5-.4h-.5c-.2 0-.4.1-.6.3a2.7 2.7 0 0 0-.8 2 4.7 4.7 0 0 0 1 2.5 10.7 10.7 0 0 0 4.1 3.6c1.5.6 2 .6 2.7.5.4 0 1.4-.6 1.6-1.1s.2-1 .1-1.1l-.4-.3z" /></svg>
                   </div>
-                  <div style={{ color: "#fff", fontSize: 18, fontWeight: 800 }}>89 98144-8787</div>
+                  <span style={{ color: "#fff", fontSize: 18, fontWeight: 800, verticalAlign: "middle" }}>89 98144-8787</span>
                 </div>
               </div>
-              <div style={{ textAlign: "center", color: "#9db8e6", fontSize: 11, paddingTop: 6 }}>Documento gerado automaticamente pelo sistema de gestão da ISMAEL CELL.</div>
-              <div style={{ textAlign: "center", color: "#2f86ff", fontSize: 11, fontWeight: 700, paddingTop: 2 }}>ISMAEL CELL – CONFIANÇA QUE CONECTA!</div>
+              <div style={{ textAlign: "center", color: "#9db8e6", fontSize: 11, lineHeight: "16px", paddingTop: 6 }}>Documento gerado automaticamente pelo sistema de gestão da ISMAEL CELL.</div>
+              <div style={{ textAlign: "center", color: "#2f86ff", fontSize: 11, fontWeight: 700, lineHeight: "16px", paddingTop: 2 }}>ISMAEL CELL – CONFIANÇA QUE CONECTA!</div>
             </div>
           </div>
         )}
