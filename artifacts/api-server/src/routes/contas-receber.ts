@@ -143,6 +143,73 @@ router.delete("/contas-receber/pagamentos/:id", async (req, res): Promise<void> 
   res.status(204).send();
 });
 
+// Adiciona item manual (ex: serviço) a uma conta existente
+router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+  const descricao = String(req.body?.descricao ?? "").trim();
+  const valor = String(req.body?.valor ?? "").trim();
+  if (!descricao) {
+    res.status(400).json({ error: "Descrição obrigatória" });
+    return;
+  }
+  if (!valor || parseValor(valor) <= 0) {
+    res.status(400).json({ error: "Valor inválido" });
+    return;
+  }
+  const [conta] = await db
+    .select()
+    .from(contasReceberTable)
+    .where(eq(contasReceberTable.id, id));
+  if (!conta) {
+    res.status(404).json({ error: "Conta não encontrada" });
+    return;
+  }
+  await db.insert(contasReceberItensTable).values({
+    contaId: id,
+    modelo: descricao,
+    qualidade: "Serviço",
+    valor,
+  });
+  // Adicionar dívida reabre a conta caso estivesse quitada
+  await db
+    .update(contasReceberTable)
+    .set({ closedAt: null })
+    .where(eq(contasReceberTable.id, id));
+  res.json(await getContaResumo(id));
+});
+
+// Cria (ou reusa) conta por nome+tipo e adiciona um item de serviço (fiado sem peça)
+router.post("/contas-receber/novo-servico", async (req, res): Promise<void> => {
+  const nome = String(req.body?.nome ?? "").trim();
+  const tipo = req.body?.tipo === "lojista" ? "lojista" : "cliente";
+  const descricao = String(req.body?.descricao ?? "").trim();
+  const valor = String(req.body?.valor ?? "").trim();
+  if (!nome) {
+    res.status(400).json({ error: "Nome obrigatório" });
+    return;
+  }
+  if (!descricao) {
+    res.status(400).json({ error: "Descrição obrigatória" });
+    return;
+  }
+  if (!valor || parseValor(valor) <= 0) {
+    res.status(400).json({ error: "Valor inválido" });
+    return;
+  }
+  const contaId = await findOrCreateConta(nome, tipo);
+  await db.insert(contasReceberItensTable).values({
+    contaId,
+    modelo: descricao,
+    qualidade: "Serviço",
+    valor,
+  });
+  res.json(await getContaResumo(contaId));
+});
+
 // Apagar item da conta
 router.delete("/contas-receber/itens/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);

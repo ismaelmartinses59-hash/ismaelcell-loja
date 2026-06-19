@@ -394,6 +394,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setPreviewData(null);
       setVenderDialogPeca(null);
       setDevolverDialogPeca(null);
+      setAddItemContaId(null);
+      setItemDescricao("");
+      setItemValor("");
+      setShowNovoServico(false);
+      setServNome("");
+      setServDescricao("");
+      setServValor("");
     }
   }, [open]);
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
@@ -407,6 +414,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
   const [deletingPagamentoId, setDeletingPagamentoId] = useState<number | null>(null);
   const [periodo, setPeriodo] = useState<"dia" | "semana" | "mes">("dia");
+  // Adicionar serviço/item a uma conta existente
+  const [addItemContaId, setAddItemContaId] = useState<number | null>(null);
+  const [itemDescricao, setItemDescricao] = useState("");
+  const [itemValor, setItemValor] = useState("");
+  // Novo serviço fiado (cria/reusa conta)
+  const [showNovoServico, setShowNovoServico] = useState(false);
+  const [servNome, setServNome] = useState("");
+  const [servTipo, setServTipo] = useState<"cliente" | "lojista">("cliente");
+  const [servDescricao, setServDescricao] = useState("");
+  const [servValor, setServValor] = useState("");
 
   // Peças state
   const [search, setSearch] = useState("");
@@ -619,6 +636,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/pagamentos/${id}`, { method: "DELETE" }),
     onSuccess: () => { invalidateContas(); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
+  });
+  const addItemMutation = useMutation({
+    mutationFn: ({ contaId, descricao, valor }: { contaId: number; descricao: string; valor: string }) =>
+      apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor }) }),
+    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); toast({ title: "📒 Serviço adicionado à conta!" }); },
+    onError: () => toast({ title: "Erro ao adicionar serviço", variant: "destructive" }),
+  });
+  const novoServicoMutation = useMutation({
+    mutationFn: (data: { nome: string; tipo: string; descricao: string; valor: string }) =>
+      apiFetch("/api/contas-receber/novo-servico", { method: "POST", body: JSON.stringify(data) }),
+    onSuccess: () => { invalidateContas(); setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); toast({ title: "📒 Serviço fiado registrado!" }); },
+    onError: () => toast({ title: "Erro ao registrar serviço", variant: "destructive" }),
   });
   const totalAReceber = contas.reduce((a, c) => a + (c.saldo > 0 ? c.saldo : 0), 0);
   const contasAbertas = contas.filter((c) => c.conta.closedAt === null);
@@ -1048,14 +1077,72 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {/* ── ABA A RECEBER ──────────────────────────────────────────────── */}
         {aba === "receber" && (
           <>
-            <div className="px-4 pt-3 pb-2 shrink-0">
+            <div className="px-4 pt-3 pb-2 shrink-0 space-y-2">
               <div className="rounded-xl border bg-orange-50 border-orange-200 px-3 py-2.5">
                 <div className="text-[10px] font-bold uppercase tracking-wide text-orange-700">Total a receber</div>
                 <div className="text-2xl font-extrabold text-orange-800 leading-tight">{fmtBRL(totalAReceber)}</div>
                 <div className="text-[10px] text-orange-700/70">
-                  {contasAbertas.length} {contasAbertas.length === 1 ? "conta aberta" : "contas abertas"} · Para adicionar, vá na aba Peças e venda como FIADO
+                  {contasAbertas.length} {contasAbertas.length === 1 ? "conta aberta" : "contas abertas"} · Adicione peça fiada na aba Peças ou um serviço aqui embaixo
                 </div>
               </div>
+              {!showNovoServico ? (
+                <Button
+                  size="sm"
+                  className="w-full h-9 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold"
+                  onClick={() => { setShowNovoServico(true); setServNome(""); setServDescricao(""); setServValor(""); setServTipo(setor === "lojista" ? "lojista" : "cliente"); }}
+                >
+                  <Plus className="w-4 h-4 mr-1.5" /> Adicionar serviço fiado (ex: conta Google)
+                </Button>
+              ) : (
+                <div className="bg-white border border-orange-200 rounded-xl p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-xs font-bold text-orange-800">Novo serviço fiado</div>
+                    <button type="button" className="text-muted-foreground hover:text-foreground" onClick={() => setShowNovoServico(false)}><X className="w-4 h-4" /></button>
+                  </div>
+                  <div className="flex gap-1.5">
+                    <button type="button" onClick={() => setServTipo("cliente")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${servTipo === "cliente" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                      <User className="w-3.5 h-3.5" /> Cliente
+                    </button>
+                    <button type="button" onClick={() => setServTipo("lojista")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${servTipo === "lojista" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                      <Store className="w-3.5 h-3.5" /> Lojista
+                    </button>
+                  </div>
+                  <Input
+                    placeholder="Nome do devedor"
+                    value={servNome}
+                    onChange={(e) => setServNome(e.target.value)}
+                    list="servico-nomes"
+                    className="h-9 text-sm"
+                  />
+                  <datalist id="servico-nomes">
+                    {[...new Set(contas.filter((c) => c.conta.tipo === servTipo).map((c) => c.conta.nome))].map((n) => (
+                      <option key={n} value={n} />
+                    ))}
+                  </datalist>
+                  <Input
+                    placeholder="Serviço (ex: Remoção de conta Google)"
+                    value={servDescricao}
+                    onChange={(e) => setServDescricao(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  <Input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="Valor (ex: 50,00)"
+                    value={servValor}
+                    onChange={(e) => setServValor(e.target.value)}
+                    className="h-9 text-sm"
+                  />
+                  <Button
+                    size="sm"
+                    className="w-full h-9 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold"
+                    disabled={!servNome.trim() || !servDescricao.trim() || !servValor.trim() || novoServicoMutation.isPending}
+                    onClick={() => novoServicoMutation.mutate({ nome: servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim() })}
+                  >
+                    <Check className="w-4 h-4 mr-1.5" /> {novoServicoMutation.isPending ? "Salvando..." : "Lançar no A Receber"}
+                  </Button>
+                </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
               {contasLoading && <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>}
@@ -1063,7 +1150,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 <div className="text-center py-10 text-muted-foreground text-sm">
                   <HandCoins className="w-8 h-8 mx-auto mb-3 opacity-20" />
                   <p className="font-medium">Nenhuma conta a receber</p>
-                  <p className="text-xs mt-1">Vá na aba Peças, clique em uma peça e escolha FIADO ao vender.</p>
+                  <p className="text-xs mt-1">Use o botão "Adicionar serviço fiado" acima, ou venda uma peça como FIADO na aba Peças.</p>
                 </div>
               )}
               {contas.map((c) => {
@@ -1096,14 +1183,48 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     {expanded && (
                       <div className="border-t bg-gray-50 px-3 py-2.5 space-y-2.5">
                         {/* Botões de ação */}
-                        {aberta && !isPagando && !isDeleting && (
+                        {aberta && !isPagando && !isDeleting && addItemContaId !== c.conta.id && (
                           <div className="flex gap-2">
                             <Button size="sm" className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold" onClick={() => { setPagandoContaId(c.conta.id); setPagamentoValor(""); }}>
                               <Wallet className="w-3.5 h-3.5 mr-1.5" /> AV (Receber)
                             </Button>
+                            <Button size="sm" variant="outline" className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => { setAddItemContaId(c.conta.id); setItemDescricao(""); setItemValor(""); }}>
+                              <Plus className="w-3.5 h-3.5 mr-1" /> Serviço
+                            </Button>
                             <Button size="sm" variant="outline" className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeletingContaId(c.conta.id)}>
                               <Trash2 className="w-3.5 h-3.5" />
                             </Button>
+                          </div>
+                        )}
+
+                        {/* Form adicionar serviço/item à conta */}
+                        {addItemContaId === c.conta.id && (
+                          <div className="bg-white border border-orange-200 rounded-lg p-2.5 space-y-2">
+                            <div className="text-xs font-semibold text-orange-800">Adicionar serviço à conta de {c.conta.nome}</div>
+                            <Input
+                              type="text"
+                              placeholder="Serviço (ex: Remoção de conta Google)"
+                              value={itemDescricao}
+                              onChange={(e) => setItemDescricao(e.target.value)}
+                              className="h-9 text-sm"
+                              autoFocus
+                            />
+                            <div className="flex gap-2">
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="Valor (ex: 50,00)"
+                                value={itemValor}
+                                onChange={(e) => setItemValor(e.target.value)}
+                                className="h-9 text-sm"
+                              />
+                              <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim() })}>
+                                <Check className="w-4 h-4" />
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); }}>
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
                           </div>
                         )}
                         {!aberta && !isDeleting && (
@@ -1157,7 +1278,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         {/* Itens */}
                         {c.itens.length > 0 && (
                           <div>
-                            <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Peças</div>
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Itens</div>
                             <div className="space-y-1">
                               {c.itens.map((item) => {
                                 const dia = new Date(item.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
