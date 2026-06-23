@@ -7,6 +7,7 @@ import garantiasPecaRouter from "./garantias-peca";
 import vendasRouter from "./vendas";
 import contasReceberRouter from "./contas-receber";
 import caixaRouter from "./caixa";
+import caixaSessoesRouter from "./caixa-sessoes";
 
 const router: IRouter = Router();
 
@@ -18,5 +19,6 @@ router.use(garantiasPecaRouter);
 router.use(vendasRouter);
 router.use(contasReceberRouter);
 router.use(caixaRouter);
+router.use(caixaSessoesRouter);
 
 export default router;
