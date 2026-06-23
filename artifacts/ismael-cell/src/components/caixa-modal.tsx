@@ -173,6 +173,72 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
       .slice(0, 6);
   }, [modeloBusca, pecas]);
 
+  const [abrirValor, setAbrirValor] = useState("");
+  const [sessaoBusy, setSessaoBusy] = useState(false);
+
+  const abrirCaixa = async () => {
+    if (!abrirValor.trim()) {
+      toast({
+        title: "Informe o valor inicial (troco)",
+        variant: "destructive",
+      });
+      return;
+    }
+    setSessaoBusy(true);
+    try {
+      const r = await fetch(`${BASE}/api/caixa-sessoes/abrir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ valorInicial: abrirValor.trim() }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "Erro ao abrir");
+      }
+      toast({ title: "Caixa aberto!" });
+      setAbrirValor("");
+      qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
+      qc.invalidateQueries({ queryKey: ["caixa-sessao"] });
+      qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+    } catch (e) {
+      toast({
+        title: "Erro ao abrir",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSessaoBusy(false);
+    }
+  };
+
+  const fecharCaixa = async () => {
+    if (!window.confirm("Fechar o caixa de hoje agora?")) return;
+    setSessaoBusy(true);
+    try {
+      const r = await fetch(`${BASE}/api/caixa-sessoes/fechar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "Erro ao fechar");
+      }
+      toast({ title: "Caixa fechado!" });
+      qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
+      qc.invalidateQueries({ queryKey: ["caixa-sessao"] });
+      qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+    } catch (e) {
+      toast({
+        title: "Erro ao fechar",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSessaoBusy(false);
+    }
+  };
+
   const createCaixa = useCreateCaixa();
   const deleteCaixa = useDeleteCaixa();
 
@@ -327,10 +393,45 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
             </div>
+            {hoje.sessao.status !== "fechado" && (
+              <Button
+                onClick={fecharCaixa}
+                disabled={sessaoBusy}
+                className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700"
+              >
+                <Moon className="mr-2 h-4 w-4" />
+                {sessaoBusy ? "Fechando..." : "Fechar caixa agora"}
+              </Button>
+            )}
           </div>
         ) : (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800">
-            Caixa ainda não foi aberto hoje.
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+            <p className="text-sm font-semibold text-amber-800">
+              Caixa ainda não foi aberto hoje.
+            </p>
+            <p className="mt-0.5 text-xs text-amber-700">
+              Informe o valor inicial (troco) para abrir o caixa.
+            </p>
+            <div className="mt-2 flex gap-2">
+              <Input
+                inputMode="decimal"
+                placeholder="Ex: 100,00"
+                value={abrirValor}
+                onChange={(e) => setAbrirValor(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") abrirCaixa();
+                }}
+                className="bg-white"
+              />
+              <Button
+                onClick={abrirCaixa}
+                disabled={sessaoBusy}
+                className="shrink-0 bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Sun className="mr-2 h-4 w-4" />
+                {sessaoBusy ? "Abrindo..." : "Abrir"}
+              </Button>
+            </div>
           </div>
         )}
 
