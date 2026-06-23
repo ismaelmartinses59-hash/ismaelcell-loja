@@ -109,6 +109,23 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
       ),
   });
 
+  const { data: hoje } = useQuery<{
+    sessao: CaixaSessao | null;
+    totalEntradas: number;
+    totalSaidas: number;
+    saldo: number;
+  }>({
+    queryKey: ["caixa-sessao-hoje"],
+    enabled: open,
+    refetchInterval: 30000,
+    queryFn: () =>
+      fetch(`${BASE}/api/caixa-sessoes`).then((r) =>
+        r.ok
+          ? r.json()
+          : { sessao: null, totalEntradas: 0, totalSaidas: 0, saldo: 0 },
+      ),
+  });
+
   const params: ListCaixaParams =
     periodo === "custom" && inicio && fim ? { inicio, fim } : { periodo: periodo === "custom" ? "30" : periodo };
 
@@ -169,6 +186,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["/api/caixa"] });
+    qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
+    qc.invalidateQueries({ queryKey: ["caixa-historico"] });
     qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
     qc.invalidateQueries({ queryKey: ["pecas"] });
     qc.invalidateQueries({ queryKey: ["vendas"] });
@@ -254,6 +273,66 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             Caixa
           </DialogTitle>
         </DialogHeader>
+
+        {/* Caixa de hoje */}
+        {hoje?.sessao ? (
+          <div className="rounded-xl border bg-emerald-50/60 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-800">
+                {hoje.sessao.status === "fechado" ? (
+                  <Moon className="h-4 w-4 text-indigo-500" />
+                ) : (
+                  <Sun className="h-4 w-4 text-amber-500" />
+                )}
+                {hoje.sessao.status === "fechado"
+                  ? "Caixa fechado hoje"
+                  : "Caixa aberto hoje"}
+              </span>
+              <span className="text-right text-[11px] font-medium text-slate-600">
+                Abriu {formatHoraSP(hoje.sessao.aberturaAt)}
+                {hoje.sessao.fechamentoAt
+                  ? ` · Fechou ${formatHoraSP(hoje.sessao.fechamentoAt)}`
+                  : ""}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Troco inicial</span>
+                <span className="font-medium text-slate-700">
+                  {formatMoney(parseMoney(hoje.sessao.valorInicial))}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-green-600">Entrou hoje</span>
+                <span className="font-semibold text-green-700">
+                  {formatMoney(hoje.totalEntradas)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-red-600">Saiu hoje</span>
+                <span className="font-semibold text-red-700">
+                  {formatMoney(hoje.totalSaidas)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="font-semibold text-slate-600">
+                  Em caixa agora
+                </span>
+                <span className="font-bold text-emerald-600">
+                  {formatMoney(
+                    parseMoney(hoje.sessao.valorInicial) +
+                      hoje.totalEntradas -
+                      hoje.totalSaidas,
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800">
+            Caixa ainda não foi aberto hoje.
+          </div>
+        )}
 
         {/* Saldo + totais */}
         <div className="grid grid-cols-3 gap-2">
