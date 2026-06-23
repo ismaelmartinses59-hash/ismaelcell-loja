@@ -663,7 +663,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const pagarMutation = useMutation({
     mutationFn: ({ contaId, valor }: { contaId: number; valor: string }) =>
       apiFetch(`/api/contas-receber/${contaId}/pagamento`, { method: "POST", body: JSON.stringify({ valor }) }),
-    onSuccess: () => { invalidateContas(); setPagandoContaId(null); setPagamentoValor(""); toast({ title: "💰 Pagamento registrado!" }); },
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setPagandoContaId(null); setPagamentoValor(""); toast({ title: "💰 Pagamento registrado!" }); },
     onError: () => toast({ title: "Erro ao registrar pagamento", variant: "destructive" }),
   });
   const apagarContaMutation = useMutation({
@@ -678,7 +678,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   });
   const apagarPagamentoMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/pagamentos/${id}`, { method: "DELETE" }),
-    onSuccess: () => { invalidateContas(); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
   const addItemMutation = useMutation({

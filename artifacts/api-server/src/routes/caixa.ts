@@ -1,6 +1,13 @@
 import { Router, type IRouter } from "express";
 import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
-import { db, caixaTable, pecasTable, vendasTable } from "@workspace/db";
+import {
+  db,
+  caixaTable,
+  pecasTable,
+  vendasTable,
+  contasReceberPagamentosTable,
+  contasReceberTable,
+} from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -215,6 +222,24 @@ router.delete("/caixa/:id", async (req, res): Promise<void> => {
               );
           }
         }
+      }
+    }
+
+    // Se for uma entrada de AV (pagamento de fiado), apaga o pagamento
+    // vinculado e reabre a conta a receber.
+    if (mov.pagamentoId) {
+      const [pag] = await tx
+        .select()
+        .from(contasReceberPagamentosTable)
+        .where(eq(contasReceberPagamentosTable.id, mov.pagamentoId));
+      if (pag) {
+        await tx
+          .delete(contasReceberPagamentosTable)
+          .where(eq(contasReceberPagamentosTable.id, pag.id));
+        await tx
+          .update(contasReceberTable)
+          .set({ closedAt: null })
+          .where(eq(contasReceberTable.id, pag.contaId));
       }
     }
 

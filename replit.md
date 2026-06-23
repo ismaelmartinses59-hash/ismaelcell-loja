@@ -38,6 +38,7 @@ A mobile phone repair shop management tool for Ismael Cell assistência técnica
 ### DB Fields (caixa table)
 - `id`, `tipo` (`entrada` | `saida`), `valor` (text), `motivo` (text), `pecaId` (nullable), `vendaId` (nullable), `modelo` (nullable), `createdAt`
 - Caixa is ÚNICO/unified (not scoped by `tipo` cliente/lojista). When an `entrada` is linked to a peça, it decrements that peça + its twin and inserts a row into `vendas`; deleting that movimento reverts both stock and the venda (all inside a DB transaction).
+- `pagamentoId` (nullable) links a caixa `entrada` to a `contas_receber_pagamentos` row (an AV/pagamento de fiado). When an AV is registered, a caixa entrada (motivo `AV — <nome>`) is created in the same transaction. The link is kept in sync across 4 paths (all transactional): register AV, delete pagamento (conta UI), delete the AV entrada (caixa UI → also reopens the conta), and delete the whole conta (also removes its linked caixa rows). Column added to prod via `ensureSchema` ALTER (ADD COLUMN IF NOT EXISTS).
 
 ### Status Values
 `aguardando` | `em andamento` | `concluido` | `problema` | `encerrado`

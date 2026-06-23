@@ -5,6 +5,7 @@ import {
   contasReceberTable,
   contasReceberItensTable,
   contasReceberPagamentosTable,
+  caixaTable,
 } from "@workspace/db";
 
 const router: IRouter = Router();
@@ -107,7 +108,20 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
     res.status(404).json({ error: "Conta não encontrada" });
     return;
   }
-  await db.insert(contasReceberPagamentosTable).values({ contaId: id, valor });
+  // Registra o pagamento E lança a entrada correspondente no caixa (AV),
+  // ligadas por pagamentoId para manterem-se em sincronia ao apagar.
+  await db.transaction(async (tx) => {
+    const [pag] = await tx
+      .insert(contasReceberPagamentosTable)
+      .values({ contaId: id, valor })
+      .returning();
+    await tx.insert(caixaTable).values({
+      tipo: "entrada",
+      valor,
+      motivo: `AV — ${r.conta.nome}`,
+      pagamentoId: pag.id,
+    });
+  });
   // Verifica saldo: se zerou ou ficou negativo, fecha a conta
   const novo = await getContaResumo(id);
   if (novo && novo.saldo <= 0) {
@@ -134,12 +148,18 @@ router.delete("/contas-receber/pagamentos/:id", async (req, res): Promise<void> 
     res.status(404).json({ error: "Pagamento não encontrado" });
     return;
   }
-  await db.delete(contasReceberPagamentosTable).where(eq(contasReceberPagamentosTable.id, id));
-  // Reabre a conta se estava fechada
-  await db
-    .update(contasReceberTable)
-    .set({ closedAt: null })
-    .where(eq(contasReceberTable.id, pag.contaId));
+  await db.transaction(async (tx) => {
+    // Remove também a entrada do caixa vinculada a este pagamento (AV).
+    await tx.delete(caixaTable).where(eq(caixaTable.pagamentoId, id));
+    await tx
+      .delete(contasReceberPagamentosTable)
+      .where(eq(contasReceberPagamentosTable.id, id));
+    // Reabre a conta se estava fechada
+    await tx
+      .update(contasReceberTable)
+      .set({ closedAt: null })
+      .where(eq(contasReceberTable.id, pag.contaId));
+  });
   res.status(204).send();
 });
 
@@ -236,9 +256,19 @@ router.delete("/contas-receber/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "ID inválido" });
     return;
   }
-  await db.delete(contasReceberPagamentosTable).where(eq(contasReceberPagamentosTable.contaId, id));
-  await db.delete(contasReceberItensTable).where(eq(contasReceberItensTable.contaId, id));
-  await db.delete(contasReceberTable).where(eq(contasReceberTable.id, id));
+  await db.transaction(async (tx) => {
+    // Remove as entradas de AV no caixa ligadas aos pagamentos desta conta.
+    await tx.delete(caixaTable).where(
+      sql`${caixaTable.pagamentoId} IN (SELECT id FROM ${contasReceberPagamentosTable} WHERE ${contasReceberPagamentosTable.contaId} = ${id})`,
+    );
+    await tx
+      .delete(contasReceberPagamentosTable)
+      .where(eq(contasReceberPagamentosTable.contaId, id));
+    await tx
+      .delete(contasReceberItensTable)
+      .where(eq(contasReceberItensTable.contaId, id));
+    await tx.delete(contasReceberTable).where(eq(contasReceberTable.id, id));
+  });
   res.status(204).send();
 });
 

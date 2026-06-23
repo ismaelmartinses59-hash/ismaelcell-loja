@@ -134,6 +134,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
     qc.invalidateQueries({ queryKey: ["pecas"] });
     qc.invalidateQueries({ queryKey: ["vendas"] });
+    qc.invalidateQueries({ queryKey: ["contas-receber"] });
   };
 
   const selecionarPeca = (p: Peca) => {
