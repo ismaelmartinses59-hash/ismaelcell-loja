@@ -7,6 +7,7 @@ export const caixaTable = pgTable("caixa", {
   motivo: text("motivo").notNull(),
   pecaId: integer("peca_id"),
   vendaId: integer("venda_id"),
+  pagamentoId: integer("pagamento_id"),
   modelo: text("modelo"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
