@@ -11,6 +11,7 @@ import { FaturamentoModal } from "@/components/faturamento-modal";
 import { GarantiaModal } from "@/components/garantia-modal";
 import { CatalogoModal } from "@/components/catalogo-modal";
 import { CaixaModal } from "@/components/caixa-modal";
+import { CaixaSessaoGuard } from "@/components/caixa-sessao-guard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -129,6 +130,7 @@ export default function Orders() {
 
   return (
     <div className="min-h-screen bg-muted/30 pb-24">
+      <CaixaSessaoGuard />
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} onClose={() => setShowGarantia(false)} />
       <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber"} />

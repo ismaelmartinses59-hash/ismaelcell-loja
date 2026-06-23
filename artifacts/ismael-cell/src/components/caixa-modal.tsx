@@ -25,6 +25,11 @@ import {
   Loader2,
   Package,
   Check,
+  History,
+  ChevronDown,
+  ChevronUp,
+  Sun,
+  Moon,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -40,13 +45,36 @@ interface Peca {
   setor: string;
 }
 
+interface CaixaSessao {
+  id: number;
+  data: string;
+  status: string;
+  valorInicial: string;
+  valorFinal: string | null;
+  totalEntradas: string | null;
+  totalSaidas: string | null;
+  aberturaAt: string;
+  fechamentoAt: string | null;
+}
+
 function formatMoney(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function parseMoney(val: string): number {
   if (!val) return 0;
-  return parseFloat(val.replace(/[^\d,.-]/g, "").replace(",", ".")) || 0;
+  let s = val.replace(/[^\d.,-]/g, "");
+  // Em pt-BR a vírgula é decimal; pontos são separadores de milhar.
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  return parseFloat(s) || 0;
+}
+
+function formatHoraSP(iso: string): string {
+  return new Date(iso).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 interface CaixaModalProps {
@@ -70,6 +98,16 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [periodo, setPeriodo] = useState<PeriodoKey>("30");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
+  const [showHistorico, setShowHistorico] = useState(false);
+
+  const { data: fechamentos = [] } = useQuery<CaixaSessao[]>({
+    queryKey: ["caixa-historico"],
+    enabled: open && showHistorico,
+    queryFn: () =>
+      fetch(`${BASE}/api/caixa-sessoes/historico`).then((r) =>
+        r.ok ? r.json() : [],
+      ),
+  });
 
   const params: ListCaixaParams =
     periodo === "custom" && inicio && fim ? { inicio, fim } : { periodo: periodo === "custom" ? "30" : periodo };
@@ -485,6 +523,105 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             })}
           </div>
         )}
+
+        {/* Histórico de fechamentos */}
+        <div className="border-t pt-3">
+          <button
+            type="button"
+            onClick={() => setShowHistorico((v) => !v)}
+            className="flex w-full items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-muted"
+          >
+            <span className="flex items-center gap-2">
+              <History className="h-4 w-4 text-indigo-600" />
+              Histórico de fechamentos
+            </span>
+            {showHistorico ? (
+              <ChevronUp className="h-4 w-4" />
+            ) : (
+              <ChevronDown className="h-4 w-4" />
+            )}
+          </button>
+
+          {showHistorico && (
+            <div className="mt-3 space-y-2">
+              {fechamentos.length === 0 ? (
+                <p className="py-4 text-center text-sm text-muted-foreground">
+                  Nenhum fechamento registrado ainda.
+                </p>
+              ) : (
+                fechamentos.map((s) => (
+                  <div
+                    key={s.id}
+                    className="rounded-xl border bg-white p-3 space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-bold text-slate-800">
+                        {format(new Date(`${s.data}T12:00:00`), "EEEE, dd/MM", {
+                          locale: ptBR,
+                        })}
+                      </p>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
+                          s.status === "fechado"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-amber-100 text-amber-700"
+                        }`}
+                      >
+                        {s.status === "fechado" ? "Fechado" : "Aberto"}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Sun className="h-3.5 w-3.5 text-amber-500" />
+                        Abriu {formatHoraSP(s.aberturaAt)}
+                      </span>
+                      {s.fechamentoAt && (
+                        <span className="flex items-center gap-1">
+                          <Moon className="h-3.5 w-3.5 text-indigo-500" />
+                          Fechou {formatHoraSP(s.fechamentoAt)}
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 border-t pt-2 text-xs">
+                      <div className="flex justify-between">
+                        <span className="text-slate-500">Troco inicial</span>
+                        <span className="font-medium text-slate-700">
+                          {formatMoney(parseMoney(s.valorInicial))}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-green-600">Entradas</span>
+                        <span className="font-medium text-green-700">
+                          {s.totalEntradas
+                            ? formatMoney(parseMoney(s.totalEntradas))
+                            : "—"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-red-600">Saídas</span>
+                        <span className="font-medium text-red-700">
+                          {s.totalSaidas
+                            ? formatMoney(parseMoney(s.totalSaidas))
+                            : "—"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-semibold text-slate-600">
+                          Valor final
+                        </span>
+                        <span className="font-bold text-emerald-600">
+                          {s.valorFinal
+                            ? formatMoney(parseMoney(s.valorFinal))
+                            : "—"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+        </div>
       </DialogContent>
     </Dialog>
   );

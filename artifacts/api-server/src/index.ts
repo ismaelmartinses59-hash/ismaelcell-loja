@@ -103,6 +103,20 @@ async function ensureSchema(): Promise<void> {
     await db.execute(
       sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS pagamento_id integer`,
     );
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS caixa_sessoes (
+        id serial PRIMARY KEY,
+        data text NOT NULL UNIQUE,
+        status text NOT NULL DEFAULT 'aberto',
+        valor_inicial text NOT NULL,
+        valor_final text,
+        total_entradas text,
+        total_saidas text,
+        abertura_at timestamp NOT NULL DEFAULT now(),
+        fechamento_at timestamp,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
     logger.info("Schema check ok");
   } catch (err) {
     logger.error({ err }, "Schema check failed");
