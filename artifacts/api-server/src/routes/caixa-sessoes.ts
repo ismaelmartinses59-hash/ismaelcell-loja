@@ -102,8 +102,10 @@ router.post("/caixa-sessoes/abrir", async (req, res): Promise<void> => {
   res.status(201).json(sessao);
 });
 
-/** Fechar o caixa do dia: calcula totais e o valor final. */
-router.post("/caixa-sessoes/fechar", async (_req, res): Promise<void> => {
+/** Fechar o caixa do dia: calcula totais e o valor final.
+ *  Opcionalmente aceita `valorContado` = quanto o funcionário realmente
+ *  contou na gaveta (para corrigir entradas/saídas esquecidas). */
+router.post("/caixa-sessoes/fechar", async (req, res): Promise<void> => {
   const data = hojeSP();
   const [sessao] = await db
     .select()
@@ -120,6 +122,8 @@ router.post("/caixa-sessoes/fechar", async (_req, res): Promise<void> => {
   const { totalEntradas, totalSaidas } = await totaisDoDia(data);
   const valorInicial = parseValor(sessao.valorInicial);
   const valorFinal = valorInicial + totalEntradas - totalSaidas;
+  const contadoRaw = String(req.body?.valorContado ?? "").trim();
+  const valorContado = contadoRaw ? formatValor(parseValor(contadoRaw)) : null;
   const [atualizada] = await db
     .update(caixaSessoesTable)
     .set({
@@ -128,6 +132,7 @@ router.post("/caixa-sessoes/fechar", async (_req, res): Promise<void> => {
       totalEntradas: formatValor(totalEntradas),
       totalSaidas: formatValor(totalSaidas),
       valorFinal: formatValor(valorFinal),
+      valorContado,
     })
     .where(eq(caixaSessoesTable.id, sessao.id))
     .returning();

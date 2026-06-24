@@ -64,6 +64,8 @@ export function CaixaSessaoGuard() {
   const qc = useQueryClient();
   const [now, setNow] = useState(() => new Date());
   const [valorInicial, setValorInicial] = useState("");
+  const [valorContado, setValorContado] = useState("");
+  const [contadoTouched, setContadoTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
@@ -101,6 +103,18 @@ export function CaixaSessaoGuard() {
     else if (sessao && sessao.status === "aberto" && nowMin >= closeMin)
       mode = "fechar";
   }
+
+  const valIni = status?.sessao ? parseValor(status.sessao.valorInicial) : 0;
+  const entradas = status?.totalEntradas ?? 0;
+  const saidas = status?.totalSaidas ?? 0;
+  const valFinal = valIni + entradas - saidas;
+
+  // Pré-preenche o valor conferido com o esperado (até o usuário ajustar).
+  useEffect(() => {
+    if (mode === "fechar" && !contadoTouched) {
+      setValorContado(valFinal.toFixed(2).replace(".", ","));
+    }
+  }, [mode, valFinal, contadoTouched]);
 
   const abrir = async () => {
     if (!valorInicial.trim()) {
@@ -140,13 +154,15 @@ export function CaixaSessaoGuard() {
       const r = await fetch(`${BASE}/api/caixa-sessoes/fechar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ valorContado: valorContado.trim() }),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || "Erro ao fechar");
       }
       toast({ title: "Caixa fechado! Até amanhã 👋" });
+      setValorContado("");
+      setContadoTouched(false);
       await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
       await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
       await refetch();
@@ -166,10 +182,8 @@ export function CaixaSessaoGuard() {
   const horaAlvo = mode === "abrir" ? openMin : closeMin;
   const horaAlvoStr = `${String(Math.floor(horaAlvo / 60)).padStart(2, "0")}:00`;
 
-  const valIni = status?.sessao ? parseValor(status.sessao.valorInicial) : 0;
-  const entradas = status?.totalEntradas ?? 0;
-  const saidas = status?.totalSaidas ?? 0;
-  const valFinal = valIni + entradas - saidas;
+  const contadoNum = parseValor(valorContado);
+  const diferenca = contadoNum - valFinal;
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/95 backdrop-blur-sm">
@@ -260,6 +274,36 @@ export function CaixaSessaoGuard() {
                     {formatMoney(valFinal)}
                   </span>
                 </div>
+              </div>
+              <div>
+                <label className="text-sm font-semibold text-slate-700">
+                  Quanto tem na gaveta agora? (R$)
+                </label>
+                <Input
+                  inputMode="decimal"
+                  placeholder="Ex: 150,00"
+                  value={valorContado}
+                  onChange={(e) => {
+                    setContadoTouched(true);
+                    setValorContado(e.target.value);
+                  }}
+                  className="mt-1.5 h-12 text-lg"
+                />
+                <p className="mt-1.5 text-xs text-slate-500">
+                  Conte o dinheiro e confira. Ajuste se esqueceu de lançar
+                  alguma entrada ou saída.
+                </p>
+                {Math.abs(diferenca) >= 0.01 && (
+                  <p
+                    className={`mt-1.5 text-xs font-semibold ${
+                      diferenca > 0 ? "text-green-600" : "text-red-600"
+                    }`}
+                  >
+                    {diferenca > 0
+                      ? `Sobrando ${formatMoney(diferenca)} a mais que o esperado.`
+                      : `Faltando ${formatMoney(Math.abs(diferenca))} em relação ao esperado.`}
+                  </p>
+                )}
               </div>
               <Button
                 className="h-12 w-full text-base font-bold"
