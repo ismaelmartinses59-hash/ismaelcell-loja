@@ -721,6 +721,7 @@ export type CreateCaixaBody = {
   valor: string;
   motivo: string;
   pecaId?: number | null;
+  formaPagamento?: string | null;
 };
 
 export const createCaixa = async (

@@ -63,9 +63,16 @@ function apiFetch(path: string, opts?: RequestInit) {
   });
 }
 
+// Parse pt-BR money text ("1.234,56" → 1234.56) robustly, matching the backend.
+function parsePtBR(val: string | null | undefined): number {
+  let s = String(val ?? "").replace(/[^\d.,-]/g, "");
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
 function formatMoney(val: string) {
-  const n = parseFloat(val.replace(",", "."));
-  if (isNaN(n)) return val;
+  const n = parsePtBR(val);
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
@@ -610,6 +617,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   });
 
   const invalidateContas = () => qc.invalidateQueries({ queryKey: ["contas-receber"] });
+  const invalidateCaixa = () => {
+    qc.invalidateQueries({ queryKey: ["caixa"] });
+    qc.invalidateQueries({ queryKey: ["caixa-sessoes"] });
+  };
   const [devolverDialogPeca, setDevolverDialogPeca] = useState<Peca | null>(null);
   const devolverMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/pecas/${id}/devolver`, { method: "POST" }),
@@ -1531,14 +1542,22 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               </div>
 
               {fiadoStep === "choose" && (
-                <div className="grid grid-cols-2 gap-2 pt-1">
+                <div className="grid grid-cols-3 gap-2 pt-1">
                   <Button
                     className="h-16 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
                     disabled={venderMutation.isPending}
-                    onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false })}
+                    onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "dinheiro" })}
                   >
                     <DollarSign className="w-5 h-5" />
-                    <span className="font-bold text-sm">À VISTA</span>
+                    <span className="font-bold text-xs">À VISTA</span>
+                  </Button>
+                  <Button
+                    className="h-16 flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-700 text-white gap-0.5"
+                    disabled={venderMutation.isPending}
+                    onClick={() => setFiadoStep("cartao")}
+                  >
+                    <CreditCard className="w-5 h-5" />
+                    <span className="font-bold text-xs">CARTÃO</span>
                   </Button>
                   <Button
                     className="h-16 flex flex-col items-center justify-center bg-orange-500 hover:bg-orange-600 text-white gap-0.5"
@@ -1546,8 +1565,64 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     onClick={() => setFiadoStep("fiado")}
                   >
                     <HandCoins className="w-5 h-5" />
-                    <span className="font-bold text-sm">FIADO</span>
+                    <span className="font-bold text-xs">FIADO</span>
                   </Button>
+                </div>
+              )}
+
+              {fiadoStep === "cartao" && (
+                <div className="space-y-2.5 pt-1">
+                  <div className="text-xs font-semibold text-muted-foreground">Pagamento no cartão</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      className="h-16 flex flex-col items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white gap-0.5"
+                      disabled={venderMutation.isPending}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "debito" })}
+                    >
+                      <CreditCard className="w-5 h-5" />
+                      <span className="font-bold text-sm">DÉBITO</span>
+                      <span className="text-[10px] opacity-90">taxa {TAXAS_CARTAO.debito.toLocaleString("pt-BR")}%</span>
+                    </Button>
+                    <Button
+                      className="h-16 flex flex-col items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white gap-0.5"
+                      disabled={venderMutation.isPending}
+                      onClick={() => setFiadoStep("credito")}
+                    >
+                      <CreditCard className="w-5 h-5" />
+                      <span className="font-bold text-sm">CRÉDITO</span>
+                      <span className="text-[10px] opacity-90">1x · 2x · 3x</span>
+                    </Button>
+                  </div>
+                  <div className="rounded-lg bg-cyan-50 border border-cyan-200 px-2.5 py-2 text-[11px] text-cyan-900">
+                    No débito você recebe <b>{formatMoney(String(liquidoCartao(parsePtBR(venderDialogPeca.valor), "debito")))}</b> (a maquininha desconta {TAXAS_CARTAO.debito.toLocaleString("pt-BR")}%).
+                  </div>
+                  <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
+                </div>
+              )}
+
+              {fiadoStep === "credito" && (
+                <div className="space-y-2.5 pt-1">
+                  <div className="text-xs font-semibold text-muted-foreground">Crédito — em quantas vezes?</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(["credito_1x", "credito_2x", "credito_3x"] as FormaCartao[]).map((f) => {
+                      const valorNum = parsePtBR(venderDialogPeca.valor);
+                      const vezes = f === "credito_1x" ? "1x" : f === "credito_2x" ? "2x" : "3x";
+                      return (
+                        <Button
+                          key={f}
+                          className="h-20 flex flex-col items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white gap-0.5"
+                          disabled={venderMutation.isPending}
+                          onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: f })}
+                        >
+                          <span className="font-bold text-base">{vezes}</span>
+                          <span className="text-[10px] opacity-90">taxa {TAXAS_CARTAO[f].toLocaleString("pt-BR")}%</span>
+                          <span className="text-[10px] opacity-90">recebe {formatMoney(String(liquidoCartao(valorNum, f)))}</span>
+                        </Button>
+                      );
+                    })}
+                  </div>
+                  <div className="text-[11px] text-muted-foreground text-center">Cliente paga {formatMoney(venderDialogPeca.valor)} · a maquininha desconta a taxa.</div>
+                  <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("cartao")} disabled={venderMutation.isPending}>Voltar</Button>
                 </div>
               )}
 

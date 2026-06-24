@@ -5,3 +5,5 @@ export * from "./vendas";
 export * from "./contas-receber";
 export * from "./caixa";
 export * from "./caixa-sessoes";
+export * from "./push-subscriptions";
+export * from "./app-config";

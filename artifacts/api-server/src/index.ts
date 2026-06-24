@@ -2,6 +2,8 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { db } from "@workspace/db";
 import { sql } from "drizzle-orm";
+import { initPush } from "./lib/push";
+import { agendarNotificacoesCaixa } from "./lib/notificacoes-caixa";
 
 async function ensureSchema(): Promise<void> {
   try {
@@ -132,6 +134,22 @@ async function ensureSchema(): Promise<void> {
     await db.execute(
       sql`ALTER TABLE caixa_sessoes ADD COLUMN IF NOT EXISTS total_cartao_liquido text`,
     );
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS push_subscriptions (
+        id serial PRIMARY KEY,
+        endpoint text NOT NULL UNIQUE,
+        p256dh text NOT NULL,
+        auth text NOT NULL,
+        created_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS app_config (
+        key text PRIMARY KEY,
+        value text NOT NULL,
+        updated_at timestamp NOT NULL DEFAULT now()
+      )
+    `);
     logger.info("Schema check ok");
   } catch (err) {
     logger.error({ err }, "Schema check failed");
@@ -152,13 +170,18 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-ensureSchema().finally(() => {
-  app.listen(port, (err) => {
-    if (err) {
-      logger.error({ err }, "Error listening on port");
-      process.exit(1);
-    }
+ensureSchema()
+  .then(async () => {
+    await initPush();
+    agendarNotificacoesCaixa();
+  })
+  .finally(() => {
+    app.listen(port, (err) => {
+      if (err) {
+        logger.error({ err }, "Error listening on port");
+        process.exit(1);
+      }
 
-    logger.info({ port }, "Server listening");
+      logger.info({ port }, "Server listening");
+    });
   });
-});

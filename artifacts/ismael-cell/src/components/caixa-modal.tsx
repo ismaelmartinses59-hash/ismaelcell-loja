@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { NotificacoesToggle } from "./notificacoes-toggle";
 import {
   Wallet,
   ArrowDownCircle,
@@ -30,9 +31,17 @@ import {
   ChevronUp,
   Sun,
   Moon,
+  CreditCard,
+  Banknote,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import {
+  type FormaPagamento,
+  type FormaCartao,
+  TAXAS_CARTAO,
+  LABELS_FORMA,
+} from "../lib/formas-pagamento";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -54,6 +63,8 @@ interface CaixaSessao {
   valorContado: string | null;
   totalEntradas: string | null;
   totalSaidas: string | null;
+  totalCartao?: string | null;
+  totalCartaoLiquido?: string | null;
   aberturaAt: string;
   fechamentoAt: string | null;
 }
@@ -115,6 +126,10 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     totalEntradas: number;
     totalSaidas: number;
     saldo: number;
+    entradasDinheiro?: number;
+    totalCartao?: number;
+    totalCartaoLiquido?: number;
+    cartao?: { forma: string; label: string; taxa: number; bruto: number; liquido: number }[];
   }>({
     queryKey: ["caixa-sessao-hoje"],
     enabled: open,
@@ -137,6 +152,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [tipo, setTipo] = useState<"entrada" | "saida">("entrada");
   const [valor, setValor] = useState("");
   const [motivo, setMotivo] = useState("");
+  const [formaPagto, setFormaPagto] = useState<FormaPagamento>("dinheiro");
   const [vincularPeca, setVincularPeca] = useState(false);
   const [modeloBusca, setModeloBusca] = useState("");
   const [pecaSel, setPecaSel] = useState<Peca | null>(null);
@@ -256,6 +272,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const resetForm = () => {
     setValor("");
     setMotivo("");
+    setFormaPagto("dinheiro");
     setVincularPeca(false);
     setModeloBusca("");
     setPecaSel(null);
@@ -297,6 +314,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           tipo,
           valor: valor.trim(),
           motivo: motivo.trim(),
+          formaPagamento: tipo === "entrada" ? formaPagto : "dinheiro",
           pecaId:
             tipo === "entrada" && vincularPeca && pecaSel ? pecaSel.id : null,
         },
@@ -351,6 +369,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           </DialogTitle>
         </DialogHeader>
 
+        <NotificacoesToggle />
+
         {/* Caixa de hoje */}
         {hoje?.sessao ? (
           <div className="rounded-xl border bg-emerald-50/60 p-3">
@@ -380,9 +400,9 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-green-600">Entrou hoje</span>
+                <span className="text-green-600">Entrou (dinheiro)</span>
                 <span className="font-semibold text-green-700">
-                  {formatMoney(hoje.totalEntradas)}
+                  {formatMoney(hoje.entradasDinheiro ?? hoje.totalEntradas)}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -398,12 +418,37 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 <span className="font-bold text-emerald-600">
                   {formatMoney(
                     parseMoney(hoje.sessao.valorInicial) +
-                      hoje.totalEntradas -
+                      (hoje.entradasDinheiro ?? hoje.totalEntradas) -
                       hoje.totalSaidas,
                   )}
                 </span>
               </div>
             </div>
+            {hoje.cartao && hoje.cartao.length > 0 && (
+              <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/70 p-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-800">
+                  <CreditCard className="h-3.5 w-3.5" />
+                  Cartão hoje (não está na gaveta)
+                </div>
+                <div className="mt-1 space-y-0.5">
+                  {hoje.cartao.map((c) => (
+                    <div key={c.forma} className="flex justify-between text-[11px] text-blue-900">
+                      <span>
+                        {c.label}{" "}
+                        <span className="text-blue-500">(−{c.taxa.toLocaleString("pt-BR")}%)</span>
+                      </span>
+                      <span className="font-medium">
+                        {formatMoney(c.bruto)} → {formatMoney(c.liquido)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between border-t border-blue-200 pt-0.5 text-[11px] font-bold text-blue-900">
+                    <span>Você recebe (cartão)</span>
+                    <span>{formatMoney(hoje.totalCartaoLiquido ?? 0)}</span>
+                  </div>
+                </div>
+              </div>
+            )}
             {hoje.sessao.status === "fechado" && hoje.sessao.valorContado && (
               <div className="mt-2 flex justify-between border-t pt-2 text-xs">
                 <span className="font-semibold text-slate-600">
@@ -452,7 +497,11 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                       ? parseMoney(hoje.sessao.valorInicial)
                       : 0;
                     setContadoValor(
-                      (ini + hoje.totalEntradas - hoje.totalSaidas)
+                      (
+                        ini +
+                        (hoje.entradasDinheiro ?? hoje.totalEntradas) -
+                        hoje.totalSaidas
+                      )
                         .toFixed(2)
                         .replace(".", ","),
                     );
@@ -588,6 +637,48 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               />
             </div>
           </div>
+
+          {tipo === "entrada" && (
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">
+                Forma de pagamento
+              </label>
+              <div className="mt-1 grid grid-cols-5 gap-1">
+                {(["dinheiro", "debito", "credito_1x", "credito_2x", "credito_3x"] as FormaPagamento[]).map((f) => {
+                  const ativo = formaPagto === f;
+                  const isDin = f === "dinheiro";
+                  const short =
+                    f === "dinheiro" ? "Dinheiro"
+                    : f === "debito" ? "Débito"
+                    : f === "credito_1x" ? "Créd 1x"
+                    : f === "credito_2x" ? "Créd 2x"
+                    : "Créd 3x";
+                  return (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setFormaPagto(f)}
+                      className={`flex flex-col items-center justify-center gap-0.5 rounded-lg border py-1.5 text-[10px] font-semibold transition-colors ${
+                        ativo
+                          ? isDin
+                            ? "bg-emerald-600 text-white border-emerald-600"
+                            : "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                      }`}
+                    >
+                      {isDin ? <Banknote className="h-3.5 w-3.5" /> : <CreditCard className="h-3.5 w-3.5" />}
+                      {short}
+                    </button>
+                  );
+                })}
+              </div>
+              {formaPagto !== "dinheiro" && (
+                <p className="mt-1 text-[11px] text-blue-700">
+                  Cartão — a maquininha desconta {TAXAS_CARTAO[formaPagto as FormaCartao].toLocaleString("pt-BR")}%. Não entra na gaveta.
+                </p>
+              )}
+            </div>
+          )}
 
           {tipo === "entrada" && (
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
@@ -847,6 +938,17 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                             : "—"}
                         </span>
                       </div>
+                      {s.totalCartao && parseMoney(s.totalCartao) > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-blue-600">Cartão</span>
+                          <span className="font-medium text-blue-700">
+                            {formatMoney(parseMoney(s.totalCartao))}
+                            {s.totalCartaoLiquido
+                              ? ` → ${formatMoney(parseMoney(s.totalCartaoLiquido))}`
+                              : ""}
+                          </span>
+                        </div>
+                      )}
                       <div className="flex justify-between">
                         <span className="font-semibold text-slate-600">
                           Valor final

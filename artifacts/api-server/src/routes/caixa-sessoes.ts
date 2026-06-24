@@ -72,7 +72,7 @@ async function totaisDoDia(data: string): Promise<TotaisDia> {
     })
     .from(caixaTable)
     .where(
-      sql`(${caixaTable.createdAt} AT TIME ZONE ${TZ})::date = ${data}::date`,
+      sql`(${caixaTable.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE ${TZ})::date = ${data}::date`,
     );
 
   let totalEntradas = 0;

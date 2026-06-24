@@ -10,6 +10,7 @@ import {
   ArrowUpCircle,
   ArrowDownCircle,
   Wallet,
+  CreditCard,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -30,11 +31,23 @@ interface Sessao {
   fechamentoAt: string | null;
 }
 
+interface CartaoItem {
+  forma: string;
+  label: string;
+  taxa: number;
+  bruto: number;
+  liquido: number;
+}
+
 interface StatusResp {
   sessao: Sessao | null;
   totalEntradas: number;
   totalSaidas: number;
   saldo: number;
+  entradasDinheiro?: number;
+  cartao?: CartaoItem[];
+  totalCartao?: number;
+  totalCartaoLiquido?: number;
 }
 
 function localDate(d: Date): string {
@@ -105,9 +118,11 @@ export function CaixaSessaoGuard() {
   }
 
   const valIni = status?.sessao ? parseValor(status.sessao.valorInicial) : 0;
-  const entradas = status?.totalEntradas ?? 0;
+  const entradas = status?.entradasDinheiro ?? status?.totalEntradas ?? 0;
   const saidas = status?.totalSaidas ?? 0;
   const valFinal = valIni + entradas - saidas;
+  const cartao = status?.cartao ?? [];
+  const totalCartaoLiquido = status?.totalCartaoLiquido ?? 0;
 
   // Pré-preenche o valor conferido com o esperado (até o usuário ajustar).
   useEffect(() => {
@@ -275,6 +290,37 @@ export function CaixaSessaoGuard() {
                   </span>
                 </div>
               </div>
+              {cartao.length > 0 && (
+                <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-bold text-blue-800">
+                    <CreditCard className="h-4 w-4" /> Vendas no cartão
+                  </div>
+                  <p className="text-xs text-blue-600">
+                    Esse dinheiro NÃO está na gaveta — cai na conta (a maquininha
+                    já desconta a taxa).
+                  </p>
+                  {cartao.map((c) => (
+                    <div
+                      key={c.forma}
+                      className="flex items-center justify-between text-xs text-blue-900"
+                    >
+                      <span>
+                        {c.label}{" "}
+                        <span className="text-blue-500">
+                          (−{c.taxa.toLocaleString("pt-BR")}%)
+                        </span>
+                      </span>
+                      <span className="font-medium">
+                        {formatMoney(c.bruto)} → {formatMoney(c.liquido)}
+                      </span>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between border-t border-blue-200 pt-2 text-sm font-bold text-blue-900">
+                    <span>Você recebe (cartão)</span>
+                    <span>{formatMoney(totalCartaoLiquido)}</span>
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="text-sm font-semibold text-slate-700">
                   Quanto tem na gaveta agora? (R$)

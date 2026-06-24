@@ -21,8 +21,14 @@ export default defineConfig({
     tailwindcss(),
     runtimeErrorOverlay(),
     VitePWA({
+      strategies: "injectManifest",
+      srcDir: "src",
+      filename: "sw.ts",
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg", "pwa-192x192.png", "pwa-512x512.png"],
+      injectManifest: {
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+      },
       manifest: {
         name: "Ismael Cell",
         short_name: "IsmaelCell",
@@ -45,20 +51,6 @@ export default defineConfig({
             sizes: "512x512",
             type: "image/png",
             purpose: "any maskable",
-          },
-        ],
-      },
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
-        navigateFallbackDenylist: [/^\/api\//],
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          {
-            urlPattern: /\/api\//i,
-            handler: "NetworkOnly",
-            method: "GET",
           },
         ],
       },
