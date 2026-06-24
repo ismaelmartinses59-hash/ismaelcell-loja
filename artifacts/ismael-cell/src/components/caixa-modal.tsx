@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListCaixa,
@@ -51,6 +51,7 @@ interface CaixaSessao {
   status: string;
   valorInicial: string;
   valorFinal: string | null;
+  valorContado: string | null;
   totalEntradas: string | null;
   totalSaidas: string | null;
   aberturaAt: string;
@@ -175,6 +176,15 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
 
   const [abrirValor, setAbrirValor] = useState("");
   const [sessaoBusy, setSessaoBusy] = useState(false);
+  const [fecharAberto, setFecharAberto] = useState(false);
+  const [contadoValor, setContadoValor] = useState("");
+
+  useEffect(() => {
+    if (!open) {
+      setFecharAberto(false);
+      setContadoValor("");
+    }
+  }, [open]);
 
   const abrirCaixa = async () => {
     if (!abrirValor.trim()) {
@@ -212,19 +222,20 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   };
 
   const fecharCaixa = async () => {
-    if (!window.confirm("Fechar o caixa de hoje agora?")) return;
     setSessaoBusy(true);
     try {
       const r = await fetch(`${BASE}/api/caixa-sessoes/fechar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ valorContado: contadoValor.trim() }),
       });
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || "Erro ao fechar");
       }
       toast({ title: "Caixa fechado!" });
+      setFecharAberto(false);
+      setContadoValor("");
       qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
       qc.invalidateQueries({ queryKey: ["caixa-sessao"] });
       qc.invalidateQueries({ queryKey: ["caixa-historico"] });
@@ -393,16 +404,67 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
             </div>
-            {hoje.sessao.status !== "fechado" && (
-              <Button
-                onClick={fecharCaixa}
-                disabled={sessaoBusy}
-                className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700"
-              >
-                <Moon className="mr-2 h-4 w-4" />
-                {sessaoBusy ? "Fechando..." : "Fechar caixa agora"}
-              </Button>
+            {hoje.sessao.status === "fechado" && hoje.sessao.valorContado && (
+              <div className="mt-2 flex justify-between border-t pt-2 text-xs">
+                <span className="font-semibold text-slate-600">
+                  Conferido na gaveta
+                </span>
+                <span className="font-bold text-indigo-600">
+                  {formatMoney(parseMoney(hoje.sessao.valorContado))}
+                </span>
+              </div>
             )}
+            {hoje.sessao.status !== "fechado" &&
+              (fecharAberto ? (
+                <div className="mt-3 space-y-2">
+                  <label className="text-xs font-semibold text-slate-700">
+                    Quanto tem na gaveta agora? (confira e ajuste)
+                  </label>
+                  <Input
+                    inputMode="decimal"
+                    placeholder="Ex: 150,00"
+                    value={contadoValor}
+                    onChange={(e) => setContadoValor(e.target.value)}
+                    className="h-11 text-base"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setFecharAberto(false)}
+                      disabled={sessaoBusy}
+                      className="flex-1"
+                    >
+                      Cancelar
+                    </Button>
+                    <Button
+                      onClick={fecharCaixa}
+                      disabled={sessaoBusy}
+                      className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                    >
+                      {sessaoBusy ? "Fechando..." : "Confirmar"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  onClick={() => {
+                    const ini = hoje.sessao
+                      ? parseMoney(hoje.sessao.valorInicial)
+                      : 0;
+                    setContadoValor(
+                      (ini + hoje.totalEntradas - hoje.totalSaidas)
+                        .toFixed(2)
+                        .replace(".", ","),
+                    );
+                    setFecharAberto(true);
+                  }}
+                  disabled={sessaoBusy}
+                  className="mt-3 w-full bg-indigo-600 hover:bg-indigo-700"
+                >
+                  <Moon className="mr-2 h-4 w-4" />
+                  Fechar caixa agora
+                </Button>
+              ))}
           </div>
         ) : (
           <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
@@ -795,6 +857,16 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                             : "—"}
                         </span>
                       </div>
+                      {s.valorContado && (
+                        <div className="flex justify-between">
+                          <span className="font-semibold text-slate-600">
+                            Conferido
+                          </span>
+                          <span className="font-bold text-indigo-600">
+                            {formatMoney(parseMoney(s.valorContado))}
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))

@@ -117,6 +117,9 @@ async function ensureSchema(): Promise<void> {
         created_at timestamp NOT NULL DEFAULT now()
       )
     `);
+    await db.execute(
+      sql`ALTER TABLE caixa_sessoes ADD COLUMN IF NOT EXISTS valor_contado text`,
+    );
     logger.info("Schema check ok");
   } catch (err) {
     logger.error({ err }, "Schema check failed");
