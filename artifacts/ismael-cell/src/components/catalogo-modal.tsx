@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2 } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard } from "lucide-react";
+import { type FormaCartao, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
@@ -445,7 +446,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
-  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado">("choose");
+  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito">("choose");
   const [pagandoContaId, setPagandoContaId] = useState<number | null>(null);
   const [pagamentoValor, setPagamentoValor] = useState("");
   const [expandedContaId, setExpandedContaId] = useState<number | null>(null);
@@ -620,20 +621,26 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao devolver", variant: "destructive" }),
   });
   const venderMutation = useMutation({
-    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string }) =>
+    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; formaPagamento?: string }) =>
       apiFetch(`/api/pecas/${args.id}/vender`, {
         method: "POST",
         body: JSON.stringify({
           fiado: args.fiado ?? false,
           nomeDevedor: args.nomeDevedor ?? "",
           tipoDevedor: args.tipoDevedor ?? "cliente",
+          formaPagamento: args.formaPagamento ?? "dinheiro",
         }),
       }),
     onSuccess: (peca: Peca, vars) => {
       invalidatePecas();
       invalidateVendas();
+      invalidateCaixa();
       if (vars.fiado) invalidateContas();
-      const tipoLabel = vars.fiado ? `📒 Fiado p/ ${vars.nomeDevedor}` : "✅ Vendida à vista";
+      const tipoLabel = vars.fiado
+        ? `📒 Fiado p/ ${vars.nomeDevedor}`
+        : vars.formaPagamento && vars.formaPagamento !== "dinheiro"
+          ? `💳 Vendida no ${LABELS_FORMA[vars.formaPagamento as FormaCartao]}`
+          : "✅ Vendida à vista";
       if (peca.quantidade === 0) {
         toast({ title: `${tipoLabel} — Estoque esgotado.`, description: `${peca.modelo}` });
       } else {

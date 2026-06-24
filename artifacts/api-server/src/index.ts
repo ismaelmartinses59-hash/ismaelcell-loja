@@ -103,6 +103,12 @@ async function ensureSchema(): Promise<void> {
     await db.execute(
       sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS pagamento_id integer`,
     );
+    await db.execute(
+      sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS forma_pagamento text`,
+    );
+    await db.execute(
+      sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS taxa_percent text`,
+    );
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS caixa_sessoes (
         id serial PRIMARY KEY,
@@ -119,6 +125,12 @@ async function ensureSchema(): Promise<void> {
     `);
     await db.execute(
       sql`ALTER TABLE caixa_sessoes ADD COLUMN IF NOT EXISTS valor_contado text`,
+    );
+    await db.execute(
+      sql`ALTER TABLE caixa_sessoes ADD COLUMN IF NOT EXISTS total_cartao text`,
+    );
+    await db.execute(
+      sql`ALTER TABLE caixa_sessoes ADD COLUMN IF NOT EXISTS total_cartao_liquido text`,
     );
     logger.info("Schema check ok");
   } catch (err) {
