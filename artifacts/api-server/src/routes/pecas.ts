@@ -147,65 +147,71 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Nome do devedor obrigatório no fiado" });
     return;
   }
-  const [peca] = await db
-    .update(pecasTable)
-    .set({ quantidade: atual.quantidade - 1 })
-    .where(eq(pecasTable.id, id))
-    .returning();
-  const [venda] = await db
-    .insert(vendasTable)
-    .values({
-      pecaId: id,
-      modelo: atual.modelo,
-      qualidade: atual.qualidade,
-      valor: atual.valor,
-    })
-    .returning();
-  if (fiado) {
-    const contaId = await findOrCreateConta(nomeDevedor, tipoDevedor);
-    await db.insert(contasReceberItensTable).values({
-      contaId,
-      vendaId: venda.id,
-      modelo: atual.modelo,
-      qualidade: atual.qualidade,
-      valor: atual.valor,
-    });
-  }
-  // Estoque compartilhado: decrementa também a peça gêmea no outro setor
-  const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
-  const gemeas = await db
-    .select()
-    .from(pecasTable)
-    .where(
-      and(
-        eq(pecasTable.setor, outroSetor),
-        sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
-        sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
-      ),
-    );
-  for (const g of gemeas) {
-    if (g.quantidade > 0) {
-      await db
-        .update(pecasTable)
-        .set({ quantidade: g.quantidade - 1 })
-        .where(eq(pecasTable.id, g.id));
+  // Todas as escritas da venda (estoque, venda, item fiado, gêmea e entrada
+  // de cartão no caixa) acontecem numa única transação, para que a entrada de
+  // cartão fique sempre atômica com a venda/estoque (sem venda "solta").
+  const peca = await db.transaction(async (tx) => {
+    const [p] = await tx
+      .update(pecasTable)
+      .set({ quantidade: atual.quantidade - 1 })
+      .where(eq(pecasTable.id, id))
+      .returning();
+    const [venda] = await tx
+      .insert(vendasTable)
+      .values({
+        pecaId: id,
+        modelo: atual.modelo,
+        qualidade: atual.qualidade,
+        valor: atual.valor,
+      })
+      .returning();
+    if (fiado) {
+      const contaId = await findOrCreateConta(nomeDevedor, tipoDevedor, tx);
+      await tx.insert(contasReceberItensTable).values({
+        contaId,
+        vendaId: venda.id,
+        modelo: atual.modelo,
+        qualidade: atual.qualidade,
+        valor: atual.valor,
+      });
     }
-  }
-  // Venda no cartão entra automaticamente no caixa (vinculada à venda+peça,
-  // para que excluir a movimentação reverta estoque e venda). Dinheiro e
-  // fiado seguem o fluxo atual (sem entrada automática no caixa).
-  if (!fiado && isCartao(forma) && forma) {
-    await db.insert(caixaTable).values({
-      tipo: "entrada",
-      valor: atual.valor,
-      motivo: `Venda ${atual.modelo} (${LABELS[forma]})`,
-      pecaId: id,
-      vendaId: venda.id,
-      modelo: atual.modelo,
-      formaPagamento: forma,
-      taxaPercent: String(taxaFor(forma)),
-    });
-  }
+    // Estoque compartilhado: decrementa também a peça gêmea no outro setor
+    const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
+    const gemeas = await tx
+      .select()
+      .from(pecasTable)
+      .where(
+        and(
+          eq(pecasTable.setor, outroSetor),
+          sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
+          sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
+        ),
+      );
+    for (const g of gemeas) {
+      if (g.quantidade > 0) {
+        await tx
+          .update(pecasTable)
+          .set({ quantidade: g.quantidade - 1 })
+          .where(eq(pecasTable.id, g.id));
+      }
+    }
+    // Venda no cartão entra automaticamente no caixa (vinculada à venda+peça,
+    // para que excluir a movimentação reverta estoque e venda). Dinheiro e
+    // fiado seguem o fluxo atual (sem entrada automática no caixa).
+    if (!fiado && isCartao(forma) && forma) {
+      await tx.insert(caixaTable).values({
+        tipo: "entrada",
+        valor: atual.valor,
+        motivo: `Venda ${atual.modelo} (${LABELS[forma]})`,
+        pecaId: id,
+        vendaId: venda.id,
+        modelo: atual.modelo,
+        formaPagamento: forma,
+        taxaPercent: String(taxaFor(forma)),
+      });
+    }
+    return p;
+  });
   res.json(peca);
 });
 

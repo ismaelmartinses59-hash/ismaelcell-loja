@@ -67,11 +67,17 @@ router.get("/contas-receber/:id", async (req, res): Promise<void> => {
   res.json(r);
 });
 
-// Encontra ou cria conta aberta para nome+tipo
-async function findOrCreateConta(nome: string, tipo: string): Promise<number> {
+// Encontra ou cria conta aberta para nome+tipo.
+// Aceita um executor opcional (transação) para participar de uma venda atômica.
+type DbExecutor = typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0];
+async function findOrCreateConta(
+  nome: string,
+  tipo: string,
+  executor: DbExecutor = db,
+): Promise<number> {
   const tipoFinal = tipo === "lojista" ? "lojista" : "cliente";
   const nomeNorm = nome.trim();
-  const [existente] = await db
+  const [existente] = await executor
     .select()
     .from(contasReceberTable)
     .where(
@@ -82,7 +88,7 @@ async function findOrCreateConta(nome: string, tipo: string): Promise<number> {
       ),
     );
   if (existente) return existente.id;
-  const [novo] = await db
+  const [novo] = await executor
     .insert(contasReceberTable)
     .values({ nome: nomeNorm, tipo: tipoFinal })
     .returning();
