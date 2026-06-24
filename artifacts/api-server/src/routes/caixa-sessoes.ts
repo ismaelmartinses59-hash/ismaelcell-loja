@@ -1,6 +1,14 @@
 import { Router, type IRouter } from "express";
 import { eq, sql } from "drizzle-orm";
 import { db, caixaSessoesTable, caixaTable } from "@workspace/db";
+import {
+  type FormaPagamento,
+  LABELS,
+  isCartao,
+  liquido,
+  normalizeForma,
+  taxaFor,
+} from "../lib/formas-pagamento.js";
 
 const router: IRouter = Router();
 
@@ -33,24 +41,86 @@ function hojeSP(): string {
   }).format(new Date());
 }
 
-/** Soma entradas e saídas do caixa para um dia (no fuso de São Paulo). */
-async function totaisDoDia(
-  data: string,
-): Promise<{ totalEntradas: number; totalSaidas: number }> {
+interface CartaoItem {
+  forma: FormaPagamento;
+  label: string;
+  taxa: number;
+  bruto: number;
+  liquido: number;
+}
+
+interface TotaisDia {
+  /** Todas as entradas (dinheiro + cartão bruto). */
+  totalEntradas: number;
+  /** Entradas em dinheiro/PIX (o que vai pra gaveta). */
+  entradasDinheiro: number;
+  totalSaidas: number;
+  /** Detalhe por forma de cartão (só as que tiveram movimento). */
+  cartao: CartaoItem[];
+  totalCartaoBruto: number;
+  totalCartaoLiquido: number;
+}
+
+/** Soma entradas e saídas do caixa para um dia (no fuso de São Paulo),
+ *  separando dinheiro de cartão (e detalhando o cartão por forma). */
+async function totaisDoDia(data: string): Promise<TotaisDia> {
   const rows = await db
-    .select({ tipo: caixaTable.tipo, valor: caixaTable.valor })
+    .select({
+      tipo: caixaTable.tipo,
+      valor: caixaTable.valor,
+      formaPagamento: caixaTable.formaPagamento,
+    })
     .from(caixaTable)
     .where(
       sql`(${caixaTable.createdAt} AT TIME ZONE ${TZ})::date = ${data}::date`,
     );
+
   let totalEntradas = 0;
+  let entradasDinheiro = 0;
   let totalSaidas = 0;
+  const cartaoMap = new Map<FormaPagamento, { bruto: number }>();
+
   for (const r of rows) {
     const n = parseValor(r.valor);
-    if (r.tipo === "entrada") totalEntradas += n;
-    else totalSaidas += n;
+    if (r.tipo !== "entrada") {
+      totalSaidas += n;
+      continue;
+    }
+    totalEntradas += n;
+    const forma = normalizeForma(r.formaPagamento);
+    if (isCartao(forma) && forma) {
+      const prev = cartaoMap.get(forma)?.bruto ?? 0;
+      cartaoMap.set(forma, { bruto: prev + n });
+    } else {
+      entradasDinheiro += n;
+    }
   }
-  return { totalEntradas, totalSaidas };
+
+  const cartao: CartaoItem[] = [];
+  let totalCartaoBruto = 0;
+  let totalCartaoLiquido = 0;
+  for (const [forma, { bruto }] of cartaoMap) {
+    const liq = liquido(bruto, forma);
+    cartao.push({
+      forma,
+      label: LABELS[forma],
+      taxa: taxaFor(forma),
+      bruto,
+      liquido: liq,
+    });
+    totalCartaoBruto += bruto;
+    totalCartaoLiquido += liq;
+  }
+  cartao.sort((a, b) => a.forma.localeCompare(b.forma));
+
+  return {
+    totalEntradas,
+    entradasDinheiro,
+    totalSaidas,
+    cartao,
+    totalCartaoBruto,
+    totalCartaoLiquido,
+  };
 }
 
 /** Sessão do dia + totais ao vivo. */
@@ -61,12 +131,16 @@ router.get("/caixa-sessoes", async (req, res): Promise<void> => {
     .select()
     .from(caixaSessoesTable)
     .where(eq(caixaSessoesTable.data, data));
-  const { totalEntradas, totalSaidas } = await totaisDoDia(data);
+  const t = await totaisDoDia(data);
   res.json({
     sessao: sessao ?? null,
-    totalEntradas,
-    totalSaidas,
-    saldo: totalEntradas - totalSaidas,
+    totalEntradas: t.totalEntradas,
+    entradasDinheiro: t.entradasDinheiro,
+    totalSaidas: t.totalSaidas,
+    saldo: t.totalEntradas - t.totalSaidas,
+    cartao: t.cartao,
+    totalCartao: t.totalCartaoBruto,
+    totalCartaoLiquido: t.totalCartaoLiquido,
   });
 });
 
@@ -119,9 +193,10 @@ router.post("/caixa-sessoes/fechar", async (req, res): Promise<void> => {
     res.status(409).json({ error: "O caixa de hoje já foi fechado" });
     return;
   }
-  const { totalEntradas, totalSaidas } = await totaisDoDia(data);
+  const t = await totaisDoDia(data);
   const valorInicial = parseValor(sessao.valorInicial);
-  const valorFinal = valorInicial + totalEntradas - totalSaidas;
+  // O valor esperado na GAVETA usa só o dinheiro (cartão não entra na gaveta).
+  const valorFinal = valorInicial + t.entradasDinheiro - t.totalSaidas;
   const contadoRaw = String(req.body?.valorContado ?? "").trim();
   const valorContado = contadoRaw ? formatValor(parseValor(contadoRaw)) : null;
   const [atualizada] = await db
@@ -129,14 +204,16 @@ router.post("/caixa-sessoes/fechar", async (req, res): Promise<void> => {
     .set({
       status: "fechado",
       fechamentoAt: new Date(),
-      totalEntradas: formatValor(totalEntradas),
-      totalSaidas: formatValor(totalSaidas),
+      totalEntradas: formatValor(t.totalEntradas),
+      totalSaidas: formatValor(t.totalSaidas),
+      totalCartao: formatValor(t.totalCartaoBruto),
+      totalCartaoLiquido: formatValor(t.totalCartaoLiquido),
       valorFinal: formatValor(valorFinal),
       valorContado,
     })
     .where(eq(caixaSessoesTable.id, sessao.id))
     .returning();
-  res.json(atualizada);
+  res.json({ ...atualizada, cartao: t.cartao });
 });
 
 export default router;

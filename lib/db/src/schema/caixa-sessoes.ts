@@ -9,6 +9,8 @@ export const caixaSessoesTable = pgTable("caixa_sessoes", {
   valorContado: text("valor_contado"),
   totalEntradas: text("total_entradas"),
   totalSaidas: text("total_saidas"),
+  totalCartao: text("total_cartao"),
+  totalCartaoLiquido: text("total_cartao_liquido"),
   aberturaAt: timestamp("abertura_at").notNull().defaultNow(),
   fechamentoAt: timestamp("fechamento_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),

@@ -9,6 +9,8 @@ export const caixaTable = pgTable("caixa", {
   vendaId: integer("venda_id"),
   pagamentoId: integer("pagamento_id"),
   modelo: text("modelo"),
+  formaPagamento: text("forma_pagamento"),
+  taxaPercent: text("taxa_percent"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

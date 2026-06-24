@@ -8,6 +8,7 @@ import {
   contasReceberPagamentosTable,
   contasReceberTable,
 } from "@workspace/db";
+import { normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
 
 const router: IRouter = Router();
 
@@ -89,6 +90,11 @@ router.post("/caixa", async (req, res): Promise<void> => {
   const valor = String(req.body?.valor ?? "").trim();
   const motivo = String(req.body?.motivo ?? "").trim();
   const pecaIdRaw = req.body?.pecaId;
+  // Forma de pagamento só se aplica a entradas; default = dinheiro (null).
+  const forma =
+    tipo === "entrada" ? normalizeForma(req.body?.formaPagamento) : null;
+  const formaPagamento = forma;
+  const taxaPercent = forma ? String(taxaFor(forma)) : null;
 
   if (!tipo) {
     res.status(400).json({ error: "tipo deve ser entrada ou saida" });
@@ -165,7 +171,16 @@ router.post("/caixa", async (req, res): Promise<void> => {
 
       const [m] = await tx
         .insert(caixaTable)
-        .values({ tipo, valor, motivo, pecaId, vendaId, modelo })
+        .values({
+          tipo,
+          valor,
+          motivo,
+          pecaId,
+          vendaId,
+          modelo,
+          formaPagamento,
+          taxaPercent,
+        })
         .returning();
       return m;
     });
