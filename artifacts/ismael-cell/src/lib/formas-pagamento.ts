@@ -3,7 +3,7 @@
 // Regra: a taxa é descontada do que a loja recebe (cliente paga o valor cheio).
 
 export type FormaCartao = "debito" | "credito_1x" | "credito_2x" | "credito_3x";
-export type FormaPagamento = "dinheiro" | FormaCartao;
+export type FormaPagamento = "dinheiro" | "pix" | FormaCartao;
 
 export const TAXAS_CARTAO: Record<FormaCartao, number> = {
   debito: 1.69,
@@ -14,11 +14,17 @@ export const TAXAS_CARTAO: Record<FormaCartao, number> = {
 
 export const LABELS_FORMA: Record<FormaPagamento, string> = {
   dinheiro: "Dinheiro",
+  pix: "PIX",
   debito: "Cartão débito",
   credito_1x: "Crédito 1x",
   credito_2x: "Crédito 2x",
   credito_3x: "Crédito 3x",
 };
+
+/** PIX e dinheiro não têm taxa e entram na gaveta; só cartão tem taxa. */
+export function isCartaoForma(f: FormaPagamento): f is FormaCartao {
+  return f !== "dinheiro" && f !== "pix";
+}
 
 /** Valor líquido (o que a loja recebe) após a taxa do cartão. */
 export function liquidoCartao(bruto: number, forma: FormaCartao): number {

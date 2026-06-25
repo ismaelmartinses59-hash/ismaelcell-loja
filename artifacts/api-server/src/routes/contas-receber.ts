@@ -7,6 +7,7 @@ import {
   contasReceberPagamentosTable,
   caixaTable,
 } from "@workspace/db";
+import { normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
 
 const router: IRouter = Router();
 
@@ -109,6 +110,10 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
     res.status(400).json({ error: "Valor inválido" });
     return;
   }
+  // Forma de pagamento do AV (dinheiro/pix/cartão). A taxa do cartão é prejuízo
+  // da loja: o valor que abate a dívida é o cheio; a entrada no caixa guarda a
+  // forma + taxa para o líquido aparecer no fechamento.
+  const forma = normalizeForma(req.body?.formaPagamento) ?? "dinheiro";
   const r = await getContaResumo(id);
   if (!r) {
     res.status(404).json({ error: "Conta não encontrada" });
@@ -126,6 +131,8 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
       valor,
       motivo: `AV — ${r.conta.nome}`,
       pagamentoId: pag.id,
+      formaPagamento: forma,
+      taxaPercent: forma ? String(taxaFor(forma)) : null,
     });
   });
   // Verifica saldo: se zerou ou ficou negativo, fecha a conta
