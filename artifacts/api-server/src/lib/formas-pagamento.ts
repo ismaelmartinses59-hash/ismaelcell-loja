@@ -8,14 +8,16 @@
 
 export type FormaPagamento =
   | "dinheiro"
+  | "pix"
   | "debito"
   | "credito_1x"
   | "credito_2x"
   | "credito_3x";
 
-/** Taxa (%) por forma de pagamento. */
+/** Taxa (%) por forma de pagamento. PIX não tem taxa (cai direto na conta). */
 export const TAXAS: Record<FormaPagamento, number> = {
   dinheiro: 0,
+  pix: 0,
   debito: 1.69,
   credito_1x: 3.49,
   credito_2x: 6.59,
@@ -25,6 +27,7 @@ export const TAXAS: Record<FormaPagamento, number> = {
 /** Rótulo legível por forma de pagamento. */
 export const LABELS: Record<FormaPagamento, string> = {
   dinheiro: "Dinheiro",
+  pix: "PIX",
   debito: "Cartão débito",
   credito_1x: "Cartão crédito 1x",
   credito_2x: "Cartão crédito 2x",
@@ -43,9 +46,10 @@ export function normalizeForma(raw: unknown): FormaPagamento | null {
     : null;
 }
 
-/** True se a forma for um cartão (débito ou crédito). */
+/** True se a forma for um cartão (débito ou crédito). Dinheiro e PIX não são
+ * cartão: ambos vão pra gaveta e não têm taxa. */
 export function isCartao(f: FormaPagamento | null | undefined): boolean {
-  return f != null && f !== "dinheiro";
+  return f != null && f !== "dinheiro" && f !== "pix";
 }
 
 /** Taxa (%) da forma; 0 se não houver. */

@@ -33,6 +33,7 @@ import {
   Moon,
   CreditCard,
   Banknote,
+  QrCode,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -41,6 +42,7 @@ import {
   type FormaCartao,
   TAXAS_CARTAO,
   LABELS_FORMA,
+  isCartaoForma,
 } from "../lib/formas-pagamento";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -643,12 +645,13 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               <label className="text-xs font-medium text-muted-foreground">
                 Forma de pagamento
               </label>
-              <div className="mt-1 grid grid-cols-5 gap-1">
-                {(["dinheiro", "debito", "credito_1x", "credito_2x", "credito_3x"] as FormaPagamento[]).map((f) => {
+              <div className="mt-1 grid grid-cols-3 gap-1">
+                {(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as FormaPagamento[]).map((f) => {
                   const ativo = formaPagto === f;
-                  const isDin = f === "dinheiro";
+                  const semTaxa = f === "dinheiro" || f === "pix";
                   const short =
                     f === "dinheiro" ? "Dinheiro"
+                    : f === "pix" ? "PIX"
                     : f === "debito" ? "Débito"
                     : f === "credito_1x" ? "Créd 1x"
                     : f === "credito_2x" ? "Créd 2x"
@@ -660,19 +663,24 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                       onClick={() => setFormaPagto(f)}
                       className={`flex flex-col items-center justify-center gap-0.5 rounded-lg border py-1.5 text-[10px] font-semibold transition-colors ${
                         ativo
-                          ? isDin
+                          ? semTaxa
                             ? "bg-emerald-600 text-white border-emerald-600"
                             : "bg-blue-600 text-white border-blue-600"
                           : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
                       }`}
                     >
-                      {isDin ? <Banknote className="h-3.5 w-3.5" /> : <CreditCard className="h-3.5 w-3.5" />}
+                      {f === "dinheiro" ? <Banknote className="h-3.5 w-3.5" /> : f === "pix" ? <QrCode className="h-3.5 w-3.5" /> : <CreditCard className="h-3.5 w-3.5" />}
                       {short}
                     </button>
                   );
                 })}
               </div>
-              {formaPagto !== "dinheiro" && (
+              {formaPagto === "pix" && (
+                <p className="mt-1 text-[11px] text-emerald-700">
+                  PIX — sem taxa, entra na gaveta (igual dinheiro).
+                </p>
+              )}
+              {isCartaoForma(formaPagto) && (
                 <p className="mt-1 text-[11px] text-blue-700">
                   Cartão — a maquininha desconta {TAXAS_CARTAO[formaPagto as FormaCartao].toLocaleString("pt-BR")}%. Não entra na gaveta.
                 </p>

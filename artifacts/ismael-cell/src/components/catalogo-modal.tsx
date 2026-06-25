@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard } from "lucide-react";
-import { type FormaCartao, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao } from "../lib/formas-pagamento";
+import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
@@ -453,9 +453,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
-  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito">("choose");
+  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista">("choose");
   const [pagandoContaId, setPagandoContaId] = useState<number | null>(null);
   const [pagamentoValor, setPagamentoValor] = useState("");
+  const [pagamentoForma, setPagamentoForma] = useState<FormaPagamento>("dinheiro");
   const [expandedContaId, setExpandedContaId] = useState<number | null>(null);
   const [deletingContaId, setDeletingContaId] = useState<number | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
@@ -649,9 +650,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       if (vars.fiado) invalidateContas();
       const tipoLabel = vars.fiado
         ? `📒 Fiado p/ ${vars.nomeDevedor}`
-        : vars.formaPagamento && vars.formaPagamento !== "dinheiro"
-          ? `💳 Vendida no ${LABELS_FORMA[vars.formaPagamento as FormaCartao]}`
-          : "✅ Vendida à vista";
+        : vars.formaPagamento === "pix"
+          ? "✅ Vendida no PIX"
+          : vars.formaPagamento && vars.formaPagamento !== "dinheiro"
+            ? `💳 Vendida no ${LABELS_FORMA[vars.formaPagamento as FormaPagamento]}`
+            : "✅ Vendida à vista";
       if (peca.quantidade === 0) {
         toast({ title: `${tipoLabel} — Estoque esgotado.`, description: `${peca.modelo}` });
       } else {
@@ -679,9 +682,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     enabled: open,
   });
   const pagarMutation = useMutation({
-    mutationFn: ({ contaId, valor }: { contaId: number; valor: string }) =>
-      apiFetch(`/api/contas-receber/${contaId}/pagamento`, { method: "POST", body: JSON.stringify({ valor }) }),
-    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setPagandoContaId(null); setPagamentoValor(""); toast({ title: "💰 Pagamento registrado!" }); },
+    mutationFn: ({ contaId, valor, formaPagamento }: { contaId: number; valor: string; formaPagamento?: string }) =>
+      apiFetch(`/api/contas-receber/${contaId}/pagamento`, { method: "POST", body: JSON.stringify({ valor, formaPagamento: formaPagamento ?? "dinheiro" }) }),
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); toast({ title: "💰 Pagamento registrado!" }); },
     onError: () => toast({ title: "Erro ao registrar pagamento", variant: "destructive" }),
   });
   const apagarContaMutation = useMutation({
@@ -1308,7 +1311,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         {/* Botões de ação */}
                         {aberta && !isPagando && !isDeleting && addItemContaId !== c.conta.id && (
                           <div className="flex gap-2">
-                            <Button size="sm" className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold" onClick={() => { setPagandoContaId(c.conta.id); setPagamentoValor(""); }}>
+                            <Button size="sm" className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold" onClick={() => { setPagandoContaId(c.conta.id); setPagamentoValor(""); setPagamentoForma("dinheiro"); }}>
                               <Wallet className="w-3.5 h-3.5 mr-1.5" /> AV (Receber)
                             </Button>
                             <Button size="sm" variant="outline" className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => { setAddItemContaId(c.conta.id); setItemDescricao(""); setItemValor(""); }}>
@@ -1383,10 +1386,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 className="h-9 text-sm"
                                 autoFocus
                               />
-                              <Button size="sm" className="h-9 bg-green-600 hover:bg-green-700 text-white" disabled={!pagamentoValor || pagarMutation.isPending} onClick={() => pagarMutation.mutate({ contaId: c.conta.id, valor: pagamentoValor })}>
+                              <Button size="sm" className="h-9 bg-green-600 hover:bg-green-700 text-white" disabled={!pagamentoValor || pagarMutation.isPending} onClick={() => pagarMutation.mutate({ contaId: c.conta.id, valor: pagamentoValor, formaPagamento: pagamentoForma })}>
                                 <Check className="w-4 h-4" />
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setPagandoContaId(null); setPagamentoValor(""); }}>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); }}>
                                 <X className="w-4 h-4" />
                               </Button>
                             </div>
@@ -1394,6 +1397,46 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                               <button type="button" onClick={() => setPagamentoValor(String(c.saldo))} className="text-[10px] text-green-700 hover:underline font-medium">
                                 Receber tudo ({fmtBRL(c.saldo)})
                               </button>
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Recebeu como?</div>
+                              <div className="grid grid-cols-3 gap-1">
+                                {(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as FormaPagamento[]).map((f) => {
+                                  const ativo = pagamentoForma === f;
+                                  const semTaxa = f === "dinheiro" || f === "pix";
+                                  const short =
+                                    f === "dinheiro" ? "Dinheiro"
+                                    : f === "pix" ? "PIX"
+                                    : f === "debito" ? "Débito"
+                                    : f === "credito_1x" ? "Créd 1x"
+                                    : f === "credito_2x" ? "Créd 2x"
+                                    : "Créd 3x";
+                                  return (
+                                    <button
+                                      key={f}
+                                      type="button"
+                                      onClick={() => setPagamentoForma(f)}
+                                      className={`rounded-lg border py-1.5 text-[10px] font-semibold transition-colors ${
+                                        ativo
+                                          ? semTaxa
+                                            ? "bg-emerald-600 text-white border-emerald-600"
+                                            : "bg-blue-600 text-white border-blue-600"
+                                          : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                                      }`}
+                                    >
+                                      {short}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {pagamentoForma === "pix" && (
+                                <p className="mt-1 text-[10px] text-emerald-700">PIX — sem taxa, entra na gaveta.</p>
+                              )}
+                              {isCartaoForma(pagamentoForma) && pagamentoValor && (
+                                <p className="mt-1 text-[10px] text-blue-700">
+                                  Cartão {TAXAS_CARTAO[pagamentoForma].toLocaleString("pt-BR")}% — você recebe {fmtBRL(liquidoCartao(Number(String(pagamentoValor).replace(",", ".")) || 0, pagamentoForma))} (a taxa é por sua conta).
+                                </p>
+                              )}
                             </div>
                           </div>
                         )}
@@ -1546,7 +1589,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   <Button
                     className="h-16 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
                     disabled={venderMutation.isPending}
-                    onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "dinheiro" })}
+                    onClick={() => setFiadoStep("avista")}
                   >
                     <DollarSign className="w-5 h-5" />
                     <span className="font-bold text-xs">À VISTA</span>
@@ -1567,6 +1610,34 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <HandCoins className="w-5 h-5" />
                     <span className="font-bold text-xs">FIADO</span>
                   </Button>
+                </div>
+              )}
+
+              {fiadoStep === "avista" && (
+                <div className="space-y-2.5 pt-1">
+                  <div className="text-xs font-semibold text-muted-foreground">Recebeu como?</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      className="h-16 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
+                      disabled={venderMutation.isPending}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "dinheiro" })}
+                    >
+                      <DollarSign className="w-5 h-5" />
+                      <span className="font-bold text-sm">DINHEIRO</span>
+                    </Button>
+                    <Button
+                      className="h-16 flex flex-col items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white gap-0.5"
+                      disabled={venderMutation.isPending}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "pix" })}
+                    >
+                      <Wallet className="w-5 h-5" />
+                      <span className="font-bold text-sm">PIX</span>
+                    </Button>
+                  </div>
+                  <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-2 text-[11px] text-emerald-900">
+                    Dinheiro e PIX entram na gaveta — sem taxa. Você recebe os <b>{formatMoney(venderDialogPeca.valor)}</b> cheios.
+                  </div>
+                  <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
                 </div>
               )}
 
