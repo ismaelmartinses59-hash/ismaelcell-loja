@@ -136,7 +136,7 @@ export default function Orders() {
       <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber"} />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
       {/* Header */}
-      <header className="bg-white border-b sticky top-0 z-20 shadow-sm">
+      <header className="bg-white border-b sticky top-0 z-20 shadow-sm pt-[env(safe-area-inset-top)]">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2 shrink-0">
             <button
