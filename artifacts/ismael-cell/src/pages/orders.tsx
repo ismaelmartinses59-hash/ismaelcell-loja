@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetOrderStats, useListOrders, getListOrdersQueryKey, getGetOrderStatsQueryKey,
@@ -16,11 +16,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, EyeOff, TrendingUp, Shield, Package, HandCoins, Wallet } from "lucide-react";
+import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, TrendingUp, Shield, Package, HandCoins, Wallet } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
-
-const VISIBLE_SECONDS = 10;
 
 export default function Orders() {
   const [, setLocation] = useLocation();
@@ -43,32 +41,6 @@ export default function Orders() {
   const contasAbertas = contasReceber.filter((c) => c.conta.closedAt === null && c.saldo > 0);
   const totalAReceber = contasAbertas.reduce((a, c) => a + c.saldo, 0);
 
-  // Auto-hide: seconds remaining (0 = hidden, >0 = visible countdown)
-  const [secondsLeft, setSecondsLeft] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Cards are visible if countdown is running, user is searching, or a status filter is active
-  const ordersVisible = secondsLeft > 0 || search.length > 0 || statusFilter !== "all";
-
-  // Start 10-second countdown after saving
-  const startCountdown = () => {
-    if (timerRef.current) clearInterval(timerRef.current);
-    setSecondsLeft(VISIBLE_SECONDS);
-    timerRef.current = setInterval(() => {
-      setSecondsLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timerRef.current!);
-          timerRef.current = null;
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  };
-
-  // Cleanup on unmount
-  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
-
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
       setLocation("/");
@@ -80,8 +52,6 @@ export default function Orders() {
     setSearch("");
     setStatusFilter("all");
     setShowForm(false);
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    setSecondsLeft(0);
   };
 
   const { data: stats } = useGetOrderStats(tipo, {
@@ -114,6 +84,14 @@ export default function Orders() {
     .filter((o) => o.status !== "concluido" && o.status !== "encerrado")
     .map((o) => o.modelo);
 
+  // Por padrão (sem busca e sem filtro de status) mostramos só as ordens ATIVAS.
+  // Quando uma OS vira "concluído" (ou "encerrado") ela some dessa lista; para
+  // revê-las basta escolher o status no filtro.
+  const showOnlyActive = statusFilter === "all" && search.length === 0;
+  const displayOrders = showOnlyActive
+    ? orders.filter((o) => o.status !== "concluido" && o.status !== "encerrado")
+    : orders;
+
   const handleLogout = () => {
     localStorage.removeItem("isLoggedIn");
     localStorage.removeItem("userEmail");
@@ -125,7 +103,6 @@ export default function Orders() {
   // Called when a new order is saved
   const handleOrderCreated = () => {
     setShowForm(false);
-    startCountdown();
   };
 
   return (
@@ -332,11 +309,9 @@ export default function Orders() {
           <div className="space-y-4">
             <OrderFilters search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
             <OrdersList
-              orders={orders}
+              orders={displayOrders}
               isLoading={isLoading}
-              visible={ordersVisible}
-              secondsLeft={secondsLeft}
-              isSearching={search.length > 0}
+              showOnlyActive={showOnlyActive}
             />
           </div>
         </div>
@@ -345,11 +320,9 @@ export default function Orders() {
         <div className="md:hidden space-y-4">
           <OrderFilters search={search} setSearch={setSearch} statusFilter={statusFilter} setStatusFilter={setStatusFilter} />
           <OrdersList
-            orders={orders}
+            orders={displayOrders}
             isLoading={isLoading}
-            visible={ordersVisible}
-            secondsLeft={secondsLeft}
-            isSearching={search.length > 0}
+            showOnlyActive={showOnlyActive}
           />
         </div>
 
@@ -391,43 +364,21 @@ function OrderFilters({ search, setSearch, statusFilter, setStatusFilter }: {
 }
 
 function OrdersList({
-  orders, isLoading, visible, secondsLeft, isSearching
+  orders, isLoading, showOnlyActive
 }: {
   orders: Order[];
   isLoading: boolean;
-  visible: boolean;
-  secondsLeft: number;
-  isSearching: boolean;
+  showOnlyActive: boolean;
 }) {
-  if (!visible) {
-    return (
-      <Card className="border-dashed border-2">
-        <CardContent className="p-10 flex flex-col items-center gap-3 text-center text-muted-foreground">
-          <EyeOff className="h-8 w-8 opacity-30" />
-          <p className="font-medium">Ordens ocultas</p>
-          <p className="text-sm">Digite na busca ou selecione um status para ver as ordens</p>
-        </CardContent>
-      </Card>
-    );
-  }
-
   if (isLoading) return <div className="text-center py-12 text-muted-foreground">Carregando ordens...</div>;
 
   return (
     <div className="space-y-3">
-      {/* Countdown banner */}
-      {secondsLeft > 0 && !isSearching && (
-        <div className="flex items-center justify-between bg-amber-50 border border-amber-200 rounded-lg px-4 py-2 text-sm text-amber-700">
-          <span className="flex items-center gap-2">
-            <EyeOff className="h-4 w-4" />
-            Ocultando automaticamente em <strong>{secondsLeft}s</strong>
-          </span>
-        </div>
-      )}
-
       {orders.length === 0 ? (
         <Card className="border-dashed">
-          <CardContent className="p-10 text-center text-muted-foreground">Nenhuma ordem encontrada.</CardContent>
+          <CardContent className="p-10 text-center text-muted-foreground">
+            {showOnlyActive ? "Nenhuma ordem ativa no momento." : "Nenhuma ordem encontrada."}
+          </CardContent>
         </Card>
       ) : (
         orders.map((order) => <OrderCard key={order.id} order={order} />)
