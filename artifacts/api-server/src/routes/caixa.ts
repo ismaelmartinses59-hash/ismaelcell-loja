@@ -26,6 +26,23 @@ function parseValor(raw: string): number {
   return isNaN(n) ? 0 : n;
 }
 
+const TZ = "America/Sao_Paulo";
+
+/**
+ * Instante (Date) do início da semana atual — segunda-feira 00:00 no fuso de
+ * São Paulo. Brasil não tem mais horário de verão, então o offset é fixo -03:00.
+ */
+function inicioSemanaSP(): Date {
+  const agoraSP = new Date(new Date().toLocaleString("en-US", { timeZone: TZ }));
+  const dow = agoraSP.getDay(); // 0=domingo .. 6=sábado
+  const diff = (dow + 6) % 7; // quantos dias desde a última segunda
+  agoraSP.setDate(agoraSP.getDate() - diff);
+  const y = agoraSP.getFullYear();
+  const m = String(agoraSP.getMonth() + 1).padStart(2, "0");
+  const d = String(agoraSP.getDate()).padStart(2, "0");
+  return new Date(`${y}-${m}-${d}T00:00:00-03:00`);
+}
+
 interface HttpError extends Error {
   status?: number;
 }
@@ -50,6 +67,8 @@ router.get("/caixa", async (req, res): Promise<void> => {
       conditions.push(gte(caixaTable.createdAt, inicioDate));
       conditions.push(lt(caixaTable.createdAt, fimDate));
     }
+  } else if (periodo === "semana") {
+    conditions.push(gte(caixaTable.createdAt, inicioSemanaSP()));
   } else {
     const dias =
       periodo === "7" ? 7 : periodo === "15" ? 15 : periodo === "365" ? 365 : 30;
