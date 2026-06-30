@@ -97,6 +97,7 @@ interface CaixaModalProps {
 }
 
 const PERIODOS = [
+  { key: "semana", label: "Esta semana" },
   { key: "7", label: "7 dias" },
   { key: "15", label: "15 dias" },
   { key: "30", label: "30 dias" },
@@ -109,7 +110,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  const [periodo, setPeriodo] = useState<PeriodoKey>("30");
+  const [periodo, setPeriodo] = useState<PeriodoKey>("semana");
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
   const [showHistorico, setShowHistorico] = useState(false);
