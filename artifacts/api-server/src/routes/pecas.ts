@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { db, pecasTable, vendasTable, contasReceberItensTable, caixaTable } from "@workspace/db";
 import { findOrCreateConta } from "./contas-receber";
-import { LABELS, isCartao, normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
+import { LABELS, normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
 
 const router: IRouter = Router();
 
@@ -141,7 +141,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   const fiado = req.body?.fiado === true;
   const nomeDevedor = String(req.body?.nomeDevedor ?? "").trim();
   const tipoDevedor = req.body?.tipoDevedor === "lojista" ? "lojista" : "cliente";
-  // Forma de pagamento da venda à vista (dinheiro ou cartão). Só vale quando NÃO é fiado.
+  // Forma de pagamento da venda à vista (dinheiro, PIX ou cartão). Só vale quando NÃO é fiado.
   const forma = fiado ? null : normalizeForma(req.body?.formaPagamento);
   if (fiado && !nomeDevedor) {
     res.status(400).json({ error: "Nome do devedor obrigatório no fiado" });
@@ -195,10 +195,11 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
           .where(eq(pecasTable.id, g.id));
       }
     }
-    // Venda no cartão entra automaticamente no caixa (vinculada à venda+peça,
-    // para que excluir a movimentação reverta estoque e venda). Dinheiro e
-    // fiado seguem o fluxo atual (sem entrada automática no caixa).
-    if (!fiado && isCartao(forma) && forma) {
+    // Toda venda à vista (dinheiro, PIX ou cartão) entra automaticamente no
+    // caixa, vinculada à venda+peça, para que excluir a movimentação reverta
+    // estoque e venda. Dinheiro e PIX têm taxa 0; cartão carrega a taxa.
+    // Só o fiado NÃO gera entrada (vira conta a receber).
+    if (!fiado && forma) {
       await tx.insert(caixaTable).values({
         tipo: "entrada",
         valor: atual.valor,

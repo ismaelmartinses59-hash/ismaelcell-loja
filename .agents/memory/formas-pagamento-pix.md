@@ -13,6 +13,6 @@ The shop owner confirmed these rules:
 **Why this matters:** `isCartao(forma)` (backend) / `isCartaoForma(forma)` (frontend mirror) must exclude BOTH `dinheiro` AND `pix`. If pix is ever treated as a card it (a) gets a fee it shouldn't, and (b) drops out of the gaveta totals.
 
 **How to apply:**
-- À vista peça sales: only cards auto-create a caixa entrada (`if (!fiado && isCartao(forma) && forma)`). Dinheiro AND pix à vista create NO caixa entry — only the venda is recorded. This is intentional (avoids double counting); keep pix consistent with dinheiro.
+- À vista peça sales: EVERY non-fiado sale (dinheiro, pix, AND cartão) must create a caixa entrada, linked to venda+peça so deleting the movimento reverts stock+venda. Dinheiro/pix carry taxaPercent 0; cartão carries its fee. Only fiado creates NO caixa entry (it becomes a conta a receber). **Why:** the owner expects every sale to show up in the caixa histórico regardless of payment form — gating the insert on "is it a card?" silently drops cash/pix sales.
 - AV (pagamento de fiado, "A Receber"): the pagamento valor that reduces the debt is always gross; the linked caixa entrada carries `formaPagamento` + `taxaPercent` so the fee appears as the shop's loss in fechamento.
 - Backend `lib/formas-pagamento.ts` and frontend `src/lib/formas-pagamento.ts` are mirrored — keep TAXAS/labels/isCartao in sync across both.
