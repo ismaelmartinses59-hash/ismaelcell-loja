@@ -840,6 +840,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   }, [sharePreview]);
 
   const lowStock = pecas.filter((p) => p.quantidade <= 1);
+  // Joga as peças ZERADAS (0 em estoque) para o final da lista, sem perder a
+  // ordem original entre as demais — assim as que ainda têm estoque ficam no topo.
+  const ordenarPorEstoque = (lista: Peca[]) =>
+    [...lista].sort((a, b) => (a.quantidade <= 0 ? 1 : 0) - (b.quantidade <= 0 ? 1 : 0));
   const pendentes = garantias.filter((g) => g.status === "pendente");
 
   return (
@@ -945,7 +949,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               )}
               {search.trim() && pecasLoading && <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>}
               {search.trim() && !pecasLoading && pecas.length === 0 && <div className="text-center py-10 text-muted-foreground text-sm">Nenhuma peça encontrada para "<strong>{search}</strong>".</div>}
-              {(search.trim() ? pecas : lowStock).map((peca) => (
+              {ordenarPorEstoque(search.trim() ? pecas : lowStock).map((peca) => (
                 <div key={peca.id}>
                   {editingId === peca.id ? (
                     <PecaForm initial={peca} onSave={(data) => editMutation.mutate({ id: peca.id, data })} onCancel={() => setEditingId(null)} loading={editMutation.isPending} />
