@@ -416,6 +416,179 @@ function PreviewLojistaDialog({ open, data, onConfirm, onCancel, onVoltar, loadi
   );
 }
 
+// ─── Importar Nota do Fornecedor ──────────────────────────────────────────────
+
+interface ImportRow {
+  modelo: string;
+  qualidade: string;
+  quantidade: string;
+  valorCusto: string;
+  valorCliente: string;
+  valorLojista: string;
+}
+
+// Sugere o preço de venda ao CLIENTE a partir do custo (mesma regra do PecaForm).
+function sugestaoPrecoCliente(custoStr: string): string {
+  const c = parseFloat((custoStr ?? "").replace(",", "."));
+  if (isNaN(c) || c <= 0) return "";
+  const maoDeObra = c <= 90 ? 40 : 30;
+  const preco = Math.round((c * 2 + maoDeObra) / 5) * 5;
+  return String(preco).replace(".", ",");
+}
+
+interface ImportarNotaDialogProps {
+  open: boolean;
+  itensIniciais: ImportRow[];
+  onConfirm: (rows: ImportRow[]) => void;
+  onClose: () => void;
+  loading: boolean;
+}
+
+function ImportarNotaDialog({ open, itensIniciais, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
+  const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
+
+  useEffect(() => {
+    if (open) setRows(itensIniciais);
+  }, [open, itensIniciais]);
+
+  const update = (i: number, patch: Partial<ImportRow>) => {
+    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  };
+  const remove = (i: number) => setRows((cur) => cur.filter((_, idx) => idx !== i));
+
+  const rowValida = (r: ImportRow) =>
+    r.modelo.trim() && r.qualidade && r.valorCliente.trim() && r.valorLojista.trim() && (parseInt(r.quantidade) || 0) >= 1;
+  const todasValidas = rows.length > 0 && rows.every(rowValida);
+  const faltando = rows.filter((r) => !rowValida(r)).length;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o && !loading) onClose(); }}>
+      <DialogContent className="max-w-lg p-0 overflow-hidden flex flex-col max-h-[92vh]">
+        <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white px-5 py-4 shrink-0">
+          <DialogHeader>
+            <DialogTitle className="text-white flex items-center gap-2">
+              <Package className="w-5 h-5" />
+              Conferir peças da nota
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-emerald-100 mt-1">
+            Li a nota do fornecedor. Confira cada peça, ajuste a qualidade e os preços, depois cadastre tudo de uma vez.
+          </p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {rows.length === 0 && (
+            <div className="text-center py-10 text-muted-foreground text-sm">
+              Nenhuma peça para cadastrar.
+            </div>
+          )}
+          {rows.map((r, i) => {
+            const lower = r.modelo.toLowerCase();
+            const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
+            const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
+            const sugCliente = sugestaoPrecoCliente(r.valorCusto);
+            const sugLojista = sugestaoPrecoLojista(r.valorCusto);
+            return (
+              <div key={i} className={`rounded-xl border p-3 space-y-2.5 ${rowValida(r) ? "bg-white" : "bg-amber-50/50 border-amber-300"}`}>
+                <div className="flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Modelo / Peça</label>
+                    <Input value={r.modelo} onChange={(e) => update(i, { modelo: e.target.value })} className="h-9" />
+                  </div>
+                  <div className="w-20 shrink-0">
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qtd.</label>
+                    <Input type="number" min={1} value={r.quantidade} onChange={(e) => update(i, { quantidade: e.target.value })} className="h-9" />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => remove(i)}
+                    className="shrink-0 mt-5 text-red-400 hover:text-red-600 p-1"
+                    title="Remover da lista"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qualidade</label>
+                  <Select value={r.qualidade} onValueChange={(v) => update(i, { qualidade: v })}>
+                    <SelectTrigger className="h-9"><SelectValue placeholder="Escolha a qualidade" /></SelectTrigger>
+                    <SelectContent>
+                      {qualidadesAtivas.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Custo</label>
+                    <Input
+                      placeholder="—"
+                      value={r.valorCusto}
+                      onChange={(e) => update(i, { valorCusto: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-green-700 uppercase mb-1 block">Cliente</label>
+                    <Input
+                      placeholder="0,00"
+                      value={r.valorCliente}
+                      onChange={(e) => update(i, { valorCliente: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-blue-700 uppercase mb-1 block">Lojista</label>
+                    <Input
+                      placeholder="0,00"
+                      value={r.valorLojista}
+                      onChange={(e) => update(i, { valorLojista: e.target.value })}
+                      className="h-9"
+                    />
+                  </div>
+                </div>
+                {(sugCliente || sugLojista) && (
+                  <button
+                    type="button"
+                    onClick={() => update(i, {
+                      valorCliente: r.valorCliente.trim() || sugCliente,
+                      valorLojista: r.valorLojista.trim() || sugLojista,
+                    })}
+                    className="text-[11px] text-emerald-700 hover:text-emerald-900 underline"
+                  >
+                    💡 Sugerir preços pelo custo{sugCliente ? ` (cliente R$ ${sugCliente}` : ""}{sugLojista ? `${sugCliente ? " · " : " ("}lojista R$ ${sugLojista})` : sugCliente ? ")" : ""}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="border-t p-4 space-y-2 shrink-0 bg-white">
+          {!todasValidas && rows.length > 0 && (
+            <p className="text-xs text-amber-700 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              {faltando} {faltando === 1 ? "peça precisa" : "peças precisam"} de qualidade e os dois preços.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" className="flex-1" onClick={onClose} disabled={loading}>
+              <X className="w-4 h-4 mr-1" /> Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => onConfirm(rows)}
+              disabled={!todasValidas || loading}
+            >
+              <Check className="w-4 h-4 mr-1" />
+              {loading ? "Cadastrando..." : `Cadastrar ${rows.length} ${rows.length === 1 ? "peça" : "peças"}`}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Main Modal ───────────────────────────────────────────────────────────────
 
 interface CatalogoModalProps {
@@ -561,6 +734,79 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao apagar venda", variant: "destructive" }),
   });
   const invalidateGarantias = () => qc.invalidateQueries({ queryKey: ["garantias-peca"] });
+
+  // ── Importar nota do fornecedor ───────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importReading, setImportReading] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importSaving, setImportSaving] = useState(false);
+
+  const handleNotaFile = async (file: File) => {
+    setImportReading(true);
+    try {
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error("read"));
+        reader.readAsDataURL(file);
+      });
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+      const resp = await apiFetch("/api/pecas/importar-nota", {
+        method: "POST",
+        body: JSON.stringify({ fileBase64: base64, mimeType: file.type }),
+      });
+      const itens = (resp?.itens ?? []) as Array<{ modelo: string; quantidade: number; custo: string; qualidade: string }>;
+      if (itens.length === 0) {
+        toast({ title: "Nenhuma peça encontrada", description: "Tente uma foto mais nítida da nota.", variant: "destructive" });
+        return;
+      }
+      const rows: ImportRow[] = itens.map((it) => {
+        const custo = (it.custo ?? "").replace(".", ",");
+        return {
+          modelo: it.modelo ?? "",
+          qualidade: it.qualidade ?? "",
+          quantidade: String(it.quantidade ?? 1),
+          valorCusto: custo,
+          valorCliente: sugestaoPrecoCliente(custo),
+          valorLojista: sugestaoPrecoLojista(custo),
+        };
+      });
+      setImportRows(rows);
+      setImportOpen(true);
+    } catch {
+      toast({ title: "Não consegui ler a nota", description: "Tente novamente com outra foto ou PDF.", variant: "destructive" });
+    } finally {
+      setImportReading(false);
+    }
+  };
+
+  const confirmImport = async (rows: ImportRow[]) => {
+    setImportSaving(true);
+    try {
+      const resp = await apiFetch("/api/pecas/importar/confirmar", {
+        method: "POST",
+        body: JSON.stringify({
+          itens: rows.map((r) => ({
+            modelo: r.modelo.trim(),
+            qualidade: r.qualidade,
+            quantidade: parseInt(r.quantidade) || 0,
+            valorCusto: r.valorCusto.trim(),
+            valorCliente: r.valorCliente.trim(),
+            valorLojista: r.valorLojista.trim(),
+          })),
+        }),
+      });
+      invalidatePecas();
+      setImportOpen(false);
+      setImportRows([]);
+      toast({ title: "Peças cadastradas!", description: `${resp?.cadastrados ?? rows.length} peças adicionadas nos dois setores.` });
+    } catch {
+      toast({ title: "Erro ao cadastrar", description: "Nada foi salvo, tente novamente.", variant: "destructive" });
+    } finally {
+      setImportSaving(false);
+    }
+  };
 
   // ── Peça mutations ────────────────────────────────────────────────────────────
   const [previewData, setPreviewData] = useState<Omit<Peca, "id"> | null>(null);
@@ -915,10 +1161,34 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input className="pl-9" placeholder="Buscar modelo ou qualidade..." value={search} onChange={(e) => setSearch(e.target.value)} />
                 </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importReading}
+                >
+                  {importReading ? (
+                    <><RefreshCw className="w-4 h-4 mr-1 animate-spin" /> Lendo...</>
+                  ) : (
+                    <><Package className="w-4 h-4 mr-1" /> Importar</>
+                  )}
+                </Button>
                 <Button size="sm" onClick={() => { setShowAdd(true); setEditingId(null); }}>
                   <Plus className="w-4 h-4 mr-1" /> Nova
                 </Button>
               </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleNotaFile(f);
+                  e.target.value = "";
+                }}
+              />
               {showAdd && (
                 <PecaForm
                   onSave={handleAddSubmit}
@@ -933,6 +1203,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 onCancel={() => { setPreviewData(null); setShowAdd(false); }}
                 onVoltar={() => setPreviewData(null)}
                 loading={savingTwin}
+              />
+              <ImportarNotaDialog
+                open={importOpen}
+                itensIniciais={importRows}
+                onConfirm={confirmImport}
+                onClose={() => { if (!importSaving) { setImportOpen(false); setImportRows([]); } }}
+                loading={importSaving}
               />
             </div>
 
