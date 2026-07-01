@@ -137,12 +137,13 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     queryKey: ["caixa-sessao-hoje"],
     enabled: open,
     refetchInterval: 30000,
-    queryFn: () =>
-      fetch(`${BASE}/api/caixa-sessoes`).then((r) =>
-        r.ok
-          ? r.json()
-          : { sessao: null, totalEntradas: 0, totalSaidas: 0, saldo: 0 },
-      ),
+    retry: 3,
+    // Se falhar, mantém o último estado bom (não finge "sem sessão").
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/caixa-sessoes`);
+      if (!r.ok) throw new Error("status do caixa indisponível");
+      return r.json();
+    },
   });
 
   const params: ListCaixaParams =

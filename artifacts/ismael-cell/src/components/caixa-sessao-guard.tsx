@@ -92,15 +92,20 @@ export function CaixaSessaoGuard() {
   );
   const data = localDate(spNow);
 
+  // IMPORTANTE: se a chamada falhar (servidor reiniciando/rede oscilando), NÃO
+  // assuma "sem sessão" — isso faria o overlay pedir para ABRIR o caixa mesmo
+  // ele já estando fechado. Lançamos o erro para o react-query manter o último
+  // estado bom e tentar de novo, em vez de sobrescrever com sessao: null.
   const { data: status, refetch } = useQuery<StatusResp>({
     queryKey: ["caixa-sessao", data],
-    queryFn: () =>
-      fetch(`${BASE}/api/caixa-sessoes`).then((r) =>
-        r.ok
-          ? r.json()
-          : { sessao: null, totalEntradas: 0, totalSaidas: 0, saldo: 0 },
-      ),
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/caixa-sessoes`);
+      if (!r.ok) throw new Error("status do caixa indisponível");
+      return r.json();
+    },
     refetchInterval: 30000,
+    retry: 3,
+    staleTime: 15000,
   });
 
   const dow = spNow.getDay(); // 0 = domingo, 6 = sábado
