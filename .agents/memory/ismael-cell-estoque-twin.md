@@ -23,6 +23,16 @@ price). Match the twin by the pre-update values, never the new ones.
 twin) and the venda. These multi-write flows are wrapped in `db.transaction(...)` for
 atomicity; use atomic `sql\`quantidade ± 1\`` updates, not read-then-write.
 
+**Supplier-note import (`POST /pecas/importar/confirmar`):** UPSERTS, not blind insert —
+if a peça with same `modelo`(lower+trim)+`qualidade`+`setor` exists, it INCREMENTS that
+row's `quantidade` (atomic `sql\`quantidade + n\``, oldest row by id) instead of creating a
+duplicate; else inserts a new twin pair. Merge KEEPS the existing `valor`/`valorCusto`
+(only adds quantity). Create-vs-merge status is decided by the CLIENTE side; the lojista
+twin follows. Returns `{cadastrados, criados, somados}`. The dialog has a datalist
+autocomplete of existing model names + a green "vai somar no estoque" hint on exact match.
+**Why:** users kept creating near-duplicate models from imports; merging keeps one row per
+model and avoids confusion.
+
 **Why:** the shop treats both setores as one shared inventory; forgetting the twin makes
 the two setores drift out of sync and produces wrong stock counts.
 

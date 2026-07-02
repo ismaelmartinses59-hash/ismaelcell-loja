@@ -117,22 +117,53 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const total = await db.transaction(async (tx) => {
-      let count = 0;
+    const resultado = await db.transaction(async (tx) => {
+      let criados = 0;
+      let somados = 0;
+      // Cada item vira um par de gêmeos (cliente + lojista). Se já existir uma
+      // peça com o MESMO modelo (ignorando maiúsc./espaços) + qualidade + setor,
+      // apenas SOMA a quantidade no estoque existente — não cria cópia.
+      const upsertSetor = async (
+        setor: "cliente" | "lojista",
+        valor: string,
+        n: (typeof normalizados)[number],
+      ) => {
+        const [existente] = await tx
+          .select()
+          .from(pecasTable)
+          .where(
+            and(
+              sql`lower(trim(${pecasTable.modelo})) = ${n.modelo.toLowerCase()}`,
+              eq(pecasTable.qualidade, n.qualidade),
+              eq(pecasTable.setor, setor),
+            ),
+          )
+          .orderBy(pecasTable.id) // se houver duplicatas antigas, soma sempre na mais antiga (determinístico)
+          .limit(1);
+        if (existente) {
+          // Incremento atômico (quantidade = quantidade + n) para não perder soma.
+          await tx
+            .update(pecasTable)
+            .set({ quantidade: sql`${pecasTable.quantidade} + ${n.quantidade}` })
+            .where(eq(pecasTable.id, existente.id));
+          return "somado" as const;
+        }
+        await tx.insert(pecasTable).values({
+          modelo: n.modelo, qualidade: n.qualidade, valor,
+          valorCusto: n.valorCusto, quantidade: n.quantidade, setor,
+        });
+        return "criado" as const;
+      };
       for (const n of normalizados) {
-        await tx.insert(pecasTable).values({
-          modelo: n.modelo, qualidade: n.qualidade, valor: n.valorCliente,
-          valorCusto: n.valorCusto, quantidade: n.quantidade, setor: "cliente",
-        });
-        await tx.insert(pecasTable).values({
-          modelo: n.modelo, qualidade: n.qualidade, valor: n.valorLojista,
-          valorCusto: n.valorCusto, quantidade: n.quantidade, setor: "lojista",
-        });
-        count++;
+        // O status (novo vs. já existia) é decidido pelo lado CLIENTE; o gêmeo
+        // lojista acompanha para manter os dois em sincronia.
+        const r = await upsertSetor("cliente", n.valorCliente, n);
+        await upsertSetor("lojista", n.valorLojista, n);
+        if (r === "somado") somados++; else criados++;
       }
-      return count;
+      return { criados, somados };
     });
-    res.status(201).json({ cadastrados: total });
+    res.status(201).json({ cadastrados: resultado.criados + resultado.somados, criados: resultado.criados, somados: resultado.somados });
   } catch (err) {
     req.log.error({ err }, "importar/confirmar falhou");
     res.status(500).json({ error: "Falha ao cadastrar as peças (nada foi salvo)" });
