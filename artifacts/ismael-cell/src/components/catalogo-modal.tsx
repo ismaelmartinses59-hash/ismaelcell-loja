@@ -502,10 +502,12 @@ function ImportarNotaDialog({ open, itensIniciais, onConfirm, onClose, loading }
                   <button
                     type="button"
                     onClick={() => remove(i)}
-                    className="shrink-0 mt-5 text-red-400 hover:text-red-600 p-1"
-                    title="Remover da lista"
+                    className="shrink-0 mt-5 flex items-center justify-center gap-1 h-9 px-2.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 active:scale-95 transition text-xs font-medium"
+                    title="Excluir esta peça da lista"
+                    aria-label="Excluir esta peça da lista"
                   >
                     <Trash2 className="w-4 h-4" />
+                    Excluir
                   </button>
                 </div>
                 <div>
