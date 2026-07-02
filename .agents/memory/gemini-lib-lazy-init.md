@@ -28,6 +28,15 @@ a direct dependency of `artifacts/api-server` (not just transitive via the lib)
 or runtime fails with ERR_MODULE_NOT_FOUND — a separate crash with the same 502
 symptom.
 
+**Dual-mode client:** `getAi()` now supports BOTH hosting modes off env vars:
+- Replit proxy mode: `AI_INTEGRATIONS_GEMINI_BASE_URL` + `_API_KEY` set →
+  `httpOptions:{apiVersion:"", baseUrl}` (the "" is required so the proxy path
+  isn't rewritten).
+- Direct Google mode (Railway/external): only `AI_INTEGRATIONS_GEMINI_API_KEY`
+  set (a real Google AI Studio key), NO base url → SDK uses its default Google
+  endpoint. So to enable AI features on Railway, set only the API key var there;
+  do NOT copy the Replit BASE_URL (it points at the Replit-internal proxy).
+
 **Why:** cost the shop hours of downtime; the fix is trivial but the symptom
 (login error) points far away from the real cause (import-time throw on a host
 missing Replit integration vars).
