@@ -11,6 +11,7 @@ import {
   ArrowDownCircle,
   Wallet,
   CreditCard,
+  QrCode,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
@@ -45,6 +46,7 @@ interface StatusResp {
   totalSaidas: number;
   saldo: number;
   entradasDinheiro?: number;
+  entradasPix?: number;
   cartao?: CartaoItem[];
   totalCartao?: number;
   totalCartaoLiquido?: number;
@@ -126,6 +128,8 @@ export function CaixaSessaoGuard() {
   const entradas = status?.entradasDinheiro ?? status?.totalEntradas ?? 0;
   const saidas = status?.totalSaidas ?? 0;
   const valFinal = valIni + entradas - saidas;
+  const pix = status?.entradasPix ?? 0;
+  const totalGeral = valFinal + pix;
   const cartao = status?.cartao ?? [];
   const totalCartaoLiquido = status?.totalCartaoLiquido ?? 0;
 
@@ -272,7 +276,7 @@ export function CaixaSessaoGuard() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2 text-green-600">
-                    <ArrowUpCircle className="h-4 w-4" /> Entradas
+                    <ArrowUpCircle className="h-4 w-4" /> Entradas (dinheiro)
                   </span>
                   <span className="font-semibold text-green-700">
                     +{formatMoney(entradas)}
@@ -287,11 +291,27 @@ export function CaixaSessaoGuard() {
                   </span>
                 </div>
                 <div className="border-t pt-2.5 flex items-center justify-between">
-                  <span className="text-sm font-bold text-slate-700">
-                    Deve ter na gaveta
+                  <span className="flex items-center gap-2 text-sm font-bold text-slate-700">
+                    <Wallet className="h-4 w-4" /> Na gaveta (dinheiro)
                   </span>
-                  <span className="text-xl font-extrabold text-emerald-600">
+                  <span className="text-lg font-extrabold text-emerald-600">
                     {formatMoney(valFinal)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="flex items-center gap-2 text-sm font-bold text-cyan-700">
+                    <QrCode className="h-4 w-4" /> No PIX
+                  </span>
+                  <span className="text-lg font-extrabold text-cyan-700">
+                    {formatMoney(pix)}
+                  </span>
+                </div>
+                <div className="border-t border-slate-300 pt-2.5 flex items-center justify-between">
+                  <span className="text-sm font-extrabold text-slate-800">
+                    Total (gaveta + PIX)
+                  </span>
+                  <span className="text-xl font-extrabold text-slate-900">
+                    {formatMoney(totalGeral)}
                   </span>
                 </div>
               </div>
