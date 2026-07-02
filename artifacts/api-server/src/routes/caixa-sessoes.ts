@@ -224,4 +224,38 @@ router.post("/caixa-sessoes/fechar", async (req, res): Promise<void> => {
   res.json({ ...atualizada, cartao: t.cartao });
 });
 
+/** Reabrir o caixa do dia (desfazer um fechamento feito sem querer).
+ *  Volta o status para "aberto" e limpa os valores do fechamento;
+ *  as entradas/saídas do dia continuam intactas. */
+router.post("/caixa-sessoes/reabrir", async (_req, res): Promise<void> => {
+  const data = hojeSP();
+  const [sessao] = await db
+    .select()
+    .from(caixaSessoesTable)
+    .where(eq(caixaSessoesTable.data, data));
+  if (!sessao) {
+    res.status(404).json({ error: "Não há caixa de hoje para reabrir" });
+    return;
+  }
+  if (sessao.status === "aberto") {
+    res.status(409).json({ error: "O caixa de hoje já está aberto" });
+    return;
+  }
+  const [atualizada] = await db
+    .update(caixaSessoesTable)
+    .set({
+      status: "aberto",
+      fechamentoAt: null,
+      totalEntradas: null,
+      totalSaidas: null,
+      totalCartao: null,
+      totalCartaoLiquido: null,
+      valorFinal: null,
+      valorContado: null,
+    })
+    .where(eq(caixaSessoesTable.id, sessao.id))
+    .returning();
+  res.json(atualizada);
+});
+
 export default router;

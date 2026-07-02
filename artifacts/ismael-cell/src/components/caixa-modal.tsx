@@ -287,6 +287,38 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     }
   };
 
+  const reabrirCaixa = async () => {
+    if (
+      !window.confirm(
+        "Reabrir o caixa de hoje? Ele volta a ficar aberto, como se não tivesse sido fechado. As entradas e saídas do dia continuam salvas.",
+      )
+    )
+      return;
+    setSessaoBusy(true);
+    try {
+      const r = await fetch(`${BASE}/api/caixa-sessoes/reabrir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "Erro ao reabrir");
+      }
+      toast({ title: "Caixa reaberto!" });
+      qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
+      qc.invalidateQueries({ queryKey: ["caixa-sessao"] });
+      qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+    } catch (e) {
+      toast({
+        title: "Erro ao reabrir",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSessaoBusy(false);
+    }
+  };
+
   const createCaixa = useCreateCaixa();
   const deleteCaixa = useDeleteCaixa();
 
@@ -496,6 +528,23 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 <span className="font-bold text-indigo-600">
                   {formatMoney(parseMoney(hoje.sessao.valorContado))}
                 </span>
+              </div>
+            )}
+            {hoje.sessao.status === "fechado" && (
+              <div className="mt-3 border-t pt-3">
+                <p className="mb-2 text-[11px] leading-tight text-slate-500">
+                  Fechou sem querer? Reabra o caixa que ele volta a ficar aberto,
+                  como se não tivesse fechado.
+                </p>
+                <Button
+                  variant="outline"
+                  onClick={reabrirCaixa}
+                  disabled={sessaoBusy}
+                  className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                >
+                  <Sun className="mr-2 h-4 w-4" />
+                  {sessaoBusy ? "Reabrindo..." : "Reabrir caixa"}
+                </Button>
               </div>
             )}
             {hoje.sessao.status !== "fechado" &&
