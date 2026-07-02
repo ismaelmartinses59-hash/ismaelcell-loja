@@ -41,6 +41,22 @@ function hojeSP(): string {
   }).format(new Date());
 }
 
+/** Minutos desde a meia-noite AGORA no fuso de São Paulo (ex: 20:30 → 1230). */
+function agoraMinutosSP(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return h * 60 + m;
+}
+
+/** Horário limite para reabrir o caixa: 20:30 (2h30 após o fechamento das 18h). */
+const LIMITE_REABRIR_MIN = 20 * 60 + 30;
+
 interface CartaoItem {
   forma: FormaPagamento;
   label: string;
@@ -245,6 +261,13 @@ router.post("/caixa-sessoes/reabrir", async (_req, res): Promise<void> => {
     res.status(409).json({
       error:
         "O caixa de hoje já foi reaberto uma vez. Não é possível reabrir de novo.",
+    });
+    return;
+  }
+  if (agoraMinutosSP() > LIMITE_REABRIR_MIN) {
+    res.status(409).json({
+      error:
+        "O horário para reabrir o caixa (até 20:30) já passou. Não é possível reabrir hoje.",
     });
     return;
   }

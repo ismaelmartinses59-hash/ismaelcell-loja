@@ -73,6 +73,22 @@ interface CaixaSessao {
   fechamentoAt: string | null;
 }
 
+/** Horário limite para reabrir o caixa: 20:30 (mesmo valor do backend). */
+const LIMITE_REABRIR_MIN = 20 * 60 + 30;
+
+/** Minutos desde a meia-noite AGORA no fuso de São Paulo (independe do fuso do aparelho). */
+function agoraMinutosSP(): number {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date());
+  const h = Number(parts.find((p) => p.type === "hour")?.value ?? "0");
+  const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+  return h * 60 + m;
+}
+
 function formatMoney(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
@@ -539,13 +555,20 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                     novo.
                   </p>
                 </div>
+              ) : agoraMinutosSP() > LIMITE_REABRIR_MIN ? (
+                <div className="mt-3 border-t pt-3">
+                  <p className="text-[11px] leading-tight text-slate-500">
+                    O horário para reabrir o caixa (até 20:30) já passou. Não dá
+                    pra reabrir hoje.
+                  </p>
+                </div>
               ) : (
                 <div className="mt-3 border-t pt-3">
                   <p className="mb-2 text-[11px] leading-tight text-slate-500">
                     Fechou sem querer? Reabra o caixa que ele volta a ficar
                     aberto, como se não tivesse fechado.{" "}
                     <span className="font-semibold text-amber-700">
-                      Só pode reabrir 1 vez por dia.
+                      Só pode reabrir 1 vez por dia, até as 20:30.
                     </span>
                   </p>
                   <Button
