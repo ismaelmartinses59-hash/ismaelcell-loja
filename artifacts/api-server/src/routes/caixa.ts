@@ -57,9 +57,16 @@ router.get("/caixa", async (req, res): Promise<void> => {
   const periodo = req.query.periodo as string | undefined;
   const inicio = req.query.inicio as string | undefined;
   const fim = req.query.fim as string | undefined;
+  const dia = req.query.dia as string | undefined;
 
   const conditions = [];
-  if (inicio && fim) {
+  if (dia && /^\d{4}-\d{2}-\d{2}$/.test(dia)) {
+    // Um único dia no fuso de São Paulo (converte o timestamp UTC pra SP
+    // antes de comparar a data, pra não vazar movimentos do dia vizinho).
+    conditions.push(
+      sql`(${caixaTable.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = ${dia}::date`,
+    );
+  } else if (inicio && fim) {
     const inicioDate = new Date(`${inicio}T00:00:00`);
     const fimDate = new Date(`${fim}T00:00:00`);
     fimDate.setDate(fimDate.getDate() + 1);

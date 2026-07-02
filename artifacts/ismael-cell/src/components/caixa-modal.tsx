@@ -28,6 +28,7 @@ import {
   Check,
   History,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   Sun,
   Moon,
@@ -114,6 +115,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
   const [showHistorico, setShowHistorico] = useState(false);
+  const [diaDetalhe, setDiaDetalhe] = useState<CaixaSessao | null>(null);
 
   const { data: fechamentos = [] } = useQuery<CaixaSessao[]>({
     queryKey: ["caixa-historico"],
@@ -143,6 +145,20 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     queryFn: async () => {
       const r = await fetch(`${BASE}/api/caixa-sessoes`);
       if (!r.ok) throw new Error("status do caixa indisponível");
+      return r.json();
+    },
+  });
+
+  const { data: detalheData, isLoading: detalheLoading } = useQuery<{
+    movimentos: CaixaMovimento[];
+    totalEntradas: number;
+    totalSaidas: number;
+  }>({
+    queryKey: ["caixa-dia", diaDetalhe?.data],
+    enabled: open && !!diaDetalhe,
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/caixa?dia=${diaDetalhe!.data}`);
+      if (!r.ok) throw new Error("erro ao carregar o dia");
       return r.json();
     },
   });
@@ -365,7 +381,15 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const movimentos = data?.movimentos ?? [];
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          setDiaDetalhe(null);
+          onClose();
+        }
+      }}
+    >
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
@@ -910,11 +934,16 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                     className="rounded-xl border bg-white p-3 space-y-2"
                   >
                     <div className="flex items-center justify-between">
-                      <p className="text-sm font-bold text-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setDiaDetalhe(s)}
+                        className="flex items-center gap-1 text-left text-sm font-bold text-indigo-700 underline decoration-dotted underline-offset-2 hover:text-indigo-900"
+                      >
                         {format(new Date(`${s.data}T12:00:00`), "EEEE, dd/MM", {
                           locale: ptBR,
                         })}
-                      </p>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
                       <span
                         className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase ${
                           s.status === "fechado"
@@ -925,6 +954,9 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         {s.status === "fechado" ? "Fechado" : "Aberto"}
                       </span>
                     </div>
+                    <p className="text-[10px] text-indigo-400">
+                      Toque no dia para ver tudo que entrou e saiu
+                    </p>
                     <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
                       <span className="flex items-center gap-1">
                         <Sun className="h-3.5 w-3.5 text-amber-500" />
@@ -999,6 +1031,108 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           )}
         </div>
       </DialogContent>
+
+      {/* Detalhe de um dia do histórico */}
+      <Dialog
+        open={open && !!diaDetalhe}
+        onOpenChange={(v) => !v && setDiaDetalhe(null)}
+      >
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-lg">
+              <History className="h-5 w-5 text-indigo-600" />
+              {diaDetalhe
+                ? format(
+                    new Date(`${diaDetalhe.data}T12:00:00`),
+                    "EEEE, dd/MM/yyyy",
+                    { locale: ptBR },
+                  )
+                : ""}
+            </DialogTitle>
+          </DialogHeader>
+
+          {diaDetalhe && (
+            <div className="flex items-center gap-4 text-[11px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <Sun className="h-3.5 w-3.5 text-amber-500" />
+                Abriu {formatHoraSP(diaDetalhe.aberturaAt)}
+              </span>
+              {diaDetalhe.fechamentoAt && (
+                <span className="flex items-center gap-1">
+                  <Moon className="h-3.5 w-3.5 text-indigo-500" />
+                  Fechou {formatHoraSP(diaDetalhe.fechamentoAt)}
+                </span>
+              )}
+            </div>
+          )}
+
+          {detalheData && (
+            <div className="grid grid-cols-2 gap-2">
+              <div className="rounded-lg border border-green-200 bg-green-50 p-2 text-center">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-green-700">
+                  Entrou no dia
+                </p>
+                <p className="text-sm font-bold text-green-700">
+                  {formatMoney(detalheData.totalEntradas)}
+                </p>
+              </div>
+              <div className="rounded-lg border border-red-200 bg-red-50 p-2 text-center">
+                <p className="text-[10px] font-medium uppercase tracking-wider text-red-700">
+                  Saiu no dia
+                </p>
+                <p className="text-sm font-bold text-red-700">
+                  {formatMoney(detalheData.totalSaidas)}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {detalheLoading ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              Carregando...
+            </div>
+          ) : !detalheData || detalheData.movimentos.length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground">
+              Nenhuma movimentação neste dia.
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {detalheData.movimentos.map((m) => {
+                const isEntrada = m.tipo === "entrada";
+                return (
+                  <div
+                    key={m.id}
+                    className="flex items-center gap-3 rounded-lg border bg-white px-3 py-2"
+                  >
+                    {isEntrada ? (
+                      <ArrowUpCircle className="w-5 h-5 text-green-600 shrink-0" />
+                    ) : (
+                      <ArrowDownCircle className="w-5 h-5 text-red-600 shrink-0" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-foreground truncate">
+                        {m.motivo}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {format(new Date(m.createdAt), "dd/MM/yyyy 'às' HH:mm", {
+                          locale: ptBR,
+                        })}
+                        {m.modelo ? ` · ${m.modelo}` : ""}
+                      </p>
+                    </div>
+                    <span
+                      className={`text-sm font-bold shrink-0 ${isEntrada ? "text-green-700" : "text-red-700"}`}
+                    >
+                      {isEntrada ? "+" : "−"}
+                      {formatMoney(parseMoney(m.valor))}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
