@@ -457,6 +457,17 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, o
   const jaCadastrada = (r: ImportRow) =>
     !!r.modelo.trim() && !!r.qualidade && chavesExistentes.has(`${r.modelo.toLowerCase().trim()}|${r.qualidade}`);
 
+  // Índice da linha cujo campo "Modelo" está em foco (para mostrar as sugestões).
+  // datalist não funciona no Safari do iPhone, então usamos um dropdown próprio.
+  const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const sugestoesPara = (texto: string): string[] => {
+    const q = texto.toLowerCase().trim();
+    if (!q) return [];
+    return modelosSugeridos
+      .filter((m) => m.toLowerCase().includes(q) && m.toLowerCase() !== q)
+      .slice(0, 6);
+  };
+
   useEffect(() => {
     if (open) setRows(itensIniciais);
   }, [open, itensIniciais]);
@@ -492,9 +503,6 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, o
               Nenhuma peça para cadastrar.
             </div>
           )}
-          <datalist id="importar-modelos">
-            {modelosSugeridos.map((m) => <option key={m} value={m} />)}
-          </datalist>
           {rows.map((r, i) => {
             const lower = r.modelo.toLowerCase();
             const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
@@ -504,9 +512,31 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, o
             return (
               <div key={i} className={`rounded-xl border p-3 space-y-2.5 ${rowValida(r) ? "bg-white" : "bg-amber-50/50 border-amber-300"}`}>
                 <div className="flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
+                  <div className="flex-1 min-w-0 relative">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Modelo / Peça</label>
-                    <Input value={r.modelo} onChange={(e) => update(i, { modelo: e.target.value })} className="h-9" list="importar-modelos" />
+                    <Input
+                      value={r.modelo}
+                      onChange={(e) => update(i, { modelo: e.target.value })}
+                      onFocus={() => setFocusIdx(i)}
+                      onBlur={() => setTimeout(() => setFocusIdx((c) => (c === i ? null : c)), 150)}
+                      autoComplete="off"
+                      className="h-9"
+                    />
+                    {focusIdx === i && sugestoesPara(r.modelo).length > 0 && (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border rounded-lg shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                        <div className="px-3 py-1.5 text-[10px] uppercase text-muted-foreground bg-muted/40">Já cadastrados</div>
+                        {sugestoesPara(r.modelo).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onPointerDown={(e) => { e.preventDefault(); update(i, { modelo: m }); setFocusIdx(null); }}
+                            className="block w-full text-left px-3 py-2.5 text-sm hover:bg-emerald-50 active:bg-emerald-100 border-b last:border-b-0"
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="w-20 shrink-0">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qtd.</label>
