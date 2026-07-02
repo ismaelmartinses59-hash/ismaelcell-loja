@@ -439,13 +439,23 @@ function sugestaoPrecoCliente(custoStr: string): string {
 interface ImportarNotaDialogProps {
   open: boolean;
   itensIniciais: ImportRow[];
+  pecasExistentes: { modelo: string; qualidade: string }[];
   onConfirm: (rows: ImportRow[]) => void;
   onClose: () => void;
   loading: boolean;
 }
 
-function ImportarNotaDialog({ open, itensIniciais, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
+function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
   const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
+
+  // Nomes de modelos já cadastrados (sem repetir) para o autocomplete.
+  const modelosSugeridos = [...new Set(pecasExistentes.map((p) => p.modelo.trim()).filter(Boolean))].sort();
+  // Chave modelo+qualidade (normalizada) do que já existe, para avisar quando vai somar no estoque.
+  const chavesExistentes = new Set(
+    pecasExistentes.map((p) => `${p.modelo.toLowerCase().trim()}|${p.qualidade}`),
+  );
+  const jaCadastrada = (r: ImportRow) =>
+    !!r.modelo.trim() && !!r.qualidade && chavesExistentes.has(`${r.modelo.toLowerCase().trim()}|${r.qualidade}`);
 
   useEffect(() => {
     if (open) setRows(itensIniciais);
@@ -482,6 +492,9 @@ function ImportarNotaDialog({ open, itensIniciais, onConfirm, onClose, loading }
               Nenhuma peça para cadastrar.
             </div>
           )}
+          <datalist id="importar-modelos">
+            {modelosSugeridos.map((m) => <option key={m} value={m} />)}
+          </datalist>
           {rows.map((r, i) => {
             const lower = r.modelo.toLowerCase();
             const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
@@ -493,7 +506,7 @@ function ImportarNotaDialog({ open, itensIniciais, onConfirm, onClose, loading }
                 <div className="flex items-start gap-2">
                   <div className="flex-1 min-w-0">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Modelo / Peça</label>
-                    <Input value={r.modelo} onChange={(e) => update(i, { modelo: e.target.value })} className="h-9" />
+                    <Input value={r.modelo} onChange={(e) => update(i, { modelo: e.target.value })} className="h-9" list="importar-modelos" />
                   </div>
                   <div className="w-20 shrink-0">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qtd.</label>
@@ -519,6 +532,12 @@ function ImportarNotaDialog({ open, itensIniciais, onConfirm, onClose, loading }
                     </SelectContent>
                   </Select>
                 </div>
+                {jaCadastrada(r) && (
+                  <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800 flex items-start gap-1.5">
+                    <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span>Já existe no sistema — vai <b>somar {r.quantidade || 0} no estoque</b> desta peça, sem criar cópia.</span>
+                  </div>
+                )}
                 <div className="grid grid-cols-3 gap-2">
                   <div>
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Custo</label>
@@ -802,7 +821,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       invalidatePecas();
       setImportOpen(false);
       setImportRows([]);
-      toast({ title: "Peças cadastradas!", description: `${resp?.cadastrados ?? rows.length} peças adicionadas nos dois setores.` });
+      const criados = resp?.criados ?? (resp?.cadastrados ?? rows.length);
+      const somados = resp?.somados ?? 0;
+      const desc = somados > 0
+        ? `${criados} nova(s) + ${somados} somada(s) ao estoque que já existia.`
+        : `${criados} peças adicionadas nos dois setores.`;
+      toast({ title: "Peças cadastradas!", description: desc });
     } catch {
       toast({ title: "Erro ao cadastrar", description: "Nada foi salvo, tente novamente.", variant: "destructive" });
     } finally {
@@ -1209,6 +1233,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               <ImportarNotaDialog
                 open={importOpen}
                 itensIniciais={importRows}
+                pecasExistentes={pecasTodas.map((p) => ({ modelo: p.modelo, qualidade: p.qualidade }))}
                 onConfirm={confirmImport}
                 onClose={() => { if (!importSaving) { setImportOpen(false); setImportRows([]); } }}
                 loading={importSaving}
