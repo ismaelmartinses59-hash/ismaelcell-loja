@@ -47,7 +47,8 @@ export function normalizeForma(raw: unknown): FormaPagamento | null {
 }
 
 /** True se a forma for um cartão (débito ou crédito). Dinheiro e PIX não são
- * cartão: ambos vão pra gaveta e não têm taxa. */
+ * cartão e não têm taxa. Obs: só o DINHEIRO vai pra gaveta; o PIX cai na conta
+ * e é contabilizado em separado (não entra no total físico da gaveta). */
 export function isCartao(f: FormaPagamento | null | undefined): boolean {
   return f != null && f !== "dinheiro" && f !== "pix";
 }

@@ -130,6 +130,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     totalSaidas: number;
     saldo: number;
     entradasDinheiro?: number;
+    entradasPix?: number;
     totalCartao?: number;
     totalCartaoLiquido?: number;
     cartao?: { forma: string; label: string; taxa: number; bruto: number; liquido: number }[];
@@ -410,6 +411,12 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
               <div className="flex justify-between">
+                <span className="text-cyan-600">PIX hoje</span>
+                <span className="font-semibold text-cyan-700">
+                  {formatMoney(hoje.entradasPix ?? 0)}
+                </span>
+              </div>
+              <div className="flex justify-between">
                 <span className="text-red-600">Saiu hoje</span>
                 <span className="font-semibold text-red-700">
                   {formatMoney(hoje.totalSaidas)}
@@ -428,6 +435,10 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
             </div>
+            <p className="mt-1.5 text-[10px] leading-tight text-slate-400">
+              "Em caixa agora" é só o dinheiro vivo na gaveta. O PIX cai direto na
+              conta e o cartão aparece abaixo — nenhum dos dois entra na gaveta.
+            </p>
             {hoje.cartao && hoje.cartao.length > 0 && (
               <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/70 p-2">
                 <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-800">
@@ -678,8 +689,9 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 })}
               </div>
               {formaPagto === "pix" && (
-                <p className="mt-1 text-[11px] text-emerald-700">
-                  PIX — sem taxa, entra na gaveta (igual dinheiro).
+                <p className="mt-1 text-[11px] text-cyan-700">
+                  PIX — sem taxa, cai direto na conta. NÃO entra na gaveta (fica
+                  separado do dinheiro).
                 </p>
               )}
               {isCartaoForma(formaPagto) && (

@@ -50,10 +50,12 @@ interface CartaoItem {
 }
 
 interface TotaisDia {
-  /** Todas as entradas (dinheiro + cartão bruto). */
+  /** Todas as entradas (dinheiro + PIX + cartão bruto). */
   totalEntradas: number;
-  /** Entradas em dinheiro/PIX (o que vai pra gaveta). */
+  /** Entradas em dinheiro vivo (o que realmente vai pra gaveta). */
   entradasDinheiro: number;
+  /** Entradas em PIX (cai na conta, NÃO fica na gaveta). */
+  entradasPix: number;
   totalSaidas: number;
   /** Detalhe por forma de cartão (só as que tiveram movimento). */
   cartao: CartaoItem[];
@@ -77,6 +79,7 @@ async function totaisDoDia(data: string): Promise<TotaisDia> {
 
   let totalEntradas = 0;
   let entradasDinheiro = 0;
+  let entradasPix = 0;
   let totalSaidas = 0;
   const cartaoMap = new Map<FormaPagamento, { bruto: number }>();
 
@@ -91,7 +94,10 @@ async function totaisDoDia(data: string): Promise<TotaisDia> {
     if (isCartao(forma) && forma) {
       const prev = cartaoMap.get(forma)?.bruto ?? 0;
       cartaoMap.set(forma, { bruto: prev + n });
+    } else if (forma === "pix") {
+      entradasPix += n;
     } else {
+      // dinheiro vivo (ou legado sem forma) → vai pra gaveta
       entradasDinheiro += n;
     }
   }
@@ -116,6 +122,7 @@ async function totaisDoDia(data: string): Promise<TotaisDia> {
   return {
     totalEntradas,
     entradasDinheiro,
+    entradasPix,
     totalSaidas,
     cartao,
     totalCartaoBruto,
@@ -136,6 +143,7 @@ router.get("/caixa-sessoes", async (req, res): Promise<void> => {
     sessao: sessao ?? null,
     totalEntradas: t.totalEntradas,
     entradasDinheiro: t.entradasDinheiro,
+    entradasPix: t.entradasPix,
     totalSaidas: t.totalSaidas,
     saldo: t.totalEntradas - t.totalSaidas,
     cartao: t.cartao,

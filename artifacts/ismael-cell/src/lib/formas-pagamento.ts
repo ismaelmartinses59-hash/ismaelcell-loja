@@ -21,7 +21,8 @@ export const LABELS_FORMA: Record<FormaPagamento, string> = {
   credito_3x: "Crédito 3x",
 };
 
-/** PIX e dinheiro não têm taxa e entram na gaveta; só cartão tem taxa. */
+/** PIX e dinheiro não têm taxa; só cartão tem taxa. Obs: só o DINHEIRO fica na
+ * gaveta física — o PIX cai na conta e é contado em separado. */
 export function isCartaoForma(f: FormaPagamento): f is FormaCartao {
   return f !== "dinheiro" && f !== "pix";
 }
