@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,18 @@ import {
   Wallet,
   CreditCard,
   QrCode,
+  Banknote,
+  Package,
+  Check,
+  Plus,
+  X,
 } from "lucide-react";
+import {
+  type FormaPagamento,
+  type FormaCartao,
+  TAXAS_CARTAO,
+  isCartaoForma,
+} from "../lib/formas-pagamento";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -30,6 +41,15 @@ interface Sessao {
   totalSaidas: string | null;
   aberturaAt: string;
   fechamentoAt: string | null;
+}
+
+interface Peca {
+  id: number;
+  modelo: string;
+  qualidade: string;
+  valor: string;
+  quantidade: number;
+  setor: string;
 }
 
 interface CartaoItem {
@@ -82,6 +102,16 @@ export function CaixaSessaoGuard() {
   const [valorContado, setValorContado] = useState("");
   const [contadoTouched, setContadoTouched] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+
+  // Venda de última hora (cliente chega na hora de fechar)
+  const [showVenda, setShowVenda] = useState(false);
+  const [vValor, setVValor] = useState("");
+  const [vMotivo, setVMotivo] = useState("");
+  const [vForma, setVForma] = useState<FormaPagamento>("dinheiro");
+  const [vVincular, setVVincular] = useState(false);
+  const [vBusca, setVBusca] = useState("");
+  const [vPecaSel, setVPecaSel] = useState<Peca | null>(null);
+  const [vSubmitting, setVSubmitting] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
@@ -139,6 +169,106 @@ export function CaixaSessaoGuard() {
       setValorContado(valFinal.toFixed(2).replace(".", ","));
     }
   }, [mode, valFinal, contadoTouched]);
+
+  const { data: pecas = [] } = useQuery<Peca[]>({
+    queryKey: ["caixa-sessao-pecas"],
+    enabled: mode === "fechar" && showVenda && vVincular,
+    queryFn: async () => {
+      const [lojista, cliente] = await Promise.all([
+        fetch(`${BASE}/api/pecas?setor=lojista`).then((r) => (r.ok ? r.json() : [])),
+        fetch(`${BASE}/api/pecas?setor=cliente`).then((r) => (r.ok ? r.json() : [])),
+      ]);
+      const all: Peca[] = [...lojista, ...cliente];
+      const seen = new Set<string>();
+      const dedup: Peca[] = [];
+      for (const p of all) {
+        const key = `${p.modelo.trim().toLowerCase()}__${p.qualidade.trim().toLowerCase()}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        dedup.push(p);
+      }
+      return dedup;
+    },
+  });
+
+  const vSugestoes = useMemo(() => {
+    const q = vBusca.trim().toLowerCase();
+    if (!q) return [];
+    return pecas
+      .filter(
+        (p) =>
+          p.modelo.toLowerCase().includes(q) ||
+          p.qualidade.toLowerCase().includes(q),
+      )
+      .slice(0, 6);
+  }, [vBusca, pecas]);
+
+  const selecionarVPeca = (p: Peca) => {
+    setVPecaSel(p);
+    setVBusca(`${p.modelo} — ${p.qualidade}`);
+    if (!vValor) setVValor(p.valor);
+    if (!vMotivo) setVMotivo(`Venda de ${p.modelo}`);
+  };
+
+  const resetVenda = () => {
+    setVValor("");
+    setVMotivo("");
+    setVForma("dinheiro");
+    setVVincular(false);
+    setVBusca("");
+    setVPecaSel(null);
+    setShowVenda(false);
+  };
+
+  const registrarVenda = async () => {
+    if (!vValor.trim()) {
+      toast({ title: "Informe o valor", variant: "destructive" });
+      return;
+    }
+    if (!vMotivo.trim()) {
+      toast({ title: "Diga o que foi (motivo)", variant: "destructive" });
+      return;
+    }
+    if (vVincular && !vPecaSel) {
+      toast({ title: "Selecione a peça na lista", variant: "destructive" });
+      return;
+    }
+    setVSubmitting(true);
+    try {
+      const r = await fetch(`${BASE}/api/caixa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "entrada",
+          valor: vValor.trim(),
+          motivo: vMotivo.trim(),
+          formaPagamento: vForma,
+          pecaId: vVincular && vPecaSel ? vPecaSel.id : null,
+        }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "Erro ao registrar");
+      }
+      toast({ title: "Venda registrada! 👍" });
+      resetVenda();
+      setContadoTouched(false); // deixa o valor conferido recalcular com a nova entrada
+      await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
+      await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+      await qc.invalidateQueries({ queryKey: ["pecas"] });
+      await qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
+      await qc.invalidateQueries({ queryKey: ["vendas"] });
+      await refetch();
+    } catch (e) {
+      toast({
+        title: "Erro ao registrar a venda",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setVSubmitting(false);
+    }
+  };
 
   const abrir = async () => {
     if (!valorInicial.trim()) {
@@ -346,6 +476,210 @@ export function CaixaSessaoGuard() {
                   </div>
                 </div>
               )}
+              {!showVenda ? (
+                <button
+                  type="button"
+                  onClick={() => setShowVenda(true)}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-emerald-300 bg-emerald-50 py-3 text-sm font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+                >
+                  <Plus className="h-4 w-4" /> Entrou uma venda de última hora?
+                </button>
+              ) : (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm font-bold text-emerald-800">
+                      <Banknote className="h-4 w-4" /> Venda de última hora
+                    </span>
+                    <button
+                      type="button"
+                      onClick={resetVenda}
+                      className="rounded-full p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                      aria-label="Fechar"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">
+                      Valor (R$)
+                    </label>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="Ex: 40,00"
+                      value={vValor}
+                      onChange={(e) => setVValor(e.target.value)}
+                      className="mt-1 h-11"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">
+                      Forma de pagamento
+                    </label>
+                    <div className="mt-1 grid grid-cols-3 gap-1">
+                      {(
+                        [
+                          "dinheiro",
+                          "pix",
+                          "debito",
+                          "credito_1x",
+                          "credito_2x",
+                          "credito_3x",
+                        ] as FormaPagamento[]
+                      ).map((f) => {
+                        const ativo = vForma === f;
+                        const semTaxa = f === "dinheiro" || f === "pix";
+                        const short =
+                          f === "dinheiro"
+                            ? "Dinheiro"
+                            : f === "pix"
+                              ? "PIX"
+                              : f === "debito"
+                                ? "Débito"
+                                : f === "credito_1x"
+                                  ? "Créd 1x"
+                                  : f === "credito_2x"
+                                    ? "Créd 2x"
+                                    : "Créd 3x";
+                        return (
+                          <button
+                            key={f}
+                            type="button"
+                            onClick={() => setVForma(f)}
+                            className={`flex flex-col items-center justify-center gap-0.5 rounded-lg border py-1.5 text-[10px] font-semibold transition-colors ${
+                              ativo
+                                ? semTaxa
+                                  ? "bg-emerald-600 text-white border-emerald-600"
+                                  : "bg-blue-600 text-white border-blue-600"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                            }`}
+                          >
+                            {f === "dinheiro" ? (
+                              <Banknote className="h-3.5 w-3.5" />
+                            ) : f === "pix" ? (
+                              <QrCode className="h-3.5 w-3.5" />
+                            ) : (
+                              <CreditCard className="h-3.5 w-3.5" />
+                            )}
+                            {short}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {vForma === "pix" && (
+                      <p className="mt-1 text-[11px] text-cyan-700">
+                        PIX — sem taxa, cai na conta. NÃO entra na gaveta (fica
+                        separado do dinheiro).
+                      </p>
+                    )}
+                    {isCartaoForma(vForma) && (
+                      <p className="mt-1 text-[11px] text-blue-700">
+                        Cartão — a maquininha desconta{" "}
+                        {TAXAS_CARTAO[vForma as FormaCartao].toLocaleString(
+                          "pt-BR",
+                        )}
+                        %. Não entra na gaveta.
+                      </p>
+                    )}
+                  </div>
+
+                  <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={vVincular}
+                      onChange={(e) => {
+                        setVVincular(e.target.checked);
+                        if (!e.target.checked) {
+                          setVPecaSel(null);
+                          setVBusca("");
+                        }
+                      }}
+                      className="h-4 w-4 accent-emerald-600"
+                    />
+                    <span className="flex items-center gap-1.5 text-slate-700">
+                      <Package className="w-3.5 h-3.5 text-slate-500" />É peça do
+                      estoque (dá baixa)
+                    </span>
+                  </label>
+
+                  {vVincular && (
+                    <div className="relative">
+                      <Input
+                        placeholder="Digite o modelo... ex: carregador"
+                        value={vBusca}
+                        onChange={(e) => {
+                          setVBusca(e.target.value);
+                          setVPecaSel(null);
+                        }}
+                        className="h-11"
+                      />
+                      {vPecaSel && (
+                        <div className="mt-1 flex items-center gap-1.5 text-xs text-emerald-700">
+                          <Check className="w-3.5 h-3.5" />
+                          {vPecaSel.modelo} — {vPecaSel.qualidade} (
+                          {vPecaSel.quantidade} em estoque)
+                        </div>
+                      )}
+                      {!vPecaSel && vSugestoes.length > 0 && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                          {vSugestoes.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => selecionarVPeca(p)}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between gap-2"
+                            >
+                              <span className="text-sm">
+                                <span className="font-medium">{p.modelo}</span>
+                                <span className="text-slate-500">
+                                  {" "}
+                                  — {p.qualidade}
+                                </span>
+                              </span>
+                              <span
+                                className={`text-xs font-semibold shrink-0 ${p.quantidade > 0 ? "text-emerald-600" : "text-red-500"}`}
+                              >
+                                {p.quantidade} un.
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {!vPecaSel &&
+                        vBusca.trim().length > 0 &&
+                        vSugestoes.length === 0 && (
+                          <p className="mt-1 text-xs text-slate-500">
+                            Nenhuma peça encontrada no estoque.
+                          </p>
+                        )}
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">
+                      O que foi? (motivo)
+                    </label>
+                    <Input
+                      placeholder="Ex: conta Google, carregador..."
+                      value={vMotivo}
+                      onChange={(e) => setVMotivo(e.target.value)}
+                      className="mt-1 h-11"
+                    />
+                  </div>
+
+                  <Button
+                    className="h-11 w-full font-bold"
+                    onClick={registrarVenda}
+                    disabled={vSubmitting}
+                  >
+                    {vSubmitting && (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    )}
+                    Registrar entrada
+                  </Button>
+                </div>
+              )}
               <div>
                 <label className="text-sm font-semibold text-slate-700">
                   Quanto tem na gaveta agora? (R$)
@@ -379,7 +713,7 @@ export function CaixaSessaoGuard() {
               <Button
                 className="h-12 w-full text-base font-bold"
                 onClick={fechar}
-                disabled={submitting}
+                disabled={submitting || vSubmitting}
               >
                 {submitting && <Loader2 className="mr-2 h-5 w-5 animate-spin" />}
                 Fechar caixa
