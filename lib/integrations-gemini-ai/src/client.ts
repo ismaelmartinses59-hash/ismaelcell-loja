@@ -12,24 +12,25 @@ let _ai: GoogleGenAI | null = null;
 export function getAi(): GoogleGenAI {
   if (_ai) return _ai;
 
-  if (!process.env.AI_INTEGRATIONS_GEMINI_BASE_URL) {
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  if (!apiKey) {
     throw new Error(
-      "AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?",
+      "AI_INTEGRATIONS_GEMINI_API_KEY must be set. Provide a Google Gemini API key (or provision the Replit Gemini integration).",
     );
   }
 
-  if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
-    throw new Error(
-      "AI_INTEGRATIONS_GEMINI_API_KEY must be set. Did you forget to provision the Gemini AI integration?",
-    );
-  }
+  // Two supported modes:
+  // - Replit AI Integrations proxy: BASE_URL is set → route through the proxy
+  //   (apiVersion must be "" so the proxy path isn't rewritten).
+  // - Direct Google Gemini API (e.g. external hosts like Railway): only the
+  //   API key is set → let the SDK use its default Google endpoint.
+  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
   _ai = new GoogleGenAI({
-    apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-    httpOptions: {
-      apiVersion: "",
-      baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-    },
+    apiKey,
+    ...(baseUrl
+      ? { httpOptions: { apiVersion: "", baseUrl } }
+      : {}),
   });
 
   return _ai;
