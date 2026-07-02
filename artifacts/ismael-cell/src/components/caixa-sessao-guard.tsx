@@ -16,7 +16,7 @@ import {
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const HORA_ABERTURA = 8; // 08:00 todos os dias úteis
-const HORA_FECHAMENTO_SEMANA = 17; // seg–sex 17:00
+const HORA_FECHAMENTO_SEMANA = 18; // seg–sex 18:00
 const HORA_FECHAMENTO_SABADO = 13; // sábado 13:00
 
 interface Sessao {
