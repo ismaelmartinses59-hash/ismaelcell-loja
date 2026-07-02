@@ -134,6 +134,9 @@ async function ensureSchema(): Promise<void> {
     await db.execute(
       sql`ALTER TABLE caixa_sessoes ADD COLUMN IF NOT EXISTS total_cartao_liquido text`,
     );
+    await db.execute(
+      sql`ALTER TABLE caixa_sessoes ADD COLUMN IF NOT EXISTS reaberto boolean NOT NULL DEFAULT false`,
+    );
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS push_subscriptions (
         id serial PRIMARY KEY,

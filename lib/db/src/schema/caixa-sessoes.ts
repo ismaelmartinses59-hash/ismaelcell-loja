@@ -1,4 +1,4 @@
-import { pgTable, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export const caixaSessoesTable = pgTable("caixa_sessoes", {
   id: serial("id").primaryKey(),
@@ -11,6 +11,7 @@ export const caixaSessoesTable = pgTable("caixa_sessoes", {
   totalSaidas: text("total_saidas"),
   totalCartao: text("total_cartao"),
   totalCartaoLiquido: text("total_cartao_liquido"),
+  reaberto: boolean("reaberto").notNull().default(false),
   aberturaAt: timestamp("abertura_at").notNull().defaultNow(),
   fechamentoAt: timestamp("fechamento_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
