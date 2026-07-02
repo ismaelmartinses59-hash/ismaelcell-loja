@@ -1,0 +1,80 @@
+Starting Container
+        ^
+Error: AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?
+    at <anonymous> (/app/lib/integrations-gemini-ai/src/client.ts:4:9)
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Node.js v24.10.0
+ ELIFECYCLE  Command failed with exit code 1.
+> workspace@0.0.0 start:standalone /app
+> node --enable-source-maps artifacts/api-server/dist/index.mjs
+/app/lib/integrations-gemini-ai/src/client.ts:4
+  throw new Error(
+> workspace@0.0.0 start:standalone /app
+> node --enable-source-maps artifacts/api-server/dist/index.mjs
+/app/lib/integrations-gemini-ai/src/client.ts:4
+  throw new Error(
+        ^
+Error: AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?
+    at <anonymous> (/app/lib/integrations-gemini-ai/src/client.ts:4:9)
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Node.js v24.10.0
+ ELIFECYCLE  Command failed with exit code 1.
+> workspace@0.0.0 start:standalone /app
+> node --enable-source-maps artifacts/api-server/dist/index.mjs
+/app/lib/integrations-gemini-ai/src/client.ts:4
+  throw new Error(
+        ^
+Error: AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?
+    at <anonymous> (/app/lib/integrations-gemini-ai/src/client.ts:4:9)
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Node.js v24.10.0
+ ELIFECYCLE  Command failed with exit code 1.
+> workspace@0.0.0 start:standalone /app
+> node --enable-source-maps artifacts/api-server/dist/index.mjs
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Node.js v24.10.0
+/app/lib/integrations-gemini-ai/src/client.ts:4
+ ELIFECYCLE  Command failed with exit code 1.
+  throw new Error(
+        ^
+Error: AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?
+    at <anonymous> (/app/lib/integrations-gemini-ai/src/client.ts:4:9)
+> node --enable-source-maps artifacts/api-server/dist/index.mjs
+> workspace@0.0.0 start:standalone /app
+/app/lib/integrations-gemini-ai/src/client.ts:4
+  throw new Error(
+        ^
+Error: AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?
+    at <anonymous> (/app/lib/integrations-gemini-ai/src/client.ts:4:9)
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Node.js v24.10.0
+ ELIFECYCLE  Command failed with exit code 1.
+> workspace@0.0.0 start:standalone /app
+> node --enable-source-maps artifacts/api-server/dist/index.mjs
+/app/lib/integrations-gemini-ai/src/client.ts:4
+  throw new Error(
+        ^
+Error: AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?
+    at <anonymous> (/app/lib/integrations-gemini-ai/src/client.ts:4:9)
+    at ModuleJob.run (node:internal/modules/esm/module_job:377:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:691:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)
+Node.js v24.10.0
+ ELIFECYCLE  Command failed with exit code 1.
+> workspace@0.0.0 start:standalone /app
+> node --enable-source-maps artifacts/api-server/dist/index.mjs
+/app/lib/integrations-gemini-ai/src/client.ts:4
+  throw new Error(
+        ^
+Error: AI_INTEGRATIONS_GEMINI_BASE_URL must be set. Did you forget to provision the Gemini AI integration?
+    at <anonymous> (/app/lib/integrations-gemini-ai/src/client.ts:4:9)
