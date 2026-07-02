@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db, caixaSessoesTable, caixaTable } from "@workspace/db";
 import {
   type FormaPagamento,
@@ -241,10 +241,20 @@ router.post("/caixa-sessoes/reabrir", async (_req, res): Promise<void> => {
     res.status(409).json({ error: "O caixa de hoje já está aberto" });
     return;
   }
+  if (sessao.reaberto) {
+    res.status(409).json({
+      error:
+        "O caixa de hoje já foi reaberto uma vez. Não é possível reabrir de novo.",
+    });
+    return;
+  }
+  // Update atômico: só reabre se AINDA estiver fechado E nunca reaberto.
+  // Isso garante que, mesmo com 2 cliques/requisições simultâneos, só um vence.
   const [atualizada] = await db
     .update(caixaSessoesTable)
     .set({
       status: "aberto",
+      reaberto: true,
       fechamentoAt: null,
       totalEntradas: null,
       totalSaidas: null,
@@ -253,8 +263,21 @@ router.post("/caixa-sessoes/reabrir", async (_req, res): Promise<void> => {
       valorFinal: null,
       valorContado: null,
     })
-    .where(eq(caixaSessoesTable.id, sessao.id))
+    .where(
+      and(
+        eq(caixaSessoesTable.id, sessao.id),
+        eq(caixaSessoesTable.status, "fechado"),
+        eq(caixaSessoesTable.reaberto, false),
+      ),
+    )
     .returning();
+  if (!atualizada) {
+    res.status(409).json({
+      error:
+        "O caixa de hoje já foi reaberto uma vez. Não é possível reabrir de novo.",
+    });
+    return;
+  }
   res.json(atualizada);
 });
 

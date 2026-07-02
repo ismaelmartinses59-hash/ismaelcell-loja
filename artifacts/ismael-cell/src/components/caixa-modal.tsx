@@ -68,6 +68,7 @@ interface CaixaSessao {
   totalSaidas: string | null;
   totalCartao?: string | null;
   totalCartaoLiquido?: string | null;
+  reaberto?: boolean;
   aberturaAt: string;
   fechamentoAt: string | null;
 }
@@ -530,23 +531,34 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
             )}
-            {hoje.sessao.status === "fechado" && (
-              <div className="mt-3 border-t pt-3">
-                <p className="mb-2 text-[11px] leading-tight text-slate-500">
-                  Fechou sem querer? Reabra o caixa que ele volta a ficar aberto,
-                  como se não tivesse fechado.
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={reabrirCaixa}
-                  disabled={sessaoBusy}
-                  className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
-                >
-                  <Sun className="mr-2 h-4 w-4" />
-                  {sessaoBusy ? "Reabrindo..." : "Reabrir caixa"}
-                </Button>
-              </div>
-            )}
+            {hoje.sessao.status === "fechado" &&
+              (hoje.sessao.reaberto ? (
+                <div className="mt-3 border-t pt-3">
+                  <p className="text-[11px] leading-tight text-slate-500">
+                    Este caixa já foi reaberto uma vez hoje. Não dá pra reabrir de
+                    novo.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-3 border-t pt-3">
+                  <p className="mb-2 text-[11px] leading-tight text-slate-500">
+                    Fechou sem querer? Reabra o caixa que ele volta a ficar
+                    aberto, como se não tivesse fechado.{" "}
+                    <span className="font-semibold text-amber-700">
+                      Só pode reabrir 1 vez por dia.
+                    </span>
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={reabrirCaixa}
+                    disabled={sessaoBusy}
+                    className="w-full border-amber-300 text-amber-700 hover:bg-amber-50"
+                  >
+                    <Sun className="mr-2 h-4 w-4" />
+                    {sessaoBusy ? "Reabrindo..." : "Reabrir caixa"}
+                  </Button>
+                </div>
+              ))}
             {hoje.sessao.status !== "fechado" &&
               (fecharAberto ? (
                 <div className="mt-3 space-y-2">
