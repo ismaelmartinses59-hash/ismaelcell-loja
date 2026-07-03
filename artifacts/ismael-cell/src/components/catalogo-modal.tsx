@@ -440,12 +440,13 @@ interface ImportarNotaDialogProps {
   open: boolean;
   itensIniciais: ImportRow[];
   pecasExistentes: { modelo: string; qualidade: string }[];
+  precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
   onConfirm: (rows: ImportRow[]) => void;
   onClose: () => void;
   loading: boolean;
 }
 
-function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
+function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExistentes, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
   const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
 
   // Nomes de modelos já cadastrados (sem repetir) para o autocomplete.
@@ -474,6 +475,19 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, o
 
   const update = (i: number, patch: Partial<ImportRow>) => {
     setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+  };
+  // Igual ao update, mas ao mudar modelo/qualidade puxa o último preço do sistema (se a peça já existir).
+  const updateComPreco = (i: number, patch: Partial<ImportRow>) => {
+    setRows((cur) =>
+      cur.map((r, idx) => {
+        if (idx !== i) return r;
+        const next = { ...r, ...patch };
+        const pe = precosExistentes[`${next.modelo.toLowerCase().trim()}|${next.qualidade}`];
+        if (pe?.cliente) next.valorCliente = pe.cliente;
+        if (pe?.lojista) next.valorLojista = pe.lojista;
+        return next;
+      }),
+    );
   };
   const remove = (i: number) => setRows((cur) => cur.filter((_, idx) => idx !== i));
 
@@ -516,7 +530,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, o
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Modelo / Peça</label>
                     <Input
                       value={r.modelo}
-                      onChange={(e) => update(i, { modelo: e.target.value })}
+                      onChange={(e) => updateComPreco(i, { modelo: e.target.value })}
                       onFocus={() => setFocusIdx(i)}
                       onBlur={() => setTimeout(() => setFocusIdx((c) => (c === i ? null : c)), 150)}
                       autoComplete="off"
@@ -529,7 +543,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, o
                           <button
                             key={m}
                             type="button"
-                            onPointerDown={(e) => { e.preventDefault(); update(i, { modelo: m }); setFocusIdx(null); }}
+                            onPointerDown={(e) => { e.preventDefault(); updateComPreco(i, { modelo: m }); setFocusIdx(null); }}
                             className="block w-full text-left px-3 py-2.5 text-sm hover:bg-emerald-50 active:bg-emerald-100 border-b last:border-b-0"
                           >
                             {m}
@@ -555,7 +569,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, onConfirm, o
                 </div>
                 <div>
                   <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qualidade</label>
-                  <Select value={r.qualidade} onValueChange={(v) => update(i, { qualidade: v })}>
+                  <Select value={r.qualidade} onValueChange={(v) => updateComPreco(i, { qualidade: v })}>
                     <SelectTrigger className="h-9"><SelectValue placeholder="Escolha a qualidade" /></SelectTrigger>
                     <SelectContent>
                       {qualidadesAtivas.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
@@ -750,6 +764,38 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     enabled: open,
   });
 
+  // Peças dos DOIS setores, para saber o preço atual (cliente + lojista) de cada modelo já cadastrado.
+  const { data: pecasClienteAll = [] } = useQuery<Peca[]>({
+    queryKey: ["pecas", "cliente", ""],
+    queryFn: () => apiFetch(`/api/pecas?setor=cliente`),
+    enabled: open,
+  });
+  const { data: pecasLojistaAll = [] } = useQuery<Peca[]>({
+    queryKey: ["pecas", "lojista", ""],
+    queryFn: () => apiFetch(`/api/pecas?setor=lojista`),
+    enabled: open,
+  });
+
+  // Preço atual de cada peça já cadastrada (por modelo+qualidade), p/ pré-preencher na importação.
+  // Se houver linhas duplicadas do mesmo modelo/qualidade, usa o MAIS RECENTE (maior id) = último preço salvo.
+  const precosExistentes: Record<string, { cliente?: string; lojista?: string }> = {};
+  const idCliente: Record<string, number> = {};
+  const idLojista: Record<string, number> = {};
+  for (const p of pecasClienteAll) {
+    const k = `${p.modelo.toLowerCase().trim()}|${p.qualidade}`;
+    if (idCliente[k] === undefined || p.id > idCliente[k]) {
+      (precosExistentes[k] ??= {}).cliente = p.valor;
+      idCliente[k] = p.id;
+    }
+  }
+  for (const p of pecasLojistaAll) {
+    const k = `${p.modelo.toLowerCase().trim()}|${p.qualidade}`;
+    if (idLojista[k] === undefined || p.id > idLojista[k]) {
+      (precosExistentes[k] ??= {}).lojista = p.valor;
+      idLojista[k] = p.id;
+    }
+  }
+
   const totaisEstoque = pecasTodas.reduce(
     (acc, p) => {
       const custo = parseFloat((p.valorCusto ?? "").replace(",", "."));
@@ -814,13 +860,17 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       }
       const rows: ImportRow[] = itens.map((it) => {
         const custo = (it.custo ?? "").replace(".", ",");
+        const modelo = it.modelo ?? "";
+        const qualidade = it.qualidade ?? "";
+        // Se a peça já existe no sistema, usa o último preço cadastrado; senão, sugere pelo custo.
+        const pe = precosExistentes[`${modelo.toLowerCase().trim()}|${qualidade}`];
         return {
-          modelo: it.modelo ?? "",
-          qualidade: it.qualidade ?? "",
+          modelo,
+          qualidade,
           quantidade: String(it.quantidade ?? 1),
           valorCusto: custo,
-          valorCliente: sugestaoPrecoCliente(custo),
-          valorLojista: sugestaoPrecoLojista(custo),
+          valorCliente: pe?.cliente || sugestaoPrecoCliente(custo),
+          valorLojista: pe?.lojista || sugestaoPrecoLojista(custo),
         };
       });
       setImportRows(rows);
@@ -1264,6 +1314,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 open={importOpen}
                 itensIniciais={importRows}
                 pecasExistentes={pecasTodas.map((p) => ({ modelo: p.modelo, qualidade: p.qualidade }))}
+                precosExistentes={precosExistentes}
                 onConfirm={confirmImport}
                 onClose={() => { if (!importSaving) { setImportOpen(false); setImportRows([]); } }}
                 loading={importSaving}
