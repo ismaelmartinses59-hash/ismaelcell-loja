@@ -11,12 +11,13 @@ import { FaturamentoModal } from "@/components/faturamento-modal";
 import { GarantiaModal } from "@/components/garantia-modal";
 import { CatalogoModal } from "@/components/catalogo-modal";
 import { CaixaModal } from "@/components/caixa-modal";
+import { ConfiguracoesModal } from "@/components/configuracoes-modal";
 import { CaixaSessaoGuard } from "@/components/caixa-sessao-guard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, TrendingUp, Shield, Package, HandCoins, Wallet } from "lucide-react";
+import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, TrendingUp, Shield, Package, HandCoins, Wallet, Settings } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
@@ -30,6 +31,7 @@ export default function Orders() {
   const [showGarantia, setShowGarantia] = useState(false);
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCaixa, setShowCaixa] = useState(false);
+  const [showConfig, setShowConfig] = useState(false);
   const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
@@ -112,6 +114,7 @@ export default function Orders() {
       <GarantiaModal open={showGarantia} onClose={() => setShowGarantia(false)} />
       <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber"} />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
+      <ConfiguracoesModal open={showConfig} onClose={() => setShowConfig(false)} />
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-20 shadow-sm pt-[env(safe-area-inset-top)]">
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
@@ -190,6 +193,15 @@ export default function Orders() {
             >
               {showForm ? <X className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
               {showForm ? "Fechar" : "Nova"}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowConfig(true)}
+              className="text-muted-foreground hover:text-foreground"
+              title="Configurações"
+            >
+              <Settings className="h-4 w-4" />
             </Button>
             <Button variant="ghost" size="sm" onClick={handleLogout} className="text-muted-foreground hover:text-foreground">
               <LogOut className="h-4 w-4" />

@@ -18,7 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { NotificacoesToggle } from "./notificacoes-toggle";
-import { DivisaoLucro, ConfigFinanceiro } from "./divisao-lucro";
+import { DivisaoLucro } from "./divisao-lucro";
 import {
   Wallet,
   ArrowDownCircle,
@@ -159,6 +159,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     saldo: number;
     entradasDinheiro?: number;
     entradasPix?: number;
+    saidasDinheiro?: number;
+    saidasPix?: number;
     totalCartao?: number;
     totalCartaoLiquido?: number;
     cartao?: { forma: string; label: string; taxa: number; bruto: number; liquido: number }[];
@@ -431,7 +433,12 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           tipo,
           valor: valor.trim(),
           motivo: motivo.trim(),
-          formaPagamento: tipo === "entrada" ? formaPagto : "dinheiro",
+          formaPagamento:
+            tipo === "entrada"
+              ? formaPagto
+              : formaPagto === "pix"
+                ? "pix"
+                : "dinheiro",
           pecaId:
             tipo === "entrada" && vincularPeca && pecaSel ? pecaSel.id : null,
         },
@@ -536,11 +543,19 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span className="text-red-600">Saiu hoje</span>
+                <span className="text-red-600">Saiu (dinheiro)</span>
                 <span className="font-semibold text-red-700">
-                  {formatMoney(hoje.totalSaidas)}
+                  {formatMoney(hoje.saidasDinheiro ?? hoje.totalSaidas)}
                 </span>
               </div>
+              {(hoje.saidasPix ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-cyan-600">Saiu (PIX)</span>
+                  <span className="font-semibold text-cyan-700">
+                    {formatMoney(hoje.saidasPix ?? 0)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span className="font-semibold text-slate-600">
                   Em caixa agora
@@ -549,7 +564,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   {formatMoney(
                     parseMoney(hoje.sessao.valorInicial) +
                       (hoje.entradasDinheiro ?? hoje.totalEntradas) -
-                      hoje.totalSaidas,
+                      (hoje.saidasDinheiro ?? hoje.totalSaidas),
                   )}
                 </span>
               </div>
@@ -672,7 +687,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                       (
                         ini +
                         (hoje.entradasDinheiro ?? hoje.totalEntradas) -
-                        hoje.totalSaidas
+                        (hoje.saidasDinheiro ?? hoje.totalSaidas)
                       )
                         .toFixed(2)
                         .replace(".", ","),
@@ -819,6 +834,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 setVincularPeca(false);
                 setPecaSel(null);
                 setModeloBusca("");
+                // Saída não aceita cartão: se estava num cartão, volta pra dinheiro.
+                if (isCartaoForma(formaPagto)) setFormaPagto("dinheiro");
               }}
               className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-semibold transition-colors border ${
                 tipo === "saida"
@@ -855,13 +872,19 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             </div>
           </div>
 
-          {tipo === "entrada" && (
+          {
             <div>
               <label className="text-xs font-medium text-muted-foreground">
                 Forma de pagamento
               </label>
-              <div className="mt-1 grid grid-cols-3 gap-1">
-                {(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as FormaPagamento[]).map((f) => {
+              <div
+                className={`mt-1 grid gap-1 ${tipo === "entrada" ? "grid-cols-3" : "grid-cols-2"}`}
+              >
+                {(
+                  (tipo === "entrada"
+                    ? ["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"]
+                    : ["dinheiro", "pix"]) as FormaPagamento[]
+                ).map((f) => {
                   const ativo = formaPagto === f;
                   const semTaxa = f === "dinheiro" || f === "pix";
                   const short =
@@ -892,8 +915,9 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               </div>
               {formaPagto === "pix" && (
                 <p className="mt-1 text-[11px] text-cyan-700">
-                  PIX — sem taxa, cai direto na conta. NÃO entra na gaveta (fica
-                  separado do dinheiro).
+                  {tipo === "entrada"
+                    ? "PIX — sem taxa, cai direto na conta. NÃO entra na gaveta (fica separado do dinheiro)."
+                    : "PIX — sai direto da conta. NÃO sai da gaveta (o dinheiro da gaveta não muda)."}
                 </p>
               )}
               {isCartaoForma(formaPagto) && (
@@ -902,7 +926,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </p>
               )}
             </div>
-          )}
+          }
 
           {tipo === "entrada" && (
             <label className="flex items-center gap-2 text-sm cursor-pointer select-none">
@@ -1050,11 +1074,6 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             })}
           </div>
         )}
-
-        {/* Ajustar salário e contas fixas (divisão do lucro) */}
-        <div className="border-t pt-3">
-          <ConfigFinanceiro />
-        </div>
 
         {/* Histórico de fechamentos */}
         <div className="border-t pt-3">

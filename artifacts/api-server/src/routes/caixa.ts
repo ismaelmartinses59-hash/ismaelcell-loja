@@ -8,7 +8,12 @@ import {
   contasReceberPagamentosTable,
   contasReceberTable,
 } from "@workspace/db";
-import { normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
+import {
+  normalizeForma,
+  taxaFor,
+  isCartao,
+  type FormaPagamento,
+} from "../lib/formas-pagamento.js";
 
 const router: IRouter = Router();
 
@@ -116,11 +121,15 @@ router.post("/caixa", async (req, res): Promise<void> => {
   const valor = String(req.body?.valor ?? "").trim();
   const motivo = String(req.body?.motivo ?? "").trim();
   const pecaIdRaw = req.body?.pecaId;
-  // Forma de pagamento só se aplica a entradas; default = dinheiro (null).
-  const forma =
-    tipo === "entrada" ? normalizeForma(req.body?.formaPagamento) : null;
-  const formaPagamento = forma;
-  const taxaPercent = forma ? String(taxaFor(forma)) : null;
+  // Forma de pagamento: entrada aceita todas (dinheiro/pix/cartão); saída só
+  // aceita dinheiro ou PIX (cartão não faz sentido numa saída de caixa).
+  const formaRaw = normalizeForma(req.body?.formaPagamento);
+  const formaPagamento: FormaPagamento | null =
+    tipo === "entrada" ? formaRaw : formaRaw === "pix" ? "pix" : "dinheiro";
+  const taxaPercent =
+    tipo === "entrada" && formaPagamento
+      ? String(taxaFor(formaPagamento))
+      : null;
 
   if (!tipo) {
     res.status(400).json({ error: "tipo deve ser entrada ou saida" });
@@ -132,6 +141,14 @@ router.post("/caixa", async (req, res): Promise<void> => {
   }
   if (!motivo) {
     res.status(400).json({ error: "motivo é obrigatório" });
+    return;
+  }
+  // Saída não aceita cartão (só dinheiro ou PIX). Forma ausente/inválida numa
+  // saída cai em dinheiro (compatível com lançamentos antigos sem forma).
+  if (tipo === "saida" && isCartao(formaRaw)) {
+    res
+      .status(400)
+      .json({ error: "Saída só pode ser em dinheiro ou PIX (sem cartão)" });
     return;
   }
 
