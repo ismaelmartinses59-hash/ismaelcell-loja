@@ -185,15 +185,19 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     return () => clearInterval(id);
   }, [open]);
 
-  // "Hoje" (SP) e se o caixa de hoje já travou (fechado E não dá mais pra
-  // reabrir: reaberto uma vez OU passou das 20:30). Recalcula a cada tick.
+  // "Hoje" (SP) e se o caixa de hoje já travou (passou das 20:30, OU fechado e
+  // já reaberto uma vez). Recalcula a cada tick.
   const hojeStr = useMemo(() => hojeSP(), [nowTick]);
   const hojeTravado = useMemo(() => {
     const sess = hoje?.sessao;
+    if (!sess) return false;
+    // O dia "trava" (some da lista principal e vai pro Histórico) quando passa
+    // das 20:30 — independente de o caixa ter sido fechado ou não — OU quando já
+    // foi fechado e reaberto (não dá mais pra reabrir). Antes das 20:30 com o
+    // caixa aberto, a lista de hoje continua visível.
     return (
-      !!sess &&
-      sess.status === "fechado" &&
-      (sess.reaberto === true || agoraMinutosSP() > LIMITE_REABRIR_MIN)
+      agoraMinutosSP() > LIMITE_REABRIR_MIN ||
+      (sess.status === "fechado" && sess.reaberto === true)
     );
   }, [hoje, nowTick]);
 
@@ -1020,12 +1024,11 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           </div>
         ) : hojeTravado ? (
           <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-6 text-center text-sm text-slate-600">
-            O caixa de hoje já foi fechado e não pode mais ser reaberto.
+            Os lançamentos de hoje já foram arquivados.
             <br />
-            Os lançamentos de cada dia ficam guardados no{" "}
+            Para ver tudo que entrou e saiu hoje, abra o{" "}
             <span className="font-semibold text-indigo-700">Histórico</span>{" "}
-            abaixo — toque no nome do dia (ex.: sexta-feira) para ver tudo que
-            entrou e saiu.
+            abaixo e toque no dia de hoje.
           </div>
         ) : movimentosHoje.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">
