@@ -175,10 +175,14 @@ const CAMPOS: { campo: keyof ConfigFin; label: string; dica?: string }[] = [
 ];
 
 /** Editor retrátil dos valores (salário %, dias, contas fixas). */
-export function ConfigFinanceiro() {
+export function ConfigFinanceiro({
+  defaultOpen = false,
+}: {
+  defaultOpen?: boolean;
+} = {}) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [aberto, setAberto] = useState(false);
+  const [aberto, setAberto] = useState(defaultOpen);
   const [form, setForm] = useState<ConfigFin | null>(null);
   const [salvando, setSalvando] = useState(false);
 

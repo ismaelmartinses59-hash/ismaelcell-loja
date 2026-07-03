@@ -73,6 +73,10 @@ interface TotaisDia {
   /** Entradas em PIX (cai na conta, NÃO fica na gaveta). */
   entradasPix: number;
   totalSaidas: number;
+  /** Saídas em dinheiro vivo (o que realmente sai da gaveta). */
+  saidasDinheiro: number;
+  /** Saídas via PIX (sai da conta, NÃO da gaveta). */
+  saidasPix: number;
   /** Detalhe por forma de cartão (só as que tiveram movimento). */
   cartao: CartaoItem[];
   totalCartaoBruto: number;
@@ -97,12 +101,17 @@ async function totaisDoDia(data: string): Promise<TotaisDia> {
   let entradasDinheiro = 0;
   let entradasPix = 0;
   let totalSaidas = 0;
+  let saidasDinheiro = 0;
+  let saidasPix = 0;
   const cartaoMap = new Map<FormaPagamento, { bruto: number }>();
 
   for (const r of rows) {
     const n = parseValor(r.valor);
     if (r.tipo !== "entrada") {
       totalSaidas += n;
+      // Só a saída em dinheiro sai da gaveta; PIX sai da conta.
+      if (normalizeForma(r.formaPagamento) === "pix") saidasPix += n;
+      else saidasDinheiro += n;
       continue;
     }
     totalEntradas += n;
@@ -140,6 +149,8 @@ async function totaisDoDia(data: string): Promise<TotaisDia> {
     entradasDinheiro,
     entradasPix,
     totalSaidas,
+    saidasDinheiro,
+    saidasPix,
     cartao,
     totalCartaoBruto,
     totalCartaoLiquido,
@@ -161,6 +172,8 @@ router.get("/caixa-sessoes", async (req, res): Promise<void> => {
     entradasDinheiro: t.entradasDinheiro,
     entradasPix: t.entradasPix,
     totalSaidas: t.totalSaidas,
+    saidasDinheiro: t.saidasDinheiro,
+    saidasPix: t.saidasPix,
     saldo: t.totalEntradas - t.totalSaidas,
     cartao: t.cartao,
     totalCartao: t.totalCartaoBruto,
@@ -219,8 +232,9 @@ router.post("/caixa-sessoes/fechar", async (req, res): Promise<void> => {
   }
   const t = await totaisDoDia(data);
   const valorInicial = parseValor(sessao.valorInicial);
-  // O valor esperado na GAVETA usa só o dinheiro (cartão não entra na gaveta).
-  const valorFinal = valorInicial + t.entradasDinheiro - t.totalSaidas;
+  // O valor esperado na GAVETA usa só o dinheiro: entradas em dinheiro menos
+  // saídas em dinheiro (PIX e cartão não passam pela gaveta).
+  const valorFinal = valorInicial + t.entradasDinheiro - t.saidasDinheiro;
   const contadoRaw = String(req.body?.valorContado ?? "").trim();
   const valorContado = contadoRaw ? formatValor(parseValor(contadoRaw)) : null;
   const [atualizada] = await db
