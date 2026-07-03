@@ -64,13 +64,13 @@ async function lembrarFechar(): Promise<void> {
  * Agenda os lembretes de caixa no fuso de São Paulo, espelhando as regras do
  * overlay bloqueante:
  *  - Abrir: 8h, segunda a sábado.
- *  - Fechar: 17h de segunda a sexta; 13h no sábado.
+ *  - Fechar: 18h de segunda a sexta; 13h no sábado.
  *  - Domingo: sem lembretes.
  */
 export function agendarNotificacoesCaixa(): void {
   const opts = { timezone: TZ };
   cron.schedule("0 8 * * 1-6", lembrarAbrir, opts);
-  cron.schedule("0 17 * * 1-5", lembrarFechar, opts);
+  cron.schedule("0 18 * * 1-5", lembrarFechar, opts);
   cron.schedule("0 13 * * 6", lembrarFechar, opts);
   logger.info("Caixa notification schedules registered (America/Sao_Paulo)");
 }
