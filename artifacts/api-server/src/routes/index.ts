@@ -8,6 +8,7 @@ import vendasRouter from "./vendas";
 import contasReceberRouter from "./contas-receber";
 import caixaRouter from "./caixa";
 import caixaSessoesRouter from "./caixa-sessoes";
+import financeiroRouter from "./financeiro";
 import pushRouter from "./push";
 
 const router: IRouter = Router();
@@ -21,6 +22,7 @@ router.use(vendasRouter);
 router.use(contasReceberRouter);
 router.use(caixaRouter);
 router.use(caixaSessoesRouter);
+router.use(financeiroRouter);
 router.use(pushRouter);
 
 export default router;

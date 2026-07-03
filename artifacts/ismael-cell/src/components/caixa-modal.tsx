@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { NotificacoesToggle } from "./notificacoes-toggle";
+import { DivisaoLucro, ConfigFinanceiro } from "./divisao-lucro";
 import {
   Wallet,
   ArrowDownCircle,
@@ -592,6 +593,9 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </span>
               </div>
             )}
+            {hoje.sessao.status === "fechado" && (
+              <DivisaoLucro dia={hojeStr} enabled={open} />
+            )}
             {hoje.sessao.status === "fechado" &&
               (hoje.sessao.reaberto ? (
                 <div className="mt-3 border-t pt-3">
@@ -1047,6 +1051,11 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           </div>
         )}
 
+        {/* Ajustar salário e contas fixas (divisão do lucro) */}
+        <div className="border-t pt-3">
+          <ConfigFinanceiro />
+        </div>
+
         {/* Histórico de fechamentos */}
         <div className="border-t pt-3">
           <button
@@ -1229,6 +1238,13 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </p>
               </div>
             </div>
+          )}
+
+          {diaDetalhe && (
+            <DivisaoLucro
+              dia={diaDetalhe.data}
+              enabled={open && !!diaDetalhe}
+            />
           )}
 
           {detalheLoading ? (
