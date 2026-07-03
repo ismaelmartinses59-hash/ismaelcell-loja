@@ -109,6 +109,13 @@ function formatHoraSP(iso: string): string {
   });
 }
 
+/** "Hoje" (YYYY-MM-DD) no fuso de São Paulo. */
+function hojeSP(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date());
+}
+
 interface CaixaModalProps {
   open: boolean;
   onClose: () => void;
@@ -133,6 +140,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [fim, setFim] = useState("");
   const [showHistorico, setShowHistorico] = useState(false);
   const [diaDetalhe, setDiaDetalhe] = useState<CaixaSessao | null>(null);
+  const [nowTick, setNowTick] = useState(0);
 
   const { data: fechamentos = [] } = useQuery<CaixaSessao[]>({
     queryKey: ["caixa-historico"],
@@ -166,6 +174,43 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     },
   });
 
+  // Atualiza o relógio interno a cada 30s para o travamento das 20:30 (e a
+  // virada do dia) reagirem sozinhos, mesmo sem interação nem mudança de dados.
+  useEffect(() => {
+    if (!open) return;
+    const id = setInterval(() => setNowTick((t) => t + 1), 30000);
+    return () => clearInterval(id);
+  }, [open]);
+
+  // "Hoje" (SP) e se o caixa de hoje já travou (fechado E não dá mais pra
+  // reabrir: reaberto uma vez OU passou das 20:30). Recalcula a cada tick.
+  const hojeStr = useMemo(() => hojeSP(), [nowTick]);
+  const hojeTravado = useMemo(() => {
+    const sess = hoje?.sessao;
+    return (
+      !!sess &&
+      sess.status === "fechado" &&
+      (sess.reaberto === true || agoraMinutosSP() > LIMITE_REABRIR_MIN)
+    );
+  }, [hoje, nowTick]);
+
+  // Lançamentos de HOJE vêm de uma query dedicada (por data SP), independente
+  // do filtro de período usado no "Resumo do período".
+  const { data: hojeMovData, isLoading: hojeMovLoading } = useQuery<{
+    movimentos: CaixaMovimento[];
+    totalEntradas: number;
+    totalSaidas: number;
+  }>({
+    queryKey: ["caixa-hoje", hojeStr],
+    enabled: open && !hojeTravado,
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/caixa?dia=${hojeStr}`);
+      if (!r.ok) throw new Error("erro ao carregar hoje");
+      return r.json();
+    },
+  });
+  const movimentosHoje = hojeTravado ? [] : (hojeMovData?.movimentos ?? []);
+
   const { data: detalheData, isLoading: detalheLoading } = useQuery<{
     movimentos: CaixaMovimento[];
     totalEntradas: number;
@@ -183,7 +228,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const params: ListCaixaParams =
     periodo === "custom" && inicio && fim ? { inicio, fim } : { periodo: periodo === "custom" ? "30" : periodo };
 
-  const { data, isLoading } = useListCaixa(params, {
+  const { data } = useListCaixa(params, {
     query: { queryKey: getListCaixaQueryKey(params), enabled: open },
   });
 
@@ -350,6 +395,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["/api/caixa"] });
+    qc.invalidateQueries({ queryKey: ["caixa-hoje"] });
     qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
     qc.invalidateQueries({ queryKey: ["caixa-historico"] });
     qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
@@ -427,7 +473,6 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const totalEntradas = data?.totalEntradas ?? 0;
   const totalSaidas = data?.totalSaidas ?? 0;
   const saldo = data?.saldo ?? 0;
-  const movimentos = data?.movimentos ?? [];
 
   return (
     <Dialog
@@ -669,6 +714,51 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           </div>
         )}
 
+        {/* Resumo do período */}
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs font-semibold text-slate-500">
+            Resumo do período:
+          </span>
+          {PERIODOS.map((p) => (
+            <button
+              key={p.key}
+              onClick={() => setPeriodo(p.key)}
+              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
+                periodo === p.key
+                  ? "bg-primary text-primary-foreground border-primary"
+                  : "bg-muted text-muted-foreground border-transparent hover:border-muted-foreground"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+
+        {periodo === "custom" && (
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">
+                De
+              </label>
+              <Input
+                type="date"
+                value={inicio}
+                onChange={(e) => setInicio(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground">
+                Até
+              </label>
+              <Input
+                type="date"
+                value={fim}
+                onChange={(e) => setFim(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
+
         {/* Saldo + totais */}
         <div className="grid grid-cols-3 gap-2">
           <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-center">
@@ -892,60 +982,30 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           </Button>
         </div>
 
-        {/* Filtros */}
-        <div className="flex flex-wrap gap-2">
-          {PERIODOS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriodo(p.key)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
-                periodo === p.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted text-muted-foreground border-transparent hover:border-muted-foreground"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
-
-        {periodo === "custom" && (
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                De
-              </label>
-              <Input
-                type="date"
-                value={inicio}
-                onChange={(e) => setInicio(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground">
-                Até
-              </label>
-              <Input
-                type="date"
-                value={fim}
-                onChange={(e) => setFim(e.target.value)}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Lista de movimentos */}
-        {isLoading ? (
+        {/* Lançamentos de hoje */}
+        <p className="text-sm font-semibold text-slate-700">
+          Lançamentos de hoje
+        </p>
+        {hojeMovLoading ? (
           <div className="text-center py-8 text-muted-foreground text-sm">
             Carregando...
           </div>
-        ) : movimentos.length === 0 ? (
+        ) : hojeTravado ? (
+          <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 px-4 py-6 text-center text-sm text-slate-600">
+            O caixa de hoje já foi fechado e não pode mais ser reaberto.
+            <br />
+            Os lançamentos de cada dia ficam guardados no{" "}
+            <span className="font-semibold text-indigo-700">Histórico</span>{" "}
+            abaixo — toque no nome do dia (ex.: sexta-feira) para ver tudo que
+            entrou e saiu.
+          </div>
+        ) : movimentosHoje.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground text-sm">
-            Nenhuma movimentação no período.
+            Nenhuma movimentação hoje ainda.
           </div>
         ) : (
           <div className="space-y-2">
-            {movimentos.map((m) => {
+            {movimentosHoje.map((m) => {
               const isEntrada = m.tipo === "entrada";
               return (
                 <div
