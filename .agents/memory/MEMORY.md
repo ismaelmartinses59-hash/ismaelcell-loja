@@ -11,5 +11,6 @@
 - [Web push notifications](push-notifications.md) — VAPID keys live in DB (not env) so Railway works zero-config; confirmation ping must target one device, never broadcast; iOS needs PWA installed.
 - [Caixa sessões timezone authority](caixa-sessoes-timezone.md) — day-scoped/blocking caixa logic derives "today" server-side in São Paulo; client computes SP wall-clock with explicit timeZone, never device-local.
 - [AV ↔ Caixa linkage](caixa-av-link.md) — fiado AV payments mirror into caixa via `caixa.pagamento_id`; all 4 create/delete paths (incl. delete-whole-conta) must stay in sync or the ledger drifts.
+- [Caixa main list = today only](caixa-lista-hoje.md) — main movements list shows only today (dedicated ?dia query, not period filter); locked days live only in Histórico drilldown; 30s tick drives the 20:30 lock.
 - [Gemini lib lazy init](gemini-lib-lazy-init.md) — integration env vars are Replit-only; the lib must init lazily or it crashes servers (Railway 502) at import.
 - [api-server externalized deps](api-server-externalized-deps.md) — esbuild `external` packages (e.g. @google/*) must be DIRECT deps of api-server; transitive-only = ERR_MODULE_NOT_FOUND on Railway.
