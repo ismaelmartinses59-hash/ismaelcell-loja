@@ -1,6 +1,12 @@
 import { Router, type IRouter } from "express";
 import { and, eq, sql } from "drizzle-orm";
-import { db, appConfigTable, caixaTable, pecasTable } from "@workspace/db";
+import {
+  db,
+  appConfigTable,
+  caixaTable,
+  caixaSessoesTable,
+  pecasTable,
+} from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -48,9 +54,25 @@ async function lerConfig(): Promise<Record<ConfigCampo, string>> {
   return out;
 }
 
-/** Lê os valores editáveis (salário %, dias, contas fixas). */
+/**
+ * Conta quantos dias o caixa foi aberto no mês atual (fuso SP) = "dias
+ * trabalhados até agora". Cada dia de trabalho tem uma sessão de caixa (a
+ * coluna `data` é única por dia), então basta contar as sessões do mês.
+ */
+async function contarDiasTrabalhadosMes(): Promise<number> {
+  const mes = hojeSP().slice(0, 7); // "YYYY-MM"
+  const [row] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(caixaSessoesTable)
+    .where(sql`${caixaSessoesTable.data} like ${mes + "-%"}`);
+  return row?.n ?? 0;
+}
+
+/** Lê os valores editáveis (salário %, dias, contas fixas) + dias trabalhados no mês. */
 router.get("/financeiro/config", async (_req, res): Promise<void> => {
-  res.json(await lerConfig());
+  const cfg = await lerConfig();
+  const diasTrabalhadosMes = await contarDiasTrabalhadosMes();
+  res.json({ ...cfg, diasTrabalhadosMes });
 });
 
 /** Atualiza um ou mais valores editáveis. */
