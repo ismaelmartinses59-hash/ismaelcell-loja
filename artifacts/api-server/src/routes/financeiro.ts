@@ -54,25 +54,107 @@ async function lerConfig(): Promise<Record<ConfigCampo, string>> {
   return out;
 }
 
+/** As quatro contas fixas que têm botão "já paguei" + acúmulo próprio. */
+const CONTAS = ["aluguel", "energia", "internet", "agua"] as const;
+type Conta = (typeof CONTAS)[number];
+
+/** Chave em app_config que guarda a data do último pagamento de cada conta. */
+const PAGO_KEYS: Record<Conta, string> = {
+  aluguel: "fin_pago_aluguel",
+  energia: "fin_pago_energia",
+  internet: "fin_pago_internet",
+  agua: "fin_pago_agua",
+};
+
+/** Dia do mês em que o ciclo de contas começa quando ainda não houve
+ *  pagamento (dia do aluguel). O dono paga a partir do dia 7. */
+const DIA_CICLO = 7;
+
+/** Lê a data do último pagamento de cada conta (ou null se nunca pago). */
+async function lerPagos(): Promise<Record<Conta, string | null>> {
+  const rows = await db.select().from(appConfigTable);
+  const map = new Map(rows.map((r) => [r.key, r.value]));
+  const out = {} as Record<Conta, string | null>;
+  for (const c of CONTAS) {
+    const v = map.get(PAGO_KEYS[c]);
+    out[c] = v && DATA_RE.test(v) ? v : null;
+  }
+  return out;
+}
+
 /**
- * Conta quantos dias o caixa foi aberto no mês atual (fuso SP) = "dias
- * trabalhados até agora". Cada dia de trabalho tem uma sessão de caixa (a
- * coluna `data` é única por dia), então basta contar as sessões do mês.
+ * Data-âncora a partir da qual contamos os dias trabalhados de uma conta:
+ *  - Já paga → conta os dias trabalhados DEPOIS do pagamento (reinicia do zero).
+ *  - Nunca paga → conta a partir do dia 7 do ciclo atual (dia do aluguel).
  */
-async function contarDiasTrabalhadosMes(): Promise<number> {
-  const mes = hojeSP().slice(0, 7); // "YYYY-MM"
+function ancoraDaConta(pagoEm: string | null): {
+  anchor: string;
+  exclusive: boolean;
+} {
+  if (pagoEm && DATA_RE.test(pagoEm)) return { anchor: pagoEm, exclusive: true };
+  const [y, m, d] = hojeSP().split("-").map(Number);
+  let ay = y;
+  let am = m;
+  if (d < DIA_CICLO) {
+    am -= 1;
+    if (am === 0) {
+      am = 12;
+      ay -= 1;
+    }
+  }
+  const anchor = `${ay}-${String(am).padStart(2, "0")}-${String(DIA_CICLO).padStart(2, "0")}`;
+  return { anchor, exclusive: false };
+}
+
+/** Conta quantos dias o caixa foi aberto desde a âncora (dias trabalhados no ciclo). */
+async function contarDiasDesde(
+  anchor: string,
+  exclusive: boolean,
+): Promise<number> {
+  const cond = exclusive
+    ? sql`${caixaSessoesTable.data} > ${anchor}`
+    : sql`${caixaSessoesTable.data} >= ${anchor}`;
   const [row] = await db
     .select({ n: sql<number>`count(*)::int` })
     .from(caixaSessoesTable)
-    .where(sql`${caixaSessoesTable.data} like ${mes + "-%"}`);
+    .where(cond);
   return row?.n ?? 0;
 }
 
-/** Lê os valores editáveis (salário %, dias, contas fixas) + dias trabalhados no mês. */
+/** Lê os valores editáveis + o status/acúmulo de cada conta fixa. */
 router.get("/financeiro/config", async (_req, res): Promise<void> => {
   const cfg = await lerConfig();
-  const diasTrabalhadosMes = await contarDiasTrabalhadosMes();
-  res.json({ ...cfg, diasTrabalhadosMes });
+  const pagos = await lerPagos();
+  const contas = {} as Record<
+    Conta,
+    { pagoEm: string | null; diasContados: number }
+  >;
+  for (const c of CONTAS) {
+    const { anchor, exclusive } = ancoraDaConta(pagos[c]);
+    contas[c] = {
+      pagoEm: pagos[c],
+      diasContados: await contarDiasDesde(anchor, exclusive),
+    };
+  }
+  res.json({ ...cfg, contas });
+});
+
+/** Marca (ou desmarca) uma conta fixa como paga hoje; ao marcar, o acúmulo reinicia. */
+router.post("/financeiro/pagar", async (req, res): Promise<void> => {
+  const conta = String(req.body?.conta ?? "") as Conta;
+  if (!CONTAS.includes(conta)) {
+    res.status(400).json({ error: "conta inválida" });
+    return;
+  }
+  const value = req.body?.pago === false ? "" : hojeSP();
+  await db
+    .insert(appConfigTable)
+    .values({ key: PAGO_KEYS[conta], value })
+    .onConflictDoUpdate({
+      target: appConfigTable.key,
+      set: { value, updatedAt: new Date() },
+    });
+  res.json({ ok: true });
 });
 
 /** Atualiza um ou mais valores editáveis. */
