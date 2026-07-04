@@ -297,6 +297,7 @@ export default function Orders() {
               </div>
             </CardContent>
           </Card>
+        )}
 
         {totalEncomendas > 0 && (
           <Card
@@ -319,7 +320,6 @@ export default function Orders() {
               </div>
             </CardContent>
           </Card>
-        )}
         )}
 
         {/* Mobile: collapsible form */}
