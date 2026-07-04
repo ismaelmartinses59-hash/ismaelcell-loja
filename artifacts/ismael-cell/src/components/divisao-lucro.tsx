@@ -173,9 +173,30 @@ interface ConfigFin {
   custoAgua: string;
 }
 
-/** Resposta do GET /financeiro/config: os valores editáveis + quantos dias o
- *  caixa já foi aberto no mês (usado pra mostrar o acumulado de cada conta). */
-type ConfigFinResp = ConfigFin & { diasTrabalhadosMes: number };
+type Conta = "aluguel" | "energia" | "internet" | "agua";
+interface ContaStatus {
+  /** Data do último pagamento ("YYYY-MM-DD") ou null se nunca pago. */
+  pagoEm: string | null;
+  /** Dias que o caixa foi aberto desde o último pagamento (ou desde o dia 7). */
+  diasContados: number;
+}
+
+/** Resposta do GET /financeiro/config: valores editáveis + status de cada conta fixa. */
+type ConfigFinResp = ConfigFin & { contas: Record<Conta, ContaStatus> };
+
+/** De qual conta cada campo de custo faz o acompanhamento de pagamento. */
+const CONTA_DE: Partial<Record<keyof ConfigFin, Conta>> = {
+  custoAluguel: "aluguel",
+  custoEnergia: "energia",
+  custoInternet: "internet",
+  custoAgua: "agua",
+};
+
+/** "2026-07-07" → "07/07". */
+function fmtDia(d: string): string {
+  const [, m, dd] = d.split("-");
+  return `${dd}/${m}`;
+}
 
 const CAMPOS: { campo: keyof ConfigFin; label: string; conta?: boolean }[] = [
   { campo: "percentualSalario", label: "Seu salário (%)" },
@@ -208,19 +229,26 @@ export function ConfigFinanceiro({
     },
   });
 
-  const diasMes = data?.diasTrabalhadosMes ?? 0;
+  const [pagandoConta, setPagandoConta] = useState<Conta | null>(null);
   const divisorDias = Math.max(1, parseNum(form?.diasTrabalhados ?? "0"));
-  /** Quanto já foi guardado no mês pra uma conta = (valor/mês ÷ dias) × dias já trabalhados, sem passar do valor cheio. */
-  function acumuladoConta(valorRaw: string): {
-    valorMes: number;
-    porDia: number;
-    acum: number;
-  } {
-    const valorMes = parseNum(valorRaw);
-    const porDia = valorMes / divisorDias;
-    const acum = Math.min(valorMes, porDia * diasMes);
-    return { valorMes, porDia, acum };
-  }
+
+  const pagar = async (conta: Conta, pago: boolean) => {
+    setPagandoConta(conta);
+    try {
+      const r = await fetch(`${BASE}/api/financeiro/pagar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conta, pago }),
+      });
+      if (!r.ok) throw new Error("erro");
+      await qc.invalidateQueries({ queryKey: ["financeiro-config"] });
+      toast({ title: pago ? "Marcado como pago!" : "Desmarcado" });
+    } catch {
+      toast({ title: "Não deu pra salvar", variant: "destructive" });
+    } finally {
+      setPagandoConta(null);
+    }
+  };
 
   useEffect(() => {
     if (data && !form) setForm(data);
@@ -271,7 +299,13 @@ export function ConfigFinanceiro({
           ) : (
             <>
               {CAMPOS.map(({ campo, label, conta }) => {
-                const info = conta ? acumuladoConta(form[campo]) : null;
+                const contaKey = conta ? CONTA_DE[campo] : undefined;
+                const status = contaKey ? data?.contas?.[contaKey] : undefined;
+                const valorMes = parseNum(form[campo]);
+                const diasContados = status?.diasContados ?? 0;
+                const porDia = valorMes / divisorDias;
+                const acum = Math.min(valorMes, porDia * diasContados);
+                const pagoEm = status?.pagoEm ?? null;
                 return (
                   <div key={campo} className="space-y-0.5">
                     <label className="text-[11px] font-medium text-slate-600">
@@ -287,16 +321,47 @@ export function ConfigFinanceiro({
                       }
                       className="h-9 text-sm"
                     />
-                    {info && info.valorMes > 0 && (
-                      <p className="text-[10px] leading-tight text-emerald-700">
-                        Já guardado no mês: <b>{fmt(info.acum)}</b> de{" "}
-                        {fmt(info.valorMes)}
-                        <span className="text-slate-400">
-                          {" "}
-                          · {fmt(info.porDia)}/dia × {diasMes}{" "}
-                          {diasMes === 1 ? "dia" : "dias"}
-                        </span>
-                      </p>
+                    {contaKey && (
+                      <div className="flex items-start justify-between gap-2 pt-0.5">
+                        <div className="min-w-0 space-y-0.5">
+                          {valorMes > 0 && (
+                            <p className="text-[10px] leading-tight text-emerald-700">
+                              {pagoEm
+                                ? "Guardando pro próximo: "
+                                : "Já guardado: "}
+                              <b>{fmt(acum)}</b> de {fmt(valorMes)}
+                              <span className="text-slate-400">
+                                {" "}
+                                · {fmt(porDia)}/dia × {diasContados}{" "}
+                                {diasContados === 1 ? "dia" : "dias"}
+                              </span>
+                            </p>
+                          )}
+                          {pagoEm && (
+                            <p className="text-[10px] font-semibold text-green-600">
+                              Pago em {fmtDia(pagoEm)}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant={pagoEm ? "default" : "outline"}
+                          disabled={pagandoConta === contaKey}
+                          onClick={() => pagar(contaKey, !pagoEm)}
+                          className={
+                            pagoEm
+                              ? "h-7 shrink-0 bg-green-600 px-2.5 text-[11px] hover:bg-green-700"
+                              : "h-7 shrink-0 border-green-300 px-2.5 text-[11px] text-green-700 hover:bg-green-50"
+                          }
+                        >
+                          {pagandoConta === contaKey
+                            ? "..."
+                            : pagoEm
+                              ? "Pago ✓"
+                              : "Já paguei"}
+                        </Button>
+                      </div>
                     )}
                   </div>
                 );
