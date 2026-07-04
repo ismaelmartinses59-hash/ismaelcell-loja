@@ -17,7 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, TrendingUp, Shield, Package, HandCoins, Wallet, Settings } from "lucide-react";
+import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, TrendingUp, Shield, Package, HandCoins, Wallet, Settings, Truck } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
@@ -32,7 +32,7 @@ export default function Orders() {
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCaixa, setShowCaixa] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber">("pecas");
+  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
   const { data: contasReceber = [] } = useQuery<ContaResumo[]>({
@@ -40,6 +40,15 @@ export default function Orders() {
     queryFn: () => fetch(`${BASE_URL}/api/contas-receber`).then((r) => r.ok ? r.json() : []),
     refetchInterval: 30000,
   });
+
+  const { data: encomendasData = [] } = useQuery<{ status: string; valorTotal?: number }[]>({
+    queryKey: ["encomendas-resumo"],
+    queryFn: () => fetch(`${BASE_URL}/api/encomendas`).then((r) => r.ok ? r.json() : []),
+    refetchInterval: 30000,
+  });
+  const encomendasPendentes = encomendasData.filter((e) => e.status === "pendente");
+  const totalEncomendas = encomendasPendentes.length;
+  const totalValorEncomendas = encomendasPendentes.reduce((s, e) => s + (e.valorTotal ?? 0), 0);
   const contasAbertas = contasReceber.filter((c) => c.conta.closedAt === null && c.saldo > 0);
   const totalAReceber = contasAbertas.reduce((a, c) => a + c.saldo, 0);
 
@@ -285,6 +294,29 @@ export default function Orders() {
                   {totalAReceber.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                 </div>
                 <div className="text-[10px] text-orange-600/70 mt-0.5">tocar para abrir</div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {totalEncomendas > 0 && (
+          <Card
+            className="border-blue-200 bg-blue-50 shadow-sm cursor-pointer"
+            onClick={() => { setShowCatalogo(true); setCatalogoTab("encomendas"); }}
+          >
+            <CardContent className="flex items-center gap-3 px-4 py-3">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <Truck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                  <span className="text-xs font-semibold text-blue-700">Aguardando Chegada</span>
+                </div>
+                <div className="text-[11px] text-blue-600/70">{totalEncomendas} {totalEncomendas === 1 ? "encomenda" : "encomendas"} a caminho</div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-extrabold text-blue-700 leading-none">
+                  {totalValorEncomendas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </div>
+                <div className="text-[10px] text-blue-600/70 mt-0.5">tocar para ver</div>
               </div>
             </CardContent>
           </Card>
