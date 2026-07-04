@@ -238,18 +238,19 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
   };
 
   const submit = () => {
-    if (!modelo.trim() || !qualidade || !valor.trim()) return;
-    const qtd = parseInt(quantidade) || 0;
-    if (qtd < 1) return;
-    onSave({
-      modelo: modelo.trim(),
-      qualidade,
-      valor: valor.trim(),
-      valorCusto: custo.trim(),
-      quantidade: qtd,
-      ...(pedirInvestimento ? { formaInvestimento: formaInvest } : {}),
-    });
-  };
+      if (!modelo.trim() || !qualidade || !valor.trim()) return;
+      const qtd = parseInt(quantidade) || 0;
+      if (qtd < 1) return;
+      if (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim())) return;
+      onSave({
+        modelo: modelo.trim(),
+        qualidade,
+        valor: valor.trim(),
+        valorCusto: custo.trim(),
+        quantidade: qtd,
+        ...(pedirInvestimento ? { formaInvestimento: formaInvest, destino, fornecedor: fornecedor.trim(), valorLojista: valorLojista.trim() } : {}),
+      });
+    };
 
   const lower = modelo.toLowerCase();
   const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
@@ -1097,13 +1098,17 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       onError: () => toast({ title: "Erro ao registrar encomenda", variant: "destructive" }),
     });
 
-  const handleAddSubmit = (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => {
-    if (setor === "cliente") {
-      setPreviewData(data);
-    } else {
-      addMutation.mutate(data);
-    }
-  };
+  const handleAddSubmit = (data: PecaSavePayload) => {
+      if (data.destino === "encomenda") {
+        criarEncomendaMutation.mutate(data);
+        return;
+      }
+      if (setor === "cliente") {
+        setPreviewData(data);
+      } else {
+        addMutation.mutate(data);
+      }
+    };
 
   const confirmTwin = async (precoLojista: string) => {
     if (!previewData) return;
