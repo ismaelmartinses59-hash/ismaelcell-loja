@@ -16,7 +16,6 @@ export const OrderLinha = {
   samsung: "samsung",
   motorola: "motorola",
   ios: "ios",
-  realme: "realme",
 } as const;
 
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
@@ -29,13 +28,6 @@ export const OrderStatus = {
   encerrado: "encerrado",
 } as const;
 
-export type OrderTipo = (typeof OrderTipo)[keyof typeof OrderTipo];
-
-export const OrderTipo = {
-  cliente: "cliente",
-  lojista: "lojista",
-} as const;
-
 export interface Order {
   id: number;
   codigo: string;
@@ -45,12 +37,6 @@ export interface Order {
   valor: string;
   tempo: string;
   status: OrderStatus;
-  tipo: OrderTipo;
-  nomeCliente?: string | null;
-  senhaDispo?: string | null;
-  garantia?: string | null;
-  dataServico?: string | null;
-  dataConclusao?: string | null;
   createdAt: string;
 }
 
@@ -62,7 +48,6 @@ export const CreateOrderBodyLinha = {
   samsung: "samsung",
   motorola: "motorola",
   ios: "ios",
-  realme: "realme",
 } as const;
 
 export interface CreateOrderBody {
@@ -71,11 +56,6 @@ export interface CreateOrderBody {
   servico: string;
   valor: string;
   tempo: string;
-  tipo?: OrderTipo;
-  nomeCliente?: string;
-  senhaDispo?: string;
-  garantia?: string;
-  dataServico?: string;
 }
 
 export type UpdateOrderStatusBodyStatus =
@@ -103,13 +83,19 @@ export interface OrderStats {
   comGarantia: number;
 }
 
-export interface ListOrdersParams {
+export type ListOrdersParams = {
+  /**
+   * Search by model, service, or line
+   */
   search?: string;
-  status?: string;
-  tipo?: string;
-}
+  /**
+   * Filter by status
+   */
+  status?: ListOrdersStatus;
+};
 
-export type ListOrdersStatus = (typeof ListOrdersStatus)[keyof typeof ListOrdersStatus];
+export type ListOrdersStatus =
+  (typeof ListOrdersStatus)[keyof typeof ListOrdersStatus];
 
 export const ListOrdersStatus = {
   aguardando: "aguardando",

@@ -42,7 +42,7 @@ paths:
           in: query
           schema:
             type: string
-            enum: [aguardando, "em andamento", concluido, problema]
+            enum: [aguardando, "em andamento", concluido, problema, encerrado]
           description: Filter by status
       responses:
         "200":
@@ -173,7 +173,7 @@ components:
           type: string
         status:
           type: string
-          enum: [aguardando, "em andamento", concluido, problema]
+          enum: [aguardando, "em andamento", concluido, problema, encerrado]
         createdAt:
           type: string
           format: date-time
@@ -214,7 +214,7 @@ components:
       properties:
         status:
           type: string
-          enum: [aguardando, "em andamento", concluido, problema]
+          enum: [aguardando, "em andamento", concluido, problema, encerrado]
       required:
         - status
 
@@ -231,9 +231,15 @@ components:
           type: integer
         problema:
           type: integer
+        encerrado:
+          type: integer
+        comGarantia:
+          type: integer
       required:
         - total
         - aguardando
         - emAndamento
         - concluido
         - problema
+        - encerrado
+        - comGarantia

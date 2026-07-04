@@ -12,4 +12,6 @@ export interface OrderStats {
   emAndamento: number;
   concluido: number;
   problema: number;
+  encerrado: number;
+  comGarantia: number;
 }

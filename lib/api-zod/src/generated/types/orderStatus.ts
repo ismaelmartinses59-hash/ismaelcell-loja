@@ -13,4 +13,5 @@ export const OrderStatus = {
   em_andamento: "em andamento",
   concluido: "concluido",
   problema: "problema",
+  encerrado: "encerrado",
 } as const;

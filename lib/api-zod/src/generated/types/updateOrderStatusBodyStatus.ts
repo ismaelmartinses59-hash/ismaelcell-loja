@@ -14,4 +14,5 @@ export const UpdateOrderStatusBodyStatus = {
   em_andamento: "em andamento",
   concluido: "concluido",
   problema: "problema",
+  encerrado: "encerrado",
 } as const;
