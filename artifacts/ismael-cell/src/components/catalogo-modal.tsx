@@ -10,7 +10,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
 import { EncomendasTab, FORNECEDORES } from "@/components/encomendas-tab";
-import { EncomendasTab } from "@/components/encomendas-tab";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
