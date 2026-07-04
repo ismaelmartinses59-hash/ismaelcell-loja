@@ -21,6 +21,7 @@ import type {
   HealthStatus,
   ListOrdersParams,
   Order,
+  OrderLinha,
   OrderStats,
   UpdateOrderStatusBody,
 } from "./api.schemas";
@@ -463,113 +464,30 @@ export const useUpdateOrderStatus = <
 };
 
 /**
- * @summary Delete a service order
- */
-export const getDeleteOrderUrl = (id: number) => {
-  return `/api/orders/${id}`;
-};
-
-export const deleteOrder = async (
-  id: number,
-  options?: RequestInit,
-): Promise<void> => {
-  return customFetch<void>(getDeleteOrderUrl(id), {
-    ...options,
-    method: "DELETE",
-  });
-};
-
-export const getDeleteOrderMutationOptions = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof deleteOrder>>,
-    TError,
-    { id: number },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof deleteOrder>>,
-  TError,
-  { id: number },
-  TContext
-> => {
-  const mutationKey = ["deleteOrder"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof deleteOrder>>,
-    { id: number }
-  > = (props) => {
-    const { id } = props ?? {};
-
-    return deleteOrder(id, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type DeleteOrderMutationResult = NonNullable<
-  Awaited<ReturnType<typeof deleteOrder>>
->;
-
-export type DeleteOrderMutationError = ErrorType<void>;
-
-/**
- * @summary Delete a service order
- */
-export const useDeleteOrder = <
-  TError = ErrorType<void>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof deleteOrder>>,
-    TError,
-    { id: number },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof deleteOrder>>,
-  TError,
-  { id: number },
-  TContext
-> => {
-  return useMutation(getDeleteOrderMutationOptions(options));
-};
-
-/**
  * @summary Get order statistics
  */
-export const getGetOrderStatsUrl = () => {
-  return `/api/orders/stats`;
+export const getGetOrderStatsUrl = (tipo?: string) => {
+  return tipo ? `/api/orders/stats?tipo=${tipo}` : `/api/orders/stats`;
 };
 
 export const getOrderStats = async (
+  tipo?: string,
   options?: RequestInit,
 ): Promise<OrderStats> => {
-  return customFetch<OrderStats>(getGetOrderStatsUrl(), {
+  return customFetch<OrderStats>(getGetOrderStatsUrl(tipo), {
     ...options,
     method: "GET",
   });
 };
 
-export const getGetOrderStatsQueryKey = () => {
-  return [`/api/orders/stats`] as const;
+export const getGetOrderStatsQueryKey = (tipo?: string) => {
+  return [`/api/orders/stats`, ...(tipo ? [tipo] : [])] as const;
 };
 
 export const getGetOrderStatsQueryOptions = <
   TData = Awaited<ReturnType<typeof getOrderStats>>,
   TError = ErrorType<unknown>,
->(options?: {
+>(tipo?: string, options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getOrderStats>>,
     TError,
@@ -579,11 +497,11 @@ export const getGetOrderStatsQueryOptions = <
 }) => {
   const { query: queryOptions, request: requestOptions } = options ?? {};
 
-  const queryKey = queryOptions?.queryKey ?? getGetOrderStatsQueryKey();
+  const queryKey = queryOptions?.queryKey ?? getGetOrderStatsQueryKey(tipo);
 
   const queryFn: QueryFunction<Awaited<ReturnType<typeof getOrderStats>>> = ({
     signal,
-  }) => getOrderStats({ signal, ...requestOptions });
+  }) => getOrderStats(tipo, { signal, ...requestOptions });
 
   return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
     Awaited<ReturnType<typeof getOrderStats>>,
@@ -604,7 +522,7 @@ export type GetOrderStatsQueryError = ErrorType<unknown>;
 export function useGetOrderStats<
   TData = Awaited<ReturnType<typeof getOrderStats>>,
   TError = ErrorType<unknown>,
->(options?: {
+>(tipo?: string, options?: {
   query?: UseQueryOptions<
     Awaited<ReturnType<typeof getOrderStats>>,
     TError,
@@ -612,7 +530,7 @@ export function useGetOrderStats<
   >;
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
-  const queryOptions = getGetOrderStatsQueryOptions(options);
+  const queryOptions = getGetOrderStatsQueryOptions(tipo, options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;
@@ -620,3 +538,251 @@ export function useGetOrderStats<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+// ─── editOrder ──────────────────────────────────────────────────────────────
+
+export type EditOrderBody = {
+  modelo: string;
+  linha: OrderLinha;
+  servico: string;
+  valor: string;
+  tempo: string;
+  nomeCliente?: string;
+  senhaDispo?: string;
+  garantia?: string;
+  dataServico?: string;
+};
+
+export const editOrder = async (
+  id: number,
+  data: EditOrderBody,
+  options?: RequestInit,
+): Promise<Order> => {
+  return customFetch<Order>(`/api/orders/${id}`, {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+};
+
+export const useEditOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof editOrder>>,
+    TError,
+    { id: number; data: EditOrderBody },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["editOrder"],
+    mutationFn: ({ id, data }: { id: number; data: EditOrderBody }) =>
+      editOrder(id, data, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
+
+// ─── reactivateOrder ────────────────────────────────────────────────────────
+
+export const reactivateOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<Order> => {
+  return customFetch<Order>(`/api/orders/${id}/reactivate`, {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const useReactivateOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof reactivateOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["reactivateOrder"],
+    mutationFn: ({ id }: { id: number }) => reactivateOrder(id, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
+
+// ─── deleteOrder ───────────────────────────────────────────────────────────
+
+export const deleteOrder = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(`/api/orders/${id}`, {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const useDeleteOrder = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteOrder>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["deleteOrder"],
+    mutationFn: ({ id }: { id: number }) => deleteOrder(id, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
+
+// ─── caixa ──────────────────────────────────────────────────────────────────
+
+export type CaixaMovimento = {
+  id: number;
+  tipo: "entrada" | "saida";
+  valor: string;
+  motivo: string;
+  pecaId: number | null;
+  vendaId: number | null;
+  modelo: string | null;
+  createdAt: string;
+};
+
+export type CaixaResumo = {
+  movimentos: CaixaMovimento[];
+  totalEntradas: number;
+  totalSaidas: number;
+  saldo: number;
+};
+
+export type ListCaixaParams = {
+  periodo?: string;
+  inicio?: string;
+  fim?: string;
+};
+
+export const getListCaixaQueryKey = (params?: ListCaixaParams) => {
+  return [`/api/caixa`, ...(params ? [params] : [])] as const;
+};
+
+export const listCaixa = async (
+  params?: ListCaixaParams,
+  options?: RequestInit,
+): Promise<CaixaResumo> => {
+  const search = new URLSearchParams();
+  if (params?.periodo) search.set("periodo", params.periodo);
+  if (params?.inicio) search.set("inicio", params.inicio);
+  if (params?.fim) search.set("fim", params.fim);
+  const qs = search.toString();
+  return customFetch<CaixaResumo>(`/api/caixa${qs ? `?${qs}` : ""}`, {
+    ...options,
+    method: "GET",
+  });
+};
+
+export function useListCaixa<
+  TData = Awaited<ReturnType<typeof listCaixa>>,
+  TError = ErrorType<unknown>,
+>(params?: ListCaixaParams, options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listCaixa>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getListCaixaQueryKey(params);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listCaixa>>> = ({
+    signal,
+  }) => listCaixa(params, { signal, ...requestOptions });
+  const query = useQuery({
+    queryKey,
+    queryFn,
+    ...queryOptions,
+  }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey };
+}
+
+export type CreateCaixaBody = {
+  tipo: "entrada" | "saida";
+  valor: string;
+  motivo: string;
+  pecaId?: number | null;
+  formaPagamento?: string | null;
+};
+
+export const createCaixa = async (
+  data: CreateCaixaBody,
+  options?: RequestInit,
+): Promise<CaixaMovimento> => {
+  return customFetch<CaixaMovimento>(`/api/caixa`, {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+};
+
+export const useCreateCaixa = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createCaixa>>,
+    TError,
+    { data: CreateCaixaBody },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["createCaixa"],
+    mutationFn: ({ data }: { data: CreateCaixaBody }) =>
+      createCaixa(data, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};
+
+export const deleteCaixa = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(`/api/caixa/${id}`, {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const useDeleteCaixa = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteCaixa>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const mutationOptions = {
+    mutationKey: ["deleteCaixa"],
+    mutationFn: ({ id }: { id: number }) => deleteCaixa(id, options?.request),
+    ...options?.mutation,
+  };
+  return useMutation(mutationOptions);
+};

@@ -4,12 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
-import { EncomendasTab, FORNECEDORES } from "@/components/encomendas-tab";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -145,67 +144,9 @@ function InvestimentoToggle({ value, onChange }: { value: FormaInvest; onChange:
   );
 }
 
-// Destino do cadastro: vai direto pro estoque (já chegou) ou fica aguardando (encomenda).
-type Destino = "estoque" | "encomenda";
-
-// Payload de salvar peça — quando destino=encomenda carrega fornecedor + os dois preços.
-type PecaSavePayload = Omit<Peca, "id"> & {
-  formaInvestimento?: FormaInvest;
-  destino?: Destino;
-  fornecedor?: string;
-  valorCliente?: string;
-  valorLojista?: string;
-};
-
-// Escolha do fornecedor (lista fixa + OUTROS por texto livre).
-function FornecedorSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const fixos = FORNECEDORES.filter((f) => f !== "OUTROS");
-  const [escolha, setEscolha] = useState<string>(() =>
-    value === "" ? "" : fixos.includes(value) ? value : "OUTROS",
-  );
-  return (
-    <div className="space-y-2">
-      <Select
-        value={escolha}
-        onValueChange={(v) => { setEscolha(v); onChange(v === "OUTROS" ? "" : v); }}
-      >
-        <SelectTrigger className="h-9"><SelectValue placeholder="Escolha o fornecedor" /></SelectTrigger>
-        <SelectContent>
-          {FORNECEDORES.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
-        </SelectContent>
-      </Select>
-      {escolha === "OUTROS" && (
-        <Input placeholder="Nome do fornecedor" value={value} onChange={(e) => onChange(e.target.value)} className="h-9" />
-      )}
-    </div>
-  );
-}
-
-// Botão "Já chegou" (estoque) vs "Encomenda" (aguardando).
-function DestinoToggle({ value, onChange }: { value: Destino; onChange: (d: Destino) => void }) {
-  return (
-    <div className="grid grid-cols-2 gap-2">
-      {([["estoque", "✅ Já chegou"], ["encomenda", "🚚 Encomenda"]] as const).map(([d, label]) => (
-        <button
-          key={d}
-          type="button"
-          onClick={() => onChange(d)}
-          className={`h-10 rounded-lg border text-sm font-semibold transition ${
-            value === d
-              ? "bg-primary text-primary-foreground border-primary"
-              : "bg-white text-muted-foreground border-input hover:bg-muted"
-          }`}
-        >
-          {label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 interface PecaFormProps {
   initial?: Partial<Peca>;
-  onSave: (data: PecaSavePayload) => void;
+  onSave: (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => void;
   onCancel: () => void;
   loading: boolean;
   // Quando true, mostra o seletor dinheiro/pix e o custo vira saída no caixa.
@@ -220,9 +161,6 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
   const [custo, setCusto] = useState(initial?.valorCusto ?? "");
   const [precoSugerido, setPrecoSugerido] = useState<number | null>(null);
   const [formaInvest, setFormaInvest] = useState<FormaInvest>("dinheiro");
-  const [destino, setDestino] = useState<Destino>("estoque");
-  const [fornecedor, setFornecedor] = useState("");
-  const [valorLojista, setValorLojista] = useState("");
 
   const calcularSugestao = (custoStr: string) => {
     const c = parseFloat(custoStr.replace(",", "."));
@@ -241,16 +179,16 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
     if (!modelo.trim() || !qualidade || !valor.trim()) return;
     const qtd = parseInt(quantidade) || 0;
     if (qtd < 1) return;
-    if (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim())) return;
     onSave({
       modelo: modelo.trim(),
       qualidade,
       valor: valor.trim(),
       valorCusto: custo.trim(),
       quantidade: qtd,
-      ...(pedirInvestimento ? { formaInvestimento: formaInvest, destino, fornecedor: fornecedor.trim(), valorLojista: valorLojista.trim() } : {}),
+      ...(pedirInvestimento ? { formaInvestimento: formaInvest } : {}),
     });
   };
+
   const lower = modelo.toLowerCase();
   const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
   const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
@@ -296,30 +234,10 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
             <p className="text-xs text-muted-foreground">Custo {custo} → venda sugerida <strong>R$ {precoSugerido}</strong></p>
           )}
           {pedirInvestimento && (
-            <div className="pt-1 border-t border-dashed border-primary/20 space-y-3">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
-                <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Esse pedido chegou?</label>
-                <DestinoToggle value={destino} onChange={setDestino} />
-              </div>
-              {destino === "encomenda" ? (
-                <div className="space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                  <p className="text-[11px] text-amber-700 font-medium">A saída será lançada no caixa quando você confirmar a chegada.</p>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Fornecedor</label>
-                    <FornecedorSelect value={fornecedor} onChange={setFornecedor} />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Preço lojista (R$)</label>
-                    <Input placeholder="Ex: 85,00" value={valorLojista} onChange={(e) => setValorLojista(e.target.value)} className="h-9" />
-                  </div>
-                </div>
-              ) : (
-                <p className="text-[11px] text-muted-foreground">Vai lançar o custo como <b>saída</b> no caixa agora.</p>
-              )}
+            <div className="pt-1 border-t border-dashed border-primary/20">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
+              <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
+              <p className="text-[11px] text-muted-foreground mt-1">Vai lançar o custo como <b>saída</b> no caixa.</p>
             </div>
           )}
         </div>
@@ -330,7 +248,7 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
       </div>
       <div className="flex gap-2 justify-end">
         <Button size="sm" variant="ghost" onClick={onCancel} disabled={loading}><X className="w-4 h-4 mr-1" /> Cancelar</Button>
-        <Button size="sm" onClick={submit} disabled={loading || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1 || (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim()))}>
+        <Button size="sm" onClick={submit} disabled={loading || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1}>
           <Check className="w-4 h-4 mr-1" /> {loading ? "Salvando..." : "Salvar"}
         </Button>
       </div>
@@ -795,14 +713,14 @@ interface CatalogoModalProps {
   open: boolean;
   onClose: () => void;
   setor: "cliente" | "lojista";
-  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas";
+  initialTab?: "pecas" | "garantias" | "historico" | "receber";
   soloTab?: boolean;
 }
 
 export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas">(initialTab ?? "pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber">(initialTab ?? "pecas");
   useEffect(() => { if (open && initialTab) setAba(initialTab); }, [open, initialTab]);
   useEffect(() => {
     if (!open) {
@@ -1060,28 +978,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
 
-  const criarEncomendaMutation = useMutation({
-    mutationFn: (data: PecaSavePayload) =>
-      apiFetch("/api/encomendas", {
-        method: "POST",
-        body: JSON.stringify({
-          modelo: data.modelo,
-          qualidade: data.qualidade,
-          quantidade: data.quantidade,
-          valorLojista: data.valorLojista ? parseFloat(data.valorLojista.replace(",", ".")) : undefined,
-          fornecedor: data.fornecedor,
-          valorCliente: data.valor ? parseFloat(data.valor.replace(",", ".")) : undefined,
-        }),
-      }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["encomendas"] }); setShowAdd(false); },
-    onError: () => { toast({ title: "Erro ao criar encomenda", variant: "destructive" }); },
-  });
-
-  const handleAddSubmit = (data: PecaSavePayload) => {
-    if (data.destino === "encomenda") {
-      criarEncomendaMutation.mutate(data);
-      return;
-    }
+  const handleAddSubmit = (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => {
     if (setor === "cliente") {
       setPreviewData(data);
     } else {
@@ -1393,12 +1290,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "historico" ? "bg-white shadow text-green-700" : "text-muted-foreground hover:text-foreground"}`}
             >
               <ShoppingBag className="w-3.5 h-3.5" /> Histórico
-            </button>
-            <button
-              onClick={() => setAba("encomendas")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "encomendas" ? "bg-white shadow text-blue-600" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <Truck className="w-3.5 h-3.5" /> A Caminho
             </button>
           </div>
           )}
@@ -2076,11 +1967,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })}
             </div>
           </>
-        )}
-
-        {/* ── ABA A CAMINHO (ENCOMENDAS) ─────────────────────────────── */}
-        {aba === "encomendas" && (
-          <EncomendasTab open={open} />
         )}
 
         {/* ── Diálogo Devolução ao Fornecedor ─────────────────────────── */}

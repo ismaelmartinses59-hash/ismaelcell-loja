@@ -1,35 +1,20 @@
 /// <reference lib="webworker" />
+import { precacheAndRoute, cleanupOutdatedCaches } from "workbox-precaching";
 
 declare const self: ServiceWorkerGlobalScope & {
   __WB_MANIFEST: Array<{ url: string; revision: string | null }>;
 };
 
-// O injectManifest exige que esta referência exista no código, mas NÃO
-// fazemos mais precache do app. Era o precache (cache do app shell) que
-// servia versões antigas/quebradas mesmo depois de corrigir e publicar.
-// Agora o app sempre carrega direto da rede — sem tela branca por cache velho.
-// Guardamos a referência de forma "viva" para o injectManifest encontrar o
-// ponto de injeção (senão o bundler remove a linha por ser sem efeito).
-const __wbManifest = self.__WB_MANIFEST;
-console.debug("[sw] build manifest entries:", __wbManifest.length);
+cleanupOutdatedCaches();
+precacheAndRoute(self.__WB_MANIFEST || []);
 
 self.addEventListener("install", () => {
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      // Apaga qualquer cache antigo que possa estar quebrando o app.
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => caches.delete(k)));
-      await self.clients.claim();
-    })(),
-  );
+  event.waitUntil(self.clients.claim());
 });
-
-// Sem handler de "fetch": o navegador vai sempre à rede buscar o app,
-// então nunca mais fica preso numa versão quebrada em cache.
 
 interface PushPayload {
   title?: string;

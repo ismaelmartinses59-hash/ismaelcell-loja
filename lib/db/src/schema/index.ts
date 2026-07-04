@@ -7,4 +7,3 @@ export * from "./caixa";
 export * from "./caixa-sessoes";
 export * from "./push-subscriptions";
 export * from "./app-config";
-export * from "./encomendas";

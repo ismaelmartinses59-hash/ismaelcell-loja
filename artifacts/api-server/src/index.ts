@@ -153,32 +153,6 @@ async function ensureSchema(): Promise<void> {
         updated_at timestamp NOT NULL DEFAULT now()
       )
     `);
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS encomendas (
-        id serial PRIMARY KEY,
-        fornecedor text NOT NULL,
-        forma_investimento text NOT NULL DEFAULT 'dinheiro',
-        status text NOT NULL DEFAULT 'aguardando',
-        saida_caixa_id integer,
-        created_at timestamp NOT NULL DEFAULT now()
-      )
-    `);
-    await db.execute(sql`
-      CREATE TABLE IF NOT EXISTS encomenda_itens (
-        id serial PRIMARY KEY,
-        encomenda_id integer NOT NULL,
-        modelo text NOT NULL,
-        qualidade text NOT NULL,
-        quantidade integer NOT NULL,
-        qtd_recebida integer NOT NULL DEFAULT 0,
-        valor_custo text NOT NULL DEFAULT '',
-        valor_cliente text NOT NULL,
-        valor_lojista text NOT NULL,
-        status text NOT NULL DEFAULT 'aguardando',
-        reembolso_forma text,
-        created_at timestamp NOT NULL DEFAULT now()
-      )
-    `);
     logger.info("Schema check ok");
   } catch (err) {
     logger.error({ err }, "Schema check failed");
