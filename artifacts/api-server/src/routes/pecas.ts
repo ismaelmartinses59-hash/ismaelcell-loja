@@ -9,6 +9,27 @@ const router: IRouter = Router();
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
 
+/** Converte texto monetário pt-BR ("400,00", "1.234,56", "75") em número. */
+function parseValorBR(raw: unknown): number {
+  let s = String(raw ?? "").replace(/[^\d.,-]/g, "");
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+/** Número -> texto monetário pt-BR ("400,00"). */
+function valorParaTexto(n: number): string {
+  return n.toFixed(2).replace(".", ",");
+}
+/**
+ * Só "dinheiro"/"pix" disparam a saída de investimento no caixa; qualquer outra
+ * coisa (ou ausência) devolve null e NÃO lança nada. É assim que o cadastro de
+ * peça vira (ou não) uma saída: o frontend manda a forma escolhida pelo usuário.
+ */
+function formaInvestimentoSaida(raw: unknown): "dinheiro" | "pix" | null {
+  const f = normalizeForma(raw);
+  return f === "pix" ? "pix" : f === "dinheiro" ? "dinheiro" : null;
+}
+
 // Lê a foto/PDF da nota do fornecedor e devolve os itens (modelo, quantidade,
 // custo unitário e qualidade quando aparecer). NÃO grava nada — só interpreta.
 router.post("/pecas/importar-nota", async (req, res): Promise<void> => {
@@ -161,6 +182,22 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
         await upsertSetor("lojista", n.valorLojista, n);
         if (r === "somado") somados++; else criados++;
       }
+      // Investimento da nota vira UMA saída no caixa (soma do custo × qtd de
+      // todos os itens). Fica DENTRO da transação: ou grava tudo, ou nada.
+      const formaSaida = formaInvestimentoSaida(req.body?.formaInvestimento);
+      const totalCusto = normalizados.reduce(
+        (s, n) => s + parseValorBR(n.valorCusto) * n.quantidade,
+        0,
+      );
+      if (formaSaida && totalCusto > 0) {
+        await tx.insert(caixaTable).values({
+          tipo: "saida",
+          valor: valorParaTexto(totalCusto),
+          motivo: "Compra de peças (nota do fornecedor)",
+          formaPagamento: formaSaida,
+          taxaPercent: "0",
+        });
+      }
       return { criados, somados };
     });
     res.status(201).json({ cadastrados: resultado.criados + resultado.somados, criados: resultado.criados, somados: resultado.somados });
@@ -190,40 +227,58 @@ router.get("/pecas", async (req, res): Promise<void> => {
 });
 
 router.post("/pecas", async (req, res): Promise<void> => {
-  const { modelo, qualidade, valor, valorCusto, quantidade, setor } = req.body;
+  const { modelo, qualidade, valor, valorCusto, quantidade, setor, formaInvestimento } = req.body;
   if (!modelo || !qualidade || !valor) {
     res.status(400).json({ error: "modelo, qualidade e valor são obrigatórios" });
     return;
   }
   const setorFinal = setor === "cliente" ? "cliente" : "lojista";
-  const [peca] = await db
-    .insert(pecasTable)
-    .values({
-      modelo: String(modelo),
-      qualidade: String(qualidade),
-      valor: String(valor),
-      valorCusto: valorCusto != null ? String(valorCusto) : "",
-      quantidade: parseInt(quantidade) || 0,
-      setor: setorFinal,
-    })
-    .returning();
+  const qtd = parseInt(quantidade) || 0;
+  const peca = await db.transaction(async (tx) => {
+    const [p] = await tx
+      .insert(pecasTable)
+      .values({
+        modelo: String(modelo),
+        qualidade: String(qualidade),
+        valor: String(valor),
+        valorCusto: valorCusto != null ? String(valorCusto) : "",
+        quantidade: qtd,
+        setor: setorFinal,
+      })
+      .returning();
+    // Investimento vira saída no caixa (só quando o frontend manda a forma).
+    const forma = formaInvestimentoSaida(formaInvestimento);
+    const totalCusto = parseValorBR(valorCusto) * qtd;
+    if (forma && totalCusto > 0) {
+      await tx.insert(caixaTable).values({
+        tipo: "saida",
+        valor: valorParaTexto(totalCusto),
+        motivo: `Compra de estoque: ${String(modelo)}${qtd > 1 ? ` (${qtd}x)` : ""}`,
+        formaPagamento: forma,
+        taxaPercent: "0",
+        modelo: String(modelo),
+      });
+    }
+    return p;
+  });
   res.status(201).json(peca);
 });
 
 router.post("/pecas/twin", async (req, res): Promise<void> => {
-  const { modelo, qualidade, valorCliente, valorLojista, valorCusto, quantidade } = req.body;
+  const { modelo, qualidade, valorCliente, valorLojista, valorCusto, quantidade, formaInvestimento } = req.body;
   if (!modelo || !qualidade || !valorCliente || !valorLojista) {
     res.status(400).json({ error: "modelo, qualidade, valorCliente e valorLojista são obrigatórios" });
     return;
   }
   try {
+    const qtd = parseInt(quantidade) || 0;
     const [cliente, lojista] = await db.transaction(async (tx) => {
       const [c] = await tx.insert(pecasTable).values({
         modelo: String(modelo),
         qualidade: String(qualidade),
         valor: String(valorCliente),
         valorCusto: valorCusto != null ? String(valorCusto) : "",
-        quantidade: parseInt(quantidade) || 0,
+        quantidade: qtd,
         setor: "cliente",
       }).returning();
       const [l] = await tx.insert(pecasTable).values({
@@ -231,9 +286,23 @@ router.post("/pecas/twin", async (req, res): Promise<void> => {
         qualidade: String(qualidade),
         valor: String(valorLojista),
         valorCusto: valorCusto != null ? String(valorCusto) : "",
-        quantidade: parseInt(quantidade) || 0,
+        quantidade: qtd,
         setor: "lojista",
       }).returning();
+      // As gêmeas representam o MESMO estoque físico (qtd), então o custo do
+      // investimento é custo × qtd (uma vez só, não vezes dois).
+      const forma = formaInvestimentoSaida(formaInvestimento);
+      const totalCusto = parseValorBR(valorCusto) * qtd;
+      if (forma && totalCusto > 0) {
+        await tx.insert(caixaTable).values({
+          tipo: "saida",
+          valor: valorParaTexto(totalCusto),
+          motivo: `Compra de estoque: ${String(modelo)}${qtd > 1 ? ` (${qtd}x)` : ""}`,
+          formaPagamento: forma,
+          taxaPercent: "0",
+          modelo: String(modelo),
+        });
+      }
       return [c, l];
     });
     res.status(201).json({ cliente, lojista });

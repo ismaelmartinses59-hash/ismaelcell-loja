@@ -120,20 +120,47 @@ function nomeSimilar(a: string, b: string): boolean {
 
 // ─── Peca Form ────────────────────────────────────────────────────────────────
 
-interface PecaFormProps {
-  initial?: Partial<Peca>;
-  onSave: (data: Omit<Peca, "id">) => void;
-  onCancel: () => void;
-  loading: boolean;
+type FormaInvest = "dinheiro" | "pix";
+
+// Botão dinheiro/pix para dizer como o investimento (custo) foi pago.
+function InvestimentoToggle({ value, onChange }: { value: FormaInvest; onChange: (f: FormaInvest) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {(["dinheiro", "pix"] as const).map((f) => (
+        <button
+          key={f}
+          type="button"
+          onClick={() => onChange(f)}
+          className={`h-9 rounded-lg border text-sm font-semibold transition ${
+            value === f
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-white text-muted-foreground border-input hover:bg-muted"
+          }`}
+        >
+          {f === "dinheiro" ? "💵 Dinheiro" : "📱 PIX"}
+        </button>
+      ))}
+    </div>
+  );
 }
 
-function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
+interface PecaFormProps {
+  initial?: Partial<Peca>;
+  onSave: (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => void;
+  onCancel: () => void;
+  loading: boolean;
+  // Quando true, mostra o seletor dinheiro/pix e o custo vira saída no caixa.
+  pedirInvestimento?: boolean;
+}
+
+function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: PecaFormProps) {
   const [modelo, setModelo] = useState(initial?.modelo ?? "");
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
   const [valor, setValor] = useState(initial?.valor ?? "");
   const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 1));
   const [custo, setCusto] = useState(initial?.valorCusto ?? "");
   const [precoSugerido, setPrecoSugerido] = useState<number | null>(null);
+  const [formaInvest, setFormaInvest] = useState<FormaInvest>("dinheiro");
 
   const calcularSugestao = (custoStr: string) => {
     const c = parseFloat(custoStr.replace(",", "."));
@@ -152,7 +179,14 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
     if (!modelo.trim() || !qualidade || !valor.trim()) return;
     const qtd = parseInt(quantidade) || 0;
     if (qtd < 1) return;
-    onSave({ modelo: modelo.trim(), qualidade, valor: valor.trim(), valorCusto: custo.trim(), quantidade: qtd });
+    onSave({
+      modelo: modelo.trim(),
+      qualidade,
+      valor: valor.trim(),
+      valorCusto: custo.trim(),
+      quantidade: qtd,
+      ...(pedirInvestimento ? { formaInvestimento: formaInvest } : {}),
+    });
   };
 
   const lower = modelo.toLowerCase();
@@ -198,6 +232,13 @@ function PecaForm({ initial, onSave, onCancel, loading }: PecaFormProps) {
           </div>
           {precoSugerido !== null && (
             <p className="text-xs text-muted-foreground">Custo {custo} → venda sugerida <strong>R$ {precoSugerido}</strong></p>
+          )}
+          {pedirInvestimento && (
+            <div className="pt-1 border-t border-dashed border-primary/20">
+              <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
+              <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
+              <p className="text-[11px] text-muted-foreground mt-1">Vai lançar o custo como <b>saída</b> no caixa.</p>
+            </div>
           )}
         </div>
         <div className="col-span-2">
@@ -441,13 +482,15 @@ interface ImportarNotaDialogProps {
   itensIniciais: ImportRow[];
   pecasExistentes: { modelo: string; qualidade: string }[];
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
-  onConfirm: (rows: ImportRow[]) => void;
+  onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest) => void;
   onClose: () => void;
   loading: boolean;
 }
 
 function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExistentes, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
   const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
+  const [formaInvest, setFormaInvest] = useState<FormaInvest>("dinheiro");
+  const totalCusto = rows.reduce((s, r) => s + parsePtBR(r.valorCusto) * (parseInt(r.quantidade) || 0), 0);
 
   // Nomes de modelos já cadastrados (sem repetir) para o autocomplete.
   const modelosSugeridos = [...new Set(pecasExistentes.map((p) => p.modelo.trim()).filter(Boolean))].sort();
@@ -629,6 +672,16 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
         </div>
 
         <div className="border-t p-4 space-y-2 shrink-0 bg-white">
+          {totalCusto > 0 && (
+            <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 space-y-1.5">
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-red-700 font-medium">Investimento (vai pra saída)</span>
+                <span className="font-bold text-red-700">{totalCusto.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
+              </div>
+              <label className="text-[11px] font-medium text-muted-foreground block">Paguei em</label>
+              <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
+            </div>
+          )}
           {!todasValidas && rows.length > 0 && (
             <p className="text-xs text-amber-700 flex items-center gap-1.5">
               <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
@@ -641,7 +694,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             </Button>
             <Button
               className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => onConfirm(rows)}
+              onClick={() => onConfirm(rows, formaInvest)}
               disabled={!todasValidas || loading}
             >
               <Check className="w-4 h-4 mr-1" />
@@ -882,12 +935,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     }
   };
 
-  const confirmImport = async (rows: ImportRow[]) => {
+  const confirmImport = async (rows: ImportRow[], formaInvestimento: FormaInvest) => {
     setImportSaving(true);
     try {
       const resp = await apiFetch("/api/pecas/importar/confirmar", {
         method: "POST",
         body: JSON.stringify({
+          formaInvestimento,
           itens: rows.map((r) => ({
             modelo: r.modelo.trim(),
             qualidade: r.qualidade,
@@ -915,16 +969,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   };
 
   // ── Peça mutations ────────────────────────────────────────────────────────────
-  const [previewData, setPreviewData] = useState<Omit<Peca, "id"> | null>(null);
+  const [previewData, setPreviewData] = useState<(Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) | null>(null);
   const [savingTwin, setSavingTwin] = useState(false);
 
   const addMutation = useMutation({
-    mutationFn: (data: Omit<Peca, "id">) => apiFetch("/api/pecas", { method: "POST", body: JSON.stringify({ ...data, setor }) }),
+    mutationFn: (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => apiFetch("/api/pecas", { method: "POST", body: JSON.stringify({ ...data, setor }) }),
     onSuccess: () => { invalidatePecas(); setShowAdd(false); toast({ title: "Peça adicionada!" }); },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
 
-  const handleAddSubmit = (data: Omit<Peca, "id">) => {
+  const handleAddSubmit = (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => {
     if (setor === "cliente") {
       setPreviewData(data);
     } else {
@@ -945,6 +999,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           valorCusto: previewData.valorCusto,
           valorCliente: previewData.valor,
           valorLojista: precoLojista,
+          formaInvestimento: previewData.formaInvestimento,
         }),
       });
       invalidatePecas();
@@ -1300,6 +1355,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   onSave={handleAddSubmit}
                   onCancel={() => { setShowAdd(false); setPreviewData(null); }}
                   loading={addMutation.isPending || savingTwin}
+                  pedirInvestimento
                 />
               )}
               <PreviewLojistaDialog
