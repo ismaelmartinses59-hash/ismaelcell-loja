@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -296,12 +296,32 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
             <p className="text-xs text-muted-foreground">Custo {custo} → venda sugerida <strong>R$ {precoSugerido}</strong></p>
           )}
           {pedirInvestimento && (
-            <div className="pt-1 border-t border-dashed border-primary/20">
-              <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
-              <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
-              <p className="text-[11px] text-muted-foreground mt-1">Vai lançar o custo como <b>saída</b> no caixa.</p>
-            </div>
-          )}
+              <div className="pt-1 border-t border-dashed border-primary/20 space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
+                  <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Esse pedido chegou?</label>
+                  <DestinoToggle value={destino} onChange={setDestino} />
+                </div>
+                {destino === "encomenda" ? (
+                  <div className="space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                    <p className="text-[11px] text-amber-700 font-medium">A saída será lançada no caixa na data de hoje quando você confirmar a chegada.</p>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Fornecedor</label>
+                      <FornecedorSelect value={fornecedor} onChange={setFornecedor} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Preço lojista (R$)</label>
+                      <Input placeholder="Ex: 85,00" value={valorLojista} onChange={(e) => setValorLojista(e.target.value)} className="h-9" />
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">Vai lançar o custo como <b>saída</b> no caixa agora.</p>
+                )}
+              </div>
+            )}
         </div>
         <div className="col-span-2">
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Valor de Venda (R$)</label>
@@ -310,7 +330,7 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
       </div>
       <div className="flex gap-2 justify-end">
         <Button size="sm" variant="ghost" onClick={onCancel} disabled={loading}><X className="w-4 h-4 mr-1" /> Cancelar</Button>
-        <Button size="sm" onClick={submit} disabled={loading || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1}>
+        <Button size="sm" onClick={submit} disabled={loading || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1 || (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim()))}>
           <Check className="w-4 h-4 mr-1" /> {loading ? "Salvando..." : "Salvar"}
         </Button>
       </div>
@@ -544,7 +564,7 @@ interface ImportarNotaDialogProps {
   itensIniciais: ImportRow[];
   pecasExistentes: { modelo: string; qualidade: string }[];
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
-  onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest) => void;
+  onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
   onClose: () => void;
   loading: boolean;
 }
@@ -745,24 +765,37 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             </div>
           )}
           {!todasValidas && rows.length > 0 && (
-            <p className="text-xs text-amber-700 flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              {faltando} {faltando === 1 ? "peça precisa" : "peças precisam"} de qualidade e os dois preços.
-            </p>
-          )}
-          <div className="flex gap-2">
-            <Button variant="ghost" className="flex-1" onClick={onClose} disabled={loading}>
-              <X className="w-4 h-4 mr-1" /> Cancelar
-            </Button>
-            <Button
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => onConfirm(rows, formaInvest)}
-              disabled={!todasValidas || loading}
-            >
-              <Check className="w-4 h-4 mr-1" />
-              {loading ? "Cadastrando..." : `Cadastrar ${rows.length} ${rows.length === 1 ? "peça" : "peças"}`}
-            </Button>
-          </div>
+              <p className="text-xs text-amber-700 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                {faltando} {faltando === 1 ? "peça precisa" : "peças precisam"} de qualidade e os dois preços.
+              </p>
+            )}
+            <div className="space-y-2">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Esse pedido chegou?</label>
+                <DestinoToggle value={destino} onChange={setDestino} />
+              </div>
+              {destino === "encomenda" && (
+                <div className="space-y-1.5 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                  <p className="text-[11px] text-amber-700 font-medium">As peças vão ficar aguardando. A saída cai no caixa quando você confirmar a chegada.</p>
+                  <label className="text-xs font-medium text-muted-foreground block">Fornecedor</label>
+                  <FornecedorSelect value={fornecedor} onChange={setFornecedor} />
+                </div>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" className="flex-1" onClick={onClose} disabled={loading}>
+                <X className="w-4 h-4 mr-1" /> Cancelar
+              </Button>
+              <Button
+                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                onClick={() => onConfirm(rows, formaInvest, destino, fornecedor)}
+                disabled={!todasValidas || loading || (destino === "encomenda" && !fornecedor.trim())}
+              >
+                <Check className="w-4 h-4 mr-1" />
+                {loading ? "Salvando..." : destino === "encomenda" ? `Encomenda ${rows.length} ${rows.length === 1 ? "peça" : "peças"}` : `Cadastrar ${rows.length} ${rows.length === 1 ? "peça" : "peças"}`}
+              </Button>
+            </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -775,14 +808,14 @@ interface CatalogoModalProps {
   open: boolean;
   onClose: () => void;
   setor: "cliente" | "lojista";
-  initialTab?: "pecas" | "garantias" | "historico" | "receber";
+  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas";
   soloTab?: boolean;
 }
 
 export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber">(initialTab ?? "pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas">(initialTab ?? "pecas");
   useEffect(() => { if (open && initialTab) setAba(initialTab); }, [open, initialTab]);
   useEffect(() => {
     if (!open) {
@@ -1039,6 +1072,30 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onSuccess: () => { invalidatePecas(); setShowAdd(false); toast({ title: "Peça adicionada!" }); },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
+  const criarEncomendaMutation = useMutation({
+      mutationFn: (data: PecaSavePayload) =>
+        apiFetch("/api/encomendas", {
+          method: "POST",
+          body: JSON.stringify({
+            fornecedor: data.fornecedor ?? "",
+            formaInvestimento: data.formaInvestimento ?? "dinheiro",
+            itens: [{
+              modelo: data.modelo,
+              qualidade: data.qualidade,
+              quantidade: data.quantidade,
+              valorCusto: data.valorCusto ?? "",
+              valorCliente: data.valor,
+              valorLojista: data.valorLojista ?? data.valor,
+            }],
+          }),
+        }),
+      onSuccess: () => {
+        qc.invalidateQueries({ queryKey: ["encomendas"] });
+        setShowAdd(false);
+        toast({ title: "Encomenda registrada!", description: "A peça ficará aguardando confirmação de chegada." });
+      },
+      onError: () => toast({ title: "Erro ao registrar encomenda", variant: "destructive" }),
+    });
 
   const handleAddSubmit = (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => {
     if (setor === "cliente") {
@@ -1353,6 +1410,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             >
               <ShoppingBag className="w-3.5 h-3.5" /> Histórico
             </button>
+            <button
+                onClick={() => setAba("encomendas")}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "encomendas" ? "bg-white shadow text-amber-700" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <Truck className="w-3.5 h-3.5" /> A Caminho
+              </button>
           </div>
           )}
         </DialogHeader>
@@ -1532,7 +1595,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           </>
         )}
 
-        {/* ── ABA GARANTIAS ──────────────────────────────────────────────────── */}
+        {/* ── ABA ENCOMENDAS ──────────────────────────────────────────────── */}
+          {aba === "encomendas" && <EncomendasTab open={open} />}
+
+          {/* ── ABA GARANTIAS ──────────────────────────────────────────────────── */}
         {aba === "garantias" && (
           <>
             <div className="px-4 pt-3 pb-2 shrink-0 space-y-2">
