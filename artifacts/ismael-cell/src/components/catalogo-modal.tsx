@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
 import { EncomendasTab, FORNECEDORES } from "@/components/encomendas-tab";
+import { EncomendasTab } from "@/components/encomendas-tab";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -238,20 +239,19 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
   };
 
   const submit = () => {
-      if (!modelo.trim() || !qualidade || !valor.trim()) return;
-      const qtd = parseInt(quantidade) || 0;
-      if (qtd < 1) return;
-      if (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim())) return;
-      onSave({
-        modelo: modelo.trim(),
-        qualidade,
-        valor: valor.trim(),
-        valorCusto: custo.trim(),
-        quantidade: qtd,
-        ...(pedirInvestimento ? { formaInvestimento: formaInvest, destino, fornecedor: fornecedor.trim(), valorLojista: valorLojista.trim() } : {}),
-      });
-    };
-
+    if (!modelo.trim() || !qualidade || !valor.trim()) return;
+    const qtd = parseInt(quantidade) || 0;
+    if (qtd < 1) return;
+    if (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim())) return;
+    onSave({
+      modelo: modelo.trim(),
+      qualidade,
+      valor: valor.trim(),
+      valorCusto: custo.trim(),
+      quantidade: qtd,
+      ...(pedirInvestimento ? { formaInvestimento: formaInvest, destino, fornecedor: fornecedor.trim(), valorLojista: valorLojista.trim() } : {}),
+    });
+  };
   const lower = modelo.toLowerCase();
   const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
   const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
@@ -297,32 +297,33 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
             <p className="text-xs text-muted-foreground">Custo {custo} → venda sugerida <strong>R$ {precoSugerido}</strong></p>
           )}
           {pedirInvestimento && (
-              <div className="pt-1 border-t border-dashed border-primary/20 space-y-3">
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
-                  <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Esse pedido chegou?</label>
-                  <DestinoToggle value={destino} onChange={setDestino} />
-                </div>
-                {destino === "encomenda" ? (
-                  <div className="space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                    <p className="text-[11px] text-amber-700 font-medium">A saída será lançada no caixa na data de hoje quando você confirmar a chegada.</p>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Fornecedor</label>
-                      <FornecedorSelect value={fornecedor} onChange={setFornecedor} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground mb-1 block">Preço lojista (R$)</label>
-                      <Input placeholder="Ex: 85,00" value={valorLojista} onChange={(e) => setValorLojista(e.target.value)} className="h-9" />
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-muted-foreground">Vai lançar o custo como <b>saída</b> no caixa agora.</p>
-                )}
+          {pedirInvestimento && (
+            <div className="pt-1 border-t border-dashed border-primary/20 space-y-3">
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
+                <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
               </div>
-            )}
+              <div>
+                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Esse pedido chegou?</label>
+                <DestinoToggle value={destino} onChange={setDestino} />
+              </div>
+              {destino === "encomenda" ? (
+                <div className="space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                  <p className="text-[11px] text-amber-700 font-medium">A saída será lançada no caixa quando você confirmar a chegada.</p>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Fornecedor</label>
+                    <FornecedorSelect value={fornecedor} onChange={setFornecedor} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground mb-1 block">Preço lojista (R$)</label>
+                    <Input placeholder="Ex: 85,00" value={valorLojista} onChange={(e) => setValorLojista(e.target.value)} className="h-9" />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground">Vai lançar o custo como <b>saída</b> no caixa agora.</p>
+              )}
+            </div>
+          )}
         </div>
         <div className="col-span-2">
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Valor de Venda (R$)</label>
@@ -565,7 +566,7 @@ interface ImportarNotaDialogProps {
   itensIniciais: ImportRow[];
   pecasExistentes: { modelo: string; qualidade: string }[];
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
-  onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
+  onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest) => void;
   onClose: () => void;
   loading: boolean;
 }
@@ -766,37 +767,24 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             </div>
           )}
           {!todasValidas && rows.length > 0 && (
-              <p className="text-xs text-amber-700 flex items-center gap-1.5">
-                <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-                {faltando} {faltando === 1 ? "peça precisa" : "peças precisam"} de qualidade e os dois preços.
-              </p>
-            )}
-            <div className="space-y-2">
-              <div>
-                <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Esse pedido chegou?</label>
-                <DestinoToggle value={destino} onChange={setDestino} />
-              </div>
-              {destino === "encomenda" && (
-                <div className="space-y-1.5 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
-                  <p className="text-[11px] text-amber-700 font-medium">As peças vão ficar aguardando. A saída cai no caixa quando você confirmar a chegada.</p>
-                  <label className="text-xs font-medium text-muted-foreground block">Fornecedor</label>
-                  <FornecedorSelect value={fornecedor} onChange={setFornecedor} />
-                </div>
-              )}
-            </div>
-            <div className="flex gap-2">
-              <Button variant="ghost" className="flex-1" onClick={onClose} disabled={loading}>
-                <X className="w-4 h-4 mr-1" /> Cancelar
-              </Button>
-              <Button
-                className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-                onClick={() => onConfirm(rows, formaInvest, destino, fornecedor)}
-                disabled={!todasValidas || loading || (destino === "encomenda" && !fornecedor.trim())}
-              >
-                <Check className="w-4 h-4 mr-1" />
-                {loading ? "Salvando..." : destino === "encomenda" ? `Encomenda ${rows.length} ${rows.length === 1 ? "peça" : "peças"}` : `Cadastrar ${rows.length} ${rows.length === 1 ? "peça" : "peças"}`}
-              </Button>
-            </div>
+            <p className="text-xs text-amber-700 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              {faltando} {faltando === 1 ? "peça precisa" : "peças precisam"} de qualidade e os dois preços.
+            </p>
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" className="flex-1" onClick={onClose} disabled={loading}>
+              <X className="w-4 h-4 mr-1" /> Cancelar
+            </Button>
+            <Button
+              className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+              onClick={() => onConfirm(rows, formaInvest)}
+              disabled={!todasValidas || loading}
+            >
+              <Check className="w-4 h-4 mr-1" />
+              {loading ? "Cadastrando..." : `Cadastrar ${rows.length} ${rows.length === 1 ? "peça" : "peças"}`}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
@@ -1073,42 +1061,35 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onSuccess: () => { invalidatePecas(); setShowAdd(false); toast({ title: "Peça adicionada!" }); },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
+
   const criarEncomendaMutation = useMutation({
-      mutationFn: (data: PecaSavePayload) =>
-        apiFetch("/api/encomendas", {
-          method: "POST",
-          body: JSON.stringify({
-            fornecedor: data.fornecedor ?? "",
-            formaInvestimento: data.formaInvestimento ?? "dinheiro",
-            itens: [{
-              modelo: data.modelo,
-              qualidade: data.qualidade,
-              quantidade: data.quantidade,
-              valorCusto: data.valorCusto ?? "",
-              valorCliente: data.valor,
-              valorLojista: data.valorLojista ?? data.valor,
-            }],
-          }),
+    mutationFn: (data: PecaSavePayload) =>
+      apiFetch("/api/encomendas", {
+        method: "POST",
+        body: JSON.stringify({
+          modelo: data.modelo,
+          qualidade: data.qualidade,
+          quantidade: data.quantidade,
+          valorLojista: data.valorLojista ? parseFloat(data.valorLojista.replace(",", ".")) : undefined,
+          fornecedor: data.fornecedor,
+          valorCliente: data.valor ? parseFloat(data.valor.replace(",", ".")) : undefined,
         }),
-      onSuccess: () => {
-        qc.invalidateQueries({ queryKey: ["encomendas"] });
-        setShowAdd(false);
-        toast({ title: "Encomenda registrada!", description: "A peça ficará aguardando confirmação de chegada." });
-      },
-      onError: () => toast({ title: "Erro ao registrar encomenda", variant: "destructive" }),
-    });
+      }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["encomendas"] }); setShowAdd(false); },
+    onError: () => { toast({ title: "Erro ao criar encomenda", variant: "destructive" }); },
+  });
 
   const handleAddSubmit = (data: PecaSavePayload) => {
-      if (data.destino === "encomenda") {
-        criarEncomendaMutation.mutate(data);
-        return;
-      }
-      if (setor === "cliente") {
-        setPreviewData(data);
-      } else {
-        addMutation.mutate(data);
-      }
-    };
+    if (data.destino === "encomenda") {
+      criarEncomendaMutation.mutate(data);
+      return;
+    }
+    if (setor === "cliente") {
+      setPreviewData(data);
+    } else {
+      addMutation.mutate(data);
+    }
+  };
 
   const confirmTwin = async (precoLojista: string) => {
     if (!previewData) return;
@@ -1416,11 +1397,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               <ShoppingBag className="w-3.5 h-3.5" /> Histórico
             </button>
             <button
-                onClick={() => setAba("encomendas")}
-                className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "encomendas" ? "bg-white shadow text-amber-700" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                <Truck className="w-3.5 h-3.5" /> A Caminho
-              </button>
+              onClick={() => setAba("encomendas")}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "encomendas" ? "bg-white shadow text-blue-600" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Truck className="w-3.5 h-3.5" /> A Caminho
+            </button>
           </div>
           )}
         </DialogHeader>
@@ -1600,10 +1581,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           </>
         )}
 
-        {/* ── ABA ENCOMENDAS ──────────────────────────────────────────────── */}
-          {aba === "encomendas" && <EncomendasTab open={open} />}
-
-          {/* ── ABA GARANTIAS ──────────────────────────────────────────────────── */}
+        {/* ── ABA GARANTIAS ──────────────────────────────────────────────────── */}
         {aba === "garantias" && (
           <>
             <div className="px-4 pt-3 pb-2 shrink-0 space-y-2">
@@ -2100,6 +2078,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })}
             </div>
           </>
+        )}
+
+        {/* ── ABA A CAMINHO (ENCOMENDAS) ─────────────────────────────── */}
+        {aba === "encomendas" && (
+          <EncomendasTab open={open} />
         )}
 
         {/* ── Diálogo Devolução ao Fornecedor ─────────────────────────── */}
