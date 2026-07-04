@@ -9,6 +9,7 @@ import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liqu
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
+import { EncomendasTab, FORNECEDORES } from "@/components/encomendas-tab";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -144,9 +145,67 @@ function InvestimentoToggle({ value, onChange }: { value: FormaInvest; onChange:
   );
 }
 
+// Destino do cadastro: vai direto pro estoque (já chegou) ou fica aguardando (encomenda).
+type Destino = "estoque" | "encomenda";
+
+// Payload de salvar peça — quando destino=encomenda carrega fornecedor + os dois preços.
+type PecaSavePayload = Omit<Peca, "id"> & {
+  formaInvestimento?: FormaInvest;
+  destino?: Destino;
+  fornecedor?: string;
+  valorCliente?: string;
+  valorLojista?: string;
+};
+
+// Escolha do fornecedor (lista fixa + OUTROS por texto livre).
+function FornecedorSelect({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const fixos = FORNECEDORES.filter((f) => f !== "OUTROS");
+  const [escolha, setEscolha] = useState<string>(() =>
+    value === "" ? "" : fixos.includes(value) ? value : "OUTROS",
+  );
+  return (
+    <div className="space-y-2">
+      <Select
+        value={escolha}
+        onValueChange={(v) => { setEscolha(v); onChange(v === "OUTROS" ? "" : v); }}
+      >
+        <SelectTrigger className="h-9"><SelectValue placeholder="Escolha o fornecedor" /></SelectTrigger>
+        <SelectContent>
+          {FORNECEDORES.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      {escolha === "OUTROS" && (
+        <Input placeholder="Nome do fornecedor" value={value} onChange={(e) => onChange(e.target.value)} className="h-9" />
+      )}
+    </div>
+  );
+}
+
+// Botão "Já chegou" (estoque) vs "Encomenda" (aguardando).
+function DestinoToggle({ value, onChange }: { value: Destino; onChange: (d: Destino) => void }) {
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {([["estoque", "✅ Já chegou"], ["encomenda", "🚚 Encomenda"]] as const).map(([d, label]) => (
+        <button
+          key={d}
+          type="button"
+          onClick={() => onChange(d)}
+          className={`h-10 rounded-lg border text-sm font-semibold transition ${
+            value === d
+              ? "bg-primary text-primary-foreground border-primary"
+              : "bg-white text-muted-foreground border-input hover:bg-muted"
+          }`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 interface PecaFormProps {
   initial?: Partial<Peca>;
-  onSave: (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => void;
+  onSave: (data: PecaSavePayload) => void;
   onCancel: () => void;
   loading: boolean;
   // Quando true, mostra o seletor dinheiro/pix e o custo vira saída no caixa.
@@ -161,6 +220,9 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
   const [custo, setCusto] = useState(initial?.valorCusto ?? "");
   const [precoSugerido, setPrecoSugerido] = useState<number | null>(null);
   const [formaInvest, setFormaInvest] = useState<FormaInvest>("dinheiro");
+  const [destino, setDestino] = useState<Destino>("estoque");
+  const [fornecedor, setFornecedor] = useState("");
+  const [valorLojista, setValorLojista] = useState("");
 
   const calcularSugestao = (custoStr: string) => {
     const c = parseFloat(custoStr.replace(",", "."));
