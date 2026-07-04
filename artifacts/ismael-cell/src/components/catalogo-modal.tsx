@@ -297,7 +297,6 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
             <p className="text-xs text-muted-foreground">Custo {custo} → venda sugerida <strong>R$ {precoSugerido}</strong></p>
           )}
           {pedirInvestimento && (
-          {pedirInvestimento && (
             <div className="pt-1 border-t border-dashed border-primary/20 space-y-3">
               <div>
                 <label className="text-xs font-medium text-muted-foreground mb-1 block">Paguei esse custo em</label>
