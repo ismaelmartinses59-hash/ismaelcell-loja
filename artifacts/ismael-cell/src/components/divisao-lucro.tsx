@@ -20,6 +20,14 @@ function fmt(v: number): string {
   });
 }
 
+/** Converte um valor digitado em pt-BR ("1.234,56" ou "400") para número. */
+function parseNum(raw: string): number {
+  let s = String(raw).replace(/[^\d.,-]/g, "");
+  if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
+  const n = parseFloat(s);
+  return isNaN(n) ? 0 : n;
+}
+
 interface Divisao {
   dia: string;
   receita: number;
@@ -165,13 +173,17 @@ interface ConfigFin {
   custoAgua: string;
 }
 
-const CAMPOS: { campo: keyof ConfigFin; label: string; dica?: string }[] = [
+/** Resposta do GET /financeiro/config: os valores editáveis + quantos dias o
+ *  caixa já foi aberto no mês (usado pra mostrar o acumulado de cada conta). */
+type ConfigFinResp = ConfigFin & { diasTrabalhadosMes: number };
+
+const CAMPOS: { campo: keyof ConfigFin; label: string; conta?: boolean }[] = [
   { campo: "percentualSalario", label: "Seu salário (%)" },
   { campo: "diasTrabalhados", label: "Dias trabalhados no mês" },
-  { campo: "custoAluguel", label: "Aluguel (valor do mês)" },
-  { campo: "custoEnergia", label: "Energia (valor do mês)" },
-  { campo: "custoInternet", label: "Internet (valor do mês)" },
-  { campo: "custoAgua", label: "Água (valor do mês)" },
+  { campo: "custoAluguel", label: "Aluguel (valor do mês)", conta: true },
+  { campo: "custoEnergia", label: "Energia (valor do mês)", conta: true },
+  { campo: "custoInternet", label: "Internet (valor do mês)", conta: true },
+  { campo: "custoAgua", label: "Água (valor do mês)", conta: true },
 ];
 
 /** Editor retrátil dos valores (salário %, dias, contas fixas). */
@@ -186,7 +198,7 @@ export function ConfigFinanceiro({
   const [form, setForm] = useState<ConfigFin | null>(null);
   const [salvando, setSalvando] = useState(false);
 
-  const { data } = useQuery<ConfigFin>({
+  const { data } = useQuery<ConfigFinResp>({
     queryKey: ["financeiro-config"],
     enabled: aberto,
     queryFn: async () => {
@@ -195,6 +207,20 @@ export function ConfigFinanceiro({
       return r.json();
     },
   });
+
+  const diasMes = data?.diasTrabalhadosMes ?? 0;
+  const divisorDias = Math.max(1, parseNum(form?.diasTrabalhados ?? "0"));
+  /** Quanto já foi guardado no mês pra uma conta = (valor/mês ÷ dias) × dias já trabalhados, sem passar do valor cheio. */
+  function acumuladoConta(valorRaw: string): {
+    valorMes: number;
+    porDia: number;
+    acum: number;
+  } {
+    const valorMes = parseNum(valorRaw);
+    const porDia = valorMes / divisorDias;
+    const acum = Math.min(valorMes, porDia * diasMes);
+    return { valorMes, porDia, acum };
+  }
 
   useEffect(() => {
     if (data && !form) setForm(data);
@@ -244,23 +270,37 @@ export function ConfigFinanceiro({
             <p className="text-center text-xs text-slate-400">Carregando...</p>
           ) : (
             <>
-              {CAMPOS.map(({ campo, label }) => (
-                <div key={campo} className="space-y-0.5">
-                  <label className="text-[11px] font-medium text-slate-600">
-                    {label}
-                  </label>
-                  <Input
-                    inputMode="decimal"
-                    value={form[campo]}
-                    onChange={(e) =>
-                      setForm((f) =>
-                        f ? { ...f, [campo]: e.target.value } : f,
-                      )
-                    }
-                    className="h-9 text-sm"
-                  />
-                </div>
-              ))}
+              {CAMPOS.map(({ campo, label, conta }) => {
+                const info = conta ? acumuladoConta(form[campo]) : null;
+                return (
+                  <div key={campo} className="space-y-0.5">
+                    <label className="text-[11px] font-medium text-slate-600">
+                      {label}
+                    </label>
+                    <Input
+                      inputMode="decimal"
+                      value={form[campo]}
+                      onChange={(e) =>
+                        setForm((f) =>
+                          f ? { ...f, [campo]: e.target.value } : f,
+                        )
+                      }
+                      className="h-9 text-sm"
+                    />
+                    {info && info.valorMes > 0 && (
+                      <p className="text-[10px] leading-tight text-emerald-700">
+                        Já guardado no mês: <b>{fmt(info.acum)}</b> de{" "}
+                        {fmt(info.valorMes)}
+                        <span className="text-slate-400">
+                          {" "}
+                          · {fmt(info.porDia)}/dia × {diasMes}{" "}
+                          {diasMes === 1 ? "dia" : "dias"}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
               <Button
                 onClick={salvar}
                 disabled={salvando}
