@@ -42,11 +42,12 @@ function getExpiry(order: { dataServico?: string | null; createdAt: string; gara
 interface GarantiaModalProps {
   open: boolean;
   onClose: () => void;
+  initialCodigo?: string;
 }
 
 type Tab = "registrar" | "consultar";
 
-export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
+export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const editOrder = useEditOrder();
@@ -107,6 +108,14 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
       const [y, m, d] = dataRegistrar.split("-").map(Number);
       return addDays(new Date(y, m - 1, d), dias);
     }, [garantiaSelecionada, dataRegistrar]);
+
+    useEffect(() => {
+      if (open && initialCodigo) {
+        setTab("registrar");
+        setBusca(initialCodigo);
+        setBuscaAtiva(initialCodigo);
+      }
+    }, [open, initialCodigo]);
 
     const ordersComGarantia = useMemo(() => {
     return todasOrders
