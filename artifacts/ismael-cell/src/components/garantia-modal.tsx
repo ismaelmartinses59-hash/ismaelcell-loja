@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useListOrders, useEditOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey, OrderLinha } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -57,6 +57,8 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
   const [busca, setBusca] = useState("");
   const [buscaAtiva, setBuscaAtiva] = useState("");
   const [garantiaSelecionada, setGarantiaSelecionada] = useState("");
+    const [nomeRegistrar, setNomeRegistrar] = useState("");
+    const [dataRegistrar, setDataRegistrar] = useState("");
 
   // Aba Consultar
   const [consultaBusca, setConsultaBusca] = useState("");
@@ -83,7 +85,30 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
       }) ?? (ordersRegistrar.length === 1 ? ordersRegistrar[0] : null)
     : null;
 
-  const ordersComGarantia = useMemo(() => {
+  useEffect(() => {
+      if (orderRegistrar) {
+        setNomeRegistrar(orderRegistrar.nomeCliente ?? "");
+        setDataRegistrar(
+          orderRegistrar.dataServico ?? format(new Date(orderRegistrar.createdAt), "yyyy-MM-dd"),
+        );
+        setGarantiaSelecionada(
+          orderRegistrar.garantia &&
+            orderRegistrar.garantia !== "Sem garantia" &&
+            orderRegistrar.garantia !== "0 dias"
+            ? orderRegistrar.garantia
+            : "",
+        );
+      }
+    }, [orderRegistrar?.id]);
+
+    const validadeRegistrar = useMemo(() => {
+      const dias = parseGarantiaDias(garantiaSelecionada);
+      if (!dias || !dataRegistrar) return null;
+      const [y, m, d] = dataRegistrar.split("-").map(Number);
+      return addDays(new Date(y, m - 1, d), dias);
+    }, [garantiaSelecionada, dataRegistrar]);
+
+    const ordersComGarantia = useMemo(() => {
     return todasOrders
       .filter(o => o.garantia && o.garantia !== "Sem garantia" && o.garantia !== "0 dias")
       .filter(o => !consultaBusca
@@ -107,7 +132,7 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
   }).length;
 
   // ── Helpers ──────────────────────────────────────────
-  const saveGarantia = (order: Order, novaGarantia: string, onSuccess?: () => void) => {
+  const saveGarantia = (order: Order, novaGarantia: string, onSuccess?: () => void, overrides?: { nomeCliente?: string; dataServico?: string }) => {
     editOrder.mutate(
       {
         id: order.id,
@@ -117,10 +142,10 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
           servico: order.servico,
           valor: order.valor,
           tempo: order.tempo,
-          nomeCliente: order.nomeCliente ?? undefined,
+          nomeCliente: overrides?.nomeCliente ?? order.nomeCliente ?? undefined,
           senhaDispo: order.senhaDispo ?? undefined,
           garantia: novaGarantia,
-          dataServico: order.dataServico ?? undefined,
+          dataServico: overrides?.dataServico ?? order.dataServico ?? undefined,
         }
       },
       {
@@ -158,13 +183,16 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
   };
 
   const handleSalvarRegistrar = () => {
-    if (!orderRegistrar || !garantiaSelecionada) return;
-    saveGarantia(orderRegistrar, garantiaSelecionada, () => {
-      toast({ title: "Garantia registrada!", description: `${orderRegistrar.codigo} — ${garantiaSelecionada}` });
-      // Mantém a OS na tela pra enviar/imprimir a garantia logo em seguida.
-      setGarantiaSelecionada("");
-    });
-  };
+      if (!orderRegistrar || !garantiaSelecionada) return;
+      saveGarantia(
+        orderRegistrar,
+        garantiaSelecionada,
+        () => {
+          toast({ title: "Garantia registrada!", description: `${orderRegistrar.codigo} - ${garantiaSelecionada}` });
+        },
+        { nomeCliente: nomeRegistrar.trim() || undefined, dataServico: dataRegistrar || undefined },
+      );
+    };
 
   // ── Consultar / Edit handlers ────────────────────────
   const handleStartEdit = (order: Order) => {
@@ -208,7 +236,9 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
     setEditingId(null);
     setEditValue("");
     setConfirmDeleteOrder(null);
-    setTab("registrar");
+    setNomeRegistrar("");
+      setDataRegistrar("");
+      setTab("registrar");
     onClose();
   };
 
@@ -272,46 +302,70 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
               )}
 
               {orderRegistrar && (
-                <div className="rounded-xl border bg-muted/40 p-4 space-y-3">
-                  <div className="space-y-1.5">
+                  <div className="rounded-xl border bg-muted/40 p-4 space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="font-mono text-xs text-muted-foreground bg-muted px-2 py-0.5 rounded">#{orderRegistrar.codigo}</span>
-                      {orderRegistrar.garantia && orderRegistrar.garantia !== "Sem garantia" && (
-                        <span className="text-xs bg-yellow-100 text-yellow-700 border border-yellow-200 px-2 py-0.5 rounded-full font-medium">
-                          Atual: {orderRegistrar.garantia}
-                        </span>
-                      )}
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ordem de Serviço</span>
+                      <span className="font-mono text-xs text-foreground bg-muted px-2 py-0.5 rounded">#{orderRegistrar.codigo}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <Smartphone className="w-4 h-4 text-muted-foreground shrink-0" />
-                      <span className="font-semibold">{orderRegistrar.modelo}</span>
-                      <span className="text-muted-foreground text-xs capitalize">({orderRegistrar.linha})</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Wrench className="w-3.5 h-3.5 shrink-0" />
-                      <span>{orderRegistrar.servico}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <Calendar className="w-3.5 h-3.5 shrink-0" />
-                      {orderRegistrar.dataServico
-                        ? (() => { const [y,m,d] = orderRegistrar.dataServico!.split("-"); return `${d}/${m}/${y}`; })()
-                        : format(new Date(orderRegistrar.createdAt), "dd/MM/yyyy", { locale: ptBR })
-                      }
-                    </div>
-                  </div>
 
-                  <div className="space-y-2 pt-2 border-t">
-                    <p className="text-xs font-semibold uppercase tracking-wider">Período de Garantia</p>
-                    <Select value={garantiaSelecionada} onValueChange={setGarantiaSelecionada}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione o período..." />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {GARANTIA_OPTIONS.map((g) => (
-                          <SelectItem key={g} value={g}>{g}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Nome</label>
+                      <Input
+                        placeholder="Nome do cliente"
+                        value={nomeRegistrar}
+                        onChange={(e) => setNomeRegistrar(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Aparelho</label>
+                      <div className="flex items-center gap-2 text-sm rounded-md border bg-muted/60 px-3 py-2">
+                        <Smartphone className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <span className="font-medium">{orderRegistrar.modelo}</span>
+                        <span className="text-muted-foreground text-xs capitalize">({orderRegistrar.linha})</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Serviço</label>
+                      <div className="flex items-center gap-2 text-sm rounded-md border bg-muted/60 px-3 py-2">
+                        <Wrench className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                        <span>{orderRegistrar.servico}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Data do serviço</label>
+                      <Input
+                        type="date"
+                        value={dataRegistrar}
+                        onChange={(e) => setDataRegistrar(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-xs font-semibold text-muted-foreground">Garantia</label>
+                      <Select value={garantiaSelecionada} onValueChange={setGarantiaSelecionada}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Selecione o período..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GARANTIA_OPTIONS.map((g) => (
+                            <SelectItem key={g} value={g}>{g}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="flex items-center justify-between rounded-md border border-dashed bg-muted/30 px-3 py-2">
+                      <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                        <Calendar className="w-3.5 h-3.5" /> Válida até
+                      </span>
+                      <span className={`text-sm font-bold ${validadeRegistrar ? "text-green-600" : "text-muted-foreground"}`}>
+                        {validadeRegistrar ? format(validadeRegistrar, "dd/MM/yyyy", { locale: ptBR }) : "—"}
+                      </span>
+                    </div>
+
                     <Button className="w-full" onClick={handleSalvarRegistrar} disabled={!garantiaSelecionada || editOrder.isPending}>
                       {editOrder.isPending
                         ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -319,7 +373,6 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
                       }
                       Salvar Garantia
                     </Button>
-                  </div>
 
                     {orderRegistrar.garantia &&
                       orderRegistrar.garantia !== "Sem garantia" &&
@@ -348,8 +401,8 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
                           </Button>
                         </div>
                       )}
-                </div>
-              )}
+                  </div>
+                )}
             </div>
           )}
 
