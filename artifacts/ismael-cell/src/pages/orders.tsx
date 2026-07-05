@@ -41,15 +41,30 @@ export default function Orders() {
     refetchInterval: 30000,
   });
 
-  const { data: encomendasData = [] } = useQuery<{ status: string; valorTotal?: number }[]>({
-    queryKey: ["encomendas-resumo"],
-    queryFn: () => fetch(`${BASE_URL}/api/encomendas`).then((r) => r.ok ? r.json() : []),
-    refetchInterval: 30000,
-  });
-  const encomendasPendentes = encomendasData.filter((e) => e.status === "pendente");
-  const totalEncomendas = encomendasPendentes.length;
-  const totalValorEncomendas = encomendasPendentes.reduce((s, e) => s + (e.valorTotal ?? 0), 0);
-  const contasAbertas = contasReceber.filter((c) => c.conta.closedAt === null && c.saldo > 0);
+  interface EncomendasResumo {
+      encomendas?: { status: string }[];
+      saldoTotal?: number;
+    }
+    const { data: encomendasResp } = useQuery<EncomendasResumo>({
+      queryKey: ["encomendas-resumo"],
+      queryFn: () =>
+        fetch(`${BASE_URL}/api/encomendas`).then((r) =>
+          r.ok ? r.json() : { encomendas: [], saldoTotal: 0 },
+        ),
+      refetchInterval: 30000,
+    });
+    // A API devolve { encomendas, saldosPorFornecedor, saldoTotal } — as encomendas
+    // "aguardando" já vêm filtradas pelo backend. NUNCA chamar .filter direto no
+    // corpo da resposta (que é objeto, não array): era isso que deixava a tela
+    // branca com "K.filter is not a function".
+    const encomendasList = Array.isArray(encomendasResp?.encomendas)
+      ? encomendasResp!.encomendas
+      : [];
+    const totalEncomendas = encomendasList.length;
+    const totalValorEncomendas = encomendasResp?.saldoTotal ?? 0;
+    const contasAbertas = (Array.isArray(contasReceber) ? contasReceber : []).filter(
+      (c) => c.conta.closedAt === null && c.saldo > 0,
+    );
   const totalAReceber = contasAbertas.reduce((a, c) => a + c.saldo, 0);
 
   useEffect(() => {
