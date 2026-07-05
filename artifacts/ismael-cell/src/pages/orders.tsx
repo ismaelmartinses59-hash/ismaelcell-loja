@@ -372,6 +372,7 @@ export default function Orders() {
               orders={displayOrders}
               isLoading={isLoading}
               showOnlyActive={showOnlyActive}
+              onRegistrarGarantia={(codigo) => { setGarantiaCodigo(codigo); setShowGarantia(true); }}
             />
           </div>
         </div>
@@ -383,6 +384,7 @@ export default function Orders() {
             orders={displayOrders}
             isLoading={isLoading}
             showOnlyActive={showOnlyActive}
+              onRegistrarGarantia={(codigo) => { setGarantiaCodigo(codigo); setShowGarantia(true); }}
           />
         </div>
 
@@ -424,11 +426,12 @@ function OrderFilters({ search, setSearch, statusFilter, setStatusFilter }: {
 }
 
 function OrdersList({
-  orders, isLoading, showOnlyActive
+  orders, isLoading, showOnlyActive, onRegistrarGarantia
 }: {
   orders: Order[];
   isLoading: boolean;
   showOnlyActive: boolean;
+  onRegistrarGarantia: (codigo: string) => void;
 }) {
   if (isLoading) return <div className="text-center py-12 text-muted-foreground">Carregando ordens...</div>;
 
@@ -441,7 +444,7 @@ function OrdersList({
           </CardContent>
         </Card>
       ) : (
-        orders.map((order) => <OrderCard key={order.id} order={order} onRegistrarGarantia={(codigo) => { setGarantiaCodigo(codigo); setShowGarantia(true); }} />)
+        orders.map((order) => <OrderCard key={order.id} order={order} onRegistrarGarantia={onRegistrarGarantia} />)
       )}
     </div>
   );
