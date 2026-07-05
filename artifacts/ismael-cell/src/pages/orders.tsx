@@ -29,6 +29,7 @@ export default function Orders() {
   const [tipo, setTipo] = useState<OrderTipo>(OrderTipo.cliente);
   const [showFaturamento, setShowFaturamento] = useState(false);
   const [showGarantia, setShowGarantia] = useState(false);
+    const [garantiaCodigo, setGarantiaCodigo] = useState<string | undefined>(undefined);
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCaixa, setShowCaixa] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -135,7 +136,7 @@ export default function Orders() {
     <div className="min-h-screen bg-muted/30 pb-24">
       <CaixaSessaoGuard />
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
-      <GarantiaModal open={showGarantia} onClose={() => setShowGarantia(false)} />
+      <GarantiaModal open={showGarantia} initialCodigo={garantiaCodigo} onClose={() => { setShowGarantia(false); setGarantiaCodigo(undefined); }} />
       <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber"} />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
       <ConfiguracoesModal open={showConfig} onClose={() => setShowConfig(false)} />
@@ -440,7 +441,7 @@ function OrdersList({
           </CardContent>
         </Card>
       ) : (
-        orders.map((order) => <OrderCard key={order.id} order={order} />)
+        orders.map((order) => <OrderCard key={order.id} order={order} onRegistrarGarantia={(codigo) => { setGarantiaCodigo(codigo); setShowGarantia(true); }} />)
       )}
     </div>
   );
