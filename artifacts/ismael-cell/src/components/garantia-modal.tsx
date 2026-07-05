@@ -5,11 +5,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Search, CheckCircle2, Loader2, Smartphone, Calendar, Wrench, AlertTriangle, Pencil, Trash2, X } from "lucide-react";
+import { Shield, Search, CheckCircle2, Loader2, Smartphone, Calendar, Wrench, AlertTriangle, Pencil, Trash2, X, Share2, Printer } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays, isBefore, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Order } from "@workspace/api-client-react";
+import { sendGarantiaWhatsApp, printGarantia } from "../lib/garantia-doc";
 
 const GARANTIA_OPTIONS = ["7 dias", "30 dias", "90 dias", "6 meses", "1 ano"];
 const GARANTIA_OPTIONS_EDIT = ["0 dias", ...GARANTIA_OPTIONS];
@@ -62,6 +63,7 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editValue, setEditValue] = useState("");
   const [confirmDeleteOrder, setConfirmDeleteOrder] = useState<Order | null>(null);
+  const [enviandoId, setEnviandoId] = useState<number | null>(null);
 
   const { data: ordersRegistrar = [], isLoading: loadingRegistrar } = useListOrders(
     { search: buscaAtiva },
@@ -132,7 +134,20 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
     );
   };
 
-  // ── Registrar handlers ───────────────────────────────
+  const handleEnviarWhats = async (order: Order) => {
+      setEnviandoId(order.id);
+      try {
+        await sendGarantiaWhatsApp(order);
+      } catch (e) {
+        if ((e as { name?: string })?.name !== "AbortError") {
+          toast({ title: "Não deu pra enviar", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+        }
+      } finally {
+        setEnviandoId(null);
+      }
+    };
+
+    // ── Registrar handlers ───────────────────────────────
   const handleBuscar = () => {
     const termo = busca.trim();
     if (!termo) return;
@@ -146,8 +161,7 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
     if (!orderRegistrar || !garantiaSelecionada) return;
     saveGarantia(orderRegistrar, garantiaSelecionada, () => {
       toast({ title: "Garantia registrada!", description: `${orderRegistrar.codigo} — ${garantiaSelecionada}` });
-      setBusca("");
-      setBuscaAtiva("");
+      // Mantém a OS na tela pra enviar/imprimir a garantia logo em seguida.
       setGarantiaSelecionada("");
     });
   };
@@ -306,6 +320,34 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
                       Salvar Garantia
                     </Button>
                   </div>
+
+                    {orderRegistrar.garantia &&
+                      orderRegistrar.garantia !== "Sem garantia" &&
+                      orderRegistrar.garantia !== "0 dias" && (
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => handleEnviarWhats(orderRegistrar!)}
+                            disabled={enviandoId === orderRegistrar!.id}
+                          >
+                            {enviandoId === orderRegistrar!.id ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Share2 className="w-4 h-4 mr-2" />
+                            )}
+                            WhatsApp
+                          </Button>
+                          <Button
+                            variant="outline"
+                            className="w-full"
+                            onClick={() => printGarantia(orderRegistrar!)}
+                          >
+                            <Printer className="w-4 h-4 mr-2" />
+                            Imprimir
+                          </Button>
+                        </div>
+                      )}
                 </div>
               )}
             </div>
@@ -457,7 +499,35 @@ export function GarantiaModal({ open, onClose }: GarantiaModalProps) {
                               </div>
                             )}
 
-                            {/* Edição inline */}
+                            {!isEditing && (
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-xs"
+                                    onClick={() => handleEnviarWhats(o)}
+                                    disabled={enviandoId === o.id}
+                                  >
+                                    {enviandoId === o.id ? (
+                                      <Loader2 className="w-3.5 h-3.5 mr-1 animate-spin" />
+                                    ) : (
+                                      <Share2 className="w-3.5 h-3.5 mr-1" />
+                                    )}
+                                    WhatsApp
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-8 text-xs"
+                                    onClick={() => printGarantia(o)}
+                                  >
+                                    <Printer className="w-3.5 h-3.5 mr-1" />
+                                    Imprimir
+                                  </Button>
+                                </div>
+                              )}
+
+                              {/* Edição inline */}
                             {isEditing && (
                               <div className="space-y-2 pt-1 border-t border-primary/20">
                                 <p className="text-[10px] font-semibold uppercase tracking-wider text-primary">
