@@ -41,7 +41,7 @@ const STATUS_LABELS: Record<string, string> = {
   "encerrado": "Encerrado",
 };
 
-export function OrderCard({ order }: { order: Order }) {
+export function OrderCard({ order, onRegistrarGarantia }: { order: Order; onRegistrarGarantia?: (codigo: string) => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const updateStatus = useUpdateOrderStatus();
@@ -443,7 +443,17 @@ export function OrderCard({ order }: { order: Order }) {
                     <Button size="sm" variant="outline" onClick={handleShare} disabled={isSharing} className="w-full justify-start border-dashed">
                       {isSharing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Share2 className="w-4 h-4 mr-2" />}
                       WhatsApp
-                    </Button>
+                      </Button>
+
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => onRegistrarGarantia?.(order.codigo)}
+                        className="w-full justify-start border-dashed border-yellow-300 text-yellow-700 hover:bg-yellow-50"
+                      >
+                        <Shield className="w-4 h-4 mr-2" />
+                        Garantia
+                      </Button>
 
                     <Button
                       size="sm"
