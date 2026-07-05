@@ -100,31 +100,48 @@
         setTimeout(hideSplash, 3000);
         window.__hideSplash = hideSplash;
 
-        // Recuperação: se a tela ficar branca (React não conseguiu montar
-        // por causa de SW/cache antigo), mostra botão para limpar tudo.
-        setTimeout(function() {
-          var root = document.getElementById('root');
-          if (root && root.children.length > 0) return; // App montou, ok
-          var rec = document.createElement('div');
-          rec.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0f172a;color:#fff;font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:16px;';
-          rec.innerHTML = '<div style="font-size:18px;font-weight:700;">Não conseguiu abrir?</div>'
-            + '<div style="font-size:13px;opacity:0.7;max-width:280px;">Toque abaixo para limpar o cache e tentar novamente.</div>'
-            + '<button id="__recBtn" style="background:#2563eb;color:#fff;border:none;padding:12px 28px;border-radius:24px;font-size:14px;font-weight:700;cursor:pointer;">Recuperar app</button>';
-          document.body.appendChild(rec);
-          document.getElementById('__recBtn').onclick = async function() {
-            try {
-              if ('serviceWorker' in navigator) {
-                var regs = await navigator.serviceWorker.getRegistrations();
-                for (var i = 0; i < regs.length; i++) await regs[i].unregister();
-              }
-              if ('caches' in window) {
-                var keys = await caches.keys();
-                await Promise.all(keys.map(function(k) { return caches.delete(k); }));
-              }
-            } catch(e) {}
-            window.location.reload();
-          };
-        }, 6000);
+        // Recuperação automática: se a tela ficar branca (React não conseguiu
+          // montar por causa de SW/cache antigo), limpamos o service worker e o
+          // cache e recarregamos sozinho — UMA vez por abertura, sem o usuário
+          // precisar tocar em nada. Se mesmo assim continuar branco, aí sim
+          // mostramos um botão manual.
+          function limparCacheEReload() {
+            return (async function() {
+              try {
+                if ('serviceWorker' in navigator) {
+                  var regs = await navigator.serviceWorker.getRegistrations();
+                  for (var i = 0; i < regs.length; i++) await regs[i].unregister();
+                }
+                if ('caches' in window) {
+                  var keys = await caches.keys();
+                  await Promise.all(keys.map(function(k) { return caches.delete(k); }));
+                }
+              } catch (e) {}
+              window.location.reload();
+            })();
+          }
+          setTimeout(function() {
+            var root = document.getElementById('root');
+            if (root && root.children.length > 0) return; // App montou, ok
+
+            // 1a tentativa: recupera sozinho (limpa cache/SW antigo e recarrega).
+            var jaTentou;
+            try { jaTentou = sessionStorage.getItem('__autoRecovered'); } catch (e) { jaTentou = null; }
+            if (!jaTentou) {
+              try { sessionStorage.setItem('__autoRecovered', '1'); } catch (e) {}
+              limparCacheEReload();
+              return;
+            }
+
+            // Ja tentou sozinho e ainda esta branco: oferece botao manual.
+            var rec = document.createElement('div');
+            rec.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0f172a;color:#fff;font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:16px;';
+            rec.innerHTML = '<div style="font-size:18px;font-weight:700;">Não conseguiu abrir?</div>'
+              + '<div style="font-size:13px;opacity:0.7;max-width:280px;">Estamos limpando o cache. Se não abrir sozinho, toque abaixo.</div>'
+              + '<button id="__recBtn" style="background:#2563eb;color:#fff;border:none;padding:12px 28px;border-radius:24px;font-size:14px;font-weight:700;cursor:pointer;">Recuperar app</button>';
+            document.body.appendChild(rec);
+            document.getElementById('__recBtn').onclick = function() { limparCacheEReload(); };
+          }, 6000);
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
