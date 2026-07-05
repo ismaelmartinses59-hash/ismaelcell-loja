@@ -86,8 +86,17 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
       }) ?? (ordersRegistrar.length === 1 ? ordersRegistrar[0] : null)
     : null;
 
-  useEffect(() => {
-      if (orderRegistrar) {
+  const orderRegistrarEfetivo = orderRegistrar
+      ? {
+          ...orderRegistrar,
+          garantia: garantiaSelecionada || orderRegistrar.garantia,
+          nomeCliente: nomeRegistrar.trim() || orderRegistrar.nomeCliente,
+          dataServico: dataRegistrar || orderRegistrar.dataServico,
+        }
+      : null;
+
+    useEffect(() => {
+        if (orderRegistrar) {
         setNomeRegistrar(orderRegistrar.nomeCliente ?? "");
         setDataRegistrar(
           orderRegistrar.dataServico ?? format(new Date(orderRegistrar.createdAt), "yyyy-MM-dd"),
@@ -383,14 +392,12 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                       Salvar Garantia
                     </Button>
 
-                    {orderRegistrar.garantia &&
-                      orderRegistrar.garantia !== "Sem garantia" &&
-                      orderRegistrar.garantia !== "0 dias" && (
+                    {garantiaSelecionada && (
                         <div className="grid grid-cols-2 gap-2 pt-2 border-t">
                           <Button
                             variant="outline"
                             className="w-full"
-                            onClick={() => handleEnviarWhats(orderRegistrar!)}
+                            onClick={() => handleEnviarWhats(orderRegistrarEfetivo!)}
                             disabled={enviandoId === orderRegistrar!.id}
                           >
                             {enviandoId === orderRegistrar!.id ? (
@@ -403,7 +410,7 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                           <Button
                             variant="outline"
                             className="w-full"
-                            onClick={() => printGarantia(orderRegistrar!)}
+                            onClick={() => printGarantia(orderRegistrarEfetivo!)}
                           >
                             <Printer className="w-4 h-4 mr-2" />
                             Imprimir
