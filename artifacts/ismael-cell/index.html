@@ -88,7 +88,20 @@
     <div id="root"></div>
     <script>
       (function() {
-        var splash = document.getElementById('splash');
+          // Captura erros de JS desde o início pra sabermos o motivo real de uma
+          // tela branca (crash de código != cache antigo).
+          window.__errs = window.__errs || [];
+          function pushErr(s){ try { window.__errs.push(String(s).slice(0,1600)); } catch (e) {} }
+          window.addEventListener('error', function(e){
+            pushErr((e.message || 'erro')
+              + (e.filename ? (' @ ' + String(e.filename).split('/').pop() + ':' + e.lineno + ':' + e.colno) : '')
+              + (e.error && e.error.stack ? ('\n' + e.error.stack) : ''));
+          });
+          window.addEventListener('unhandledrejection', function(e){
+            var r = e.reason;
+            pushErr('promise: ' + (r && r.stack ? r.stack : (r && r.message ? r.message : String(r))));
+          });
+          var splash = document.getElementById('splash');
         var mounted = false;
         function hideSplash() {
           mounted = true;
@@ -121,27 +134,37 @@
             })();
           }
           setTimeout(function() {
-            var root = document.getElementById('root');
-            if (root && root.children.length > 0) return; // App montou, ok
+              var root = document.getElementById('root');
+              if (root && root.children.length > 0) return; // App montou, ok
 
-            // 1a tentativa: recupera sozinho (limpa cache/SW antigo e recarrega).
-            var jaTentou;
-            try { jaTentou = sessionStorage.getItem('__autoRecovered'); } catch (e) { jaTentou = null; }
-            if (!jaTentou) {
-              try { sessionStorage.setItem('__autoRecovered', '1'); } catch (e) {}
-              limparCacheEReload();
-              return;
-            }
+              var temErro = window.__errs && window.__errs.length > 0;
 
-            // Ja tentou sozinho e ainda esta branco: oferece botao manual.
-            var rec = document.createElement('div');
-            rec.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0f172a;color:#fff;font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:16px;';
-            rec.innerHTML = '<div style="font-size:18px;font-weight:700;">Não conseguiu abrir?</div>'
-              + '<div style="font-size:13px;opacity:0.7;max-width:280px;">Estamos limpando o cache. Se não abrir sozinho, toque abaixo.</div>'
-              + '<button id="__recBtn" style="background:#2563eb;color:#fff;border:none;padding:12px 28px;border-radius:24px;font-size:14px;font-weight:700;cursor:pointer;">Recuperar app</button>';
-            document.body.appendChild(rec);
-            document.getElementById('__recBtn').onclick = function() { limparCacheEReload(); };
-          }, 6000);
+              // Sem erro de código => provável cache/rede: recupera sozinho 1x.
+              // Com erro de código, recarregar não resolve, então mostramos o erro.
+              if (!temErro) {
+                var jaTentou;
+                try { jaTentou = sessionStorage.getItem('__autoRecovered'); } catch (e) { jaTentou = null; }
+                if (!jaTentou) {
+                  try { sessionStorage.setItem('__autoRecovered', '1'); } catch (e) {}
+                  limparCacheEReload();
+                  return;
+                }
+              }
+
+              var rec = document.createElement('div');
+              rec.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#0f172a;color:#fff;font-family:Inter,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:14px;overflow:auto;';
+              var detalhe = '';
+              if (temErro) {
+                var txt = window.__errs.join('\n---\n').replace(/[<>]/g, '');
+                detalhe = '<pre style="max-width:330px;max-height:210px;overflow:auto;text-align:left;background:#1e293b;color:#fca5a5;font-size:10px;line-height:1.35;padding:10px;border-radius:8px;white-space:pre-wrap;word-break:break-word;">' + txt + '</pre>';
+              }
+              rec.innerHTML = '<div style="font-size:18px;font-weight:700;">Não conseguiu abrir?</div>'
+                + '<div style="font-size:13px;opacity:0.75;max-width:290px;">' + (temErro ? 'Encontramos um erro ao abrir. Tire um print desta tela e mande pro suporte.' : 'Toque abaixo para limpar o cache e tentar de novo.') + '</div>'
+                + detalhe
+                + '<button id="__recBtn" style="background:#2563eb;color:#fff;border:none;padding:12px 28px;border-radius:24px;font-size:14px;font-weight:700;cursor:pointer;">Recuperar app</button>';
+              document.body.appendChild(rec);
+              document.getElementById('__recBtn').onclick = function() { limparCacheEReload(); };
+            }, 6000);
       })();
     </script>
     <script type="module" src="/src/main.tsx"></script>
