@@ -1459,14 +1459,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   e.target.value = "";
                 }}
               />
-              {showAdd && (
-                <PecaForm
-                  onSave={handleAddSubmit}
-                  onCancel={() => { setShowAdd(false); setPreviewData(null); }}
-                  loading={addMutation.isPending || savingTwin}
-                  pedirInvestimento
-                />
-              )}
               <PreviewLojistaDialog
                 open={previewData !== null}
                 data={previewData}
@@ -1487,7 +1479,15 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
-              {!search.trim() && lowStock.length === 0 && (
+              {showAdd && (
+                  <PecaForm
+                    onSave={handleAddSubmit}
+                    onCancel={() => { setShowAdd(false); setPreviewData(null); }}
+                    loading={addMutation.isPending || savingTwin}
+                    pedirInvestimento
+                  />
+                )}
+                {!search.trim() && lowStock.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground text-sm">
                   <Search className="w-8 h-8 mx-auto mb-3 opacity-30" />
                   <p className="font-medium">Digite para pesquisar</p>
