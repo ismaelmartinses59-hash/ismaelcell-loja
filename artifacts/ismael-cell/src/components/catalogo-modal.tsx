@@ -210,9 +210,11 @@ interface PecaFormProps {
   loading: boolean;
   // Quando true, mostra o seletor dinheiro/pix e o custo vira saída no caixa.
   pedirInvestimento?: boolean;
+  // Peças já cadastradas (cliente + lojista) p/ bloquear modelo duplicado.
+  existentes?: Peca[];
 }
 
-function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: PecaFormProps) {
+function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, existentes = [] }: PecaFormProps) {
   const [modelo, setModelo] = useState(initial?.modelo ?? "");
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
   const [valor, setValor] = useState(initial?.valor ?? "");
@@ -237,9 +239,24 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
     if (precoSugerido !== null) setValor(String(precoSugerido).replace(".", ","));
   };
 
-  const submit = () => {
-    if (!modelo.trim() || !qualidade || !valor.trim()) return;
-    const qtd = parseInt(quantidade) || 0;
+  // Bloqueia cadastro de modelo já existente (igual ou muito parecido).
+    const normalizar = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+    const modeloNorm = normalizar(modelo);
+    const modeloOriginalNorm = normalizar(initial?.modelo ?? "");
+    const duplicada = modeloNorm.length >= 3
+      ? existentes.find((p) => {
+          if (initial?.id && p.id === initial.id) return false;
+          const pn = normalizar(p.modelo);
+          // Ao editar, ignora a própria peça e sua gêmea (mesmo modelo original).
+          if (modeloOriginalNorm && pn === modeloOriginalNorm) return false;
+          return pn === modeloNorm || pn.includes(modeloNorm) || modeloNorm.includes(pn);
+        })
+      : undefined;
+
+    const submit = () => {
+      if (duplicada) return;
+      if (!modelo.trim() || !qualidade || !valor.trim()) return;
+      const qtd = parseInt(quantidade) || 0;
     if (qtd < 1) return;
     if (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim())) return;
     onSave({
@@ -265,6 +282,15 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
             value={modelo}
             onChange={(e) => { setModelo(e.target.value); setQualidade(""); }}
           />
+          {duplicada && (
+            <div className="mt-1.5 flex items-start gap-1.5 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
+              <ShieldAlert className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700">
+                <b>Esse modelo já está cadastrado:</b> {duplicada.modelo} — {duplicada.qualidade} ({duplicada.quantidade} un.).
+                Não é possível cadastrar de novo. Edite a peça existente ou mude a quantidade dela.
+              </p>
+            </div>
+          )}
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Qualidade</label>
@@ -330,7 +356,7 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento }: Pec
       </div>
       <div className="flex gap-2 justify-end">
         <Button size="sm" variant="ghost" onClick={onCancel} disabled={loading}><X className="w-4 h-4 mr-1" /> Cancelar</Button>
-        <Button size="sm" onClick={submit} disabled={loading || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1 || (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim()))}>
+        <Button size="sm" onClick={submit} disabled={loading || !!duplicada || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1 || (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim()))}>
           <Check className="w-4 h-4 mr-1" /> {loading ? "Salvando..." : "Salvar"}
         </Button>
       </div>
@@ -1484,6 +1510,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
               {showAdd && (
                   <PecaForm
+                    existentes={[...pecasClienteAll, ...pecasLojistaAll]}
                     onSave={handleAddSubmit}
                     onCancel={() => { setShowAdd(false); setPreviewData(null); }}
                     loading={addMutation.isPending || savingTwin}
@@ -1505,7 +1532,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               {ordenarPorEstoque(search.trim() ? pecas : lowStock).map((peca) => (
                 <div key={peca.id}>
                   {editingId === peca.id ? (
-                    <PecaForm initial={peca} onSave={(data) => editMutation.mutate({ id: peca.id, data })} onCancel={() => setEditingId(null)} loading={editMutation.isPending} />
+                    <PecaForm initial={peca} existentes={[...pecasClienteAll, ...pecasLojistaAll]} onSave={(data) => editMutation.mutate({ id: peca.id, data })} onCancel={() => setEditingId(null)} loading={editMutation.isPending} />
                   ) : deletingId === peca.id ? (
                     <div className="border border-red-200 bg-red-50 rounded-xl p-3 flex items-center justify-between gap-3">
                       <span className="text-sm text-red-700">Remover <strong>{peca.modelo}</strong>?</span>
