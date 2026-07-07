@@ -957,7 +957,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     refetchInterval: aba === "historico" ? 30000 : false,
   });
 
-  const invalidatePecas = () => qc.invalidateQueries({ queryKey: ["pecas"] });
+  const invalidatePecas = () => {
+      qc.invalidateQueries({ queryKey: ["pecas"] });
+      qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
+    };
   const invalidateVendas = () => qc.invalidateQueries({ queryKey: ["vendas"] });
   const [deletingVendaId, setDeletingVendaId] = useState<number | null>(null);
   const deleteVendaMutation = useMutation({
