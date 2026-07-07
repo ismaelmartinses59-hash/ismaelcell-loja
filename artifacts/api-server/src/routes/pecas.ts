@@ -488,6 +488,18 @@ router.delete("/pecas/:id", async (req, res): Promise<void> => {
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
   const [deleted] = await db.delete(pecasTable).where(eq(pecasTable.id, id)).returning();
   if (!deleted) { res.status(404).json({ error: "Peça não encontrada" }); return; }
+    // Estoque compartilhado: apaga também a peça gêmea no outro setor, senão a
+    // gêmea continua aparecendo na busca do caixa (que junta os dois setores).
+    const outroSetor = deleted.setor === "cliente" ? "lojista" : "cliente";
+    await db
+      .delete(pecasTable)
+      .where(
+        and(
+          eq(pecasTable.setor, outroSetor),
+          sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${deleted.modelo}))`,
+          sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${deleted.qualidade}))`,
+        ),
+      );
   res.status(204).send();
 });
 
