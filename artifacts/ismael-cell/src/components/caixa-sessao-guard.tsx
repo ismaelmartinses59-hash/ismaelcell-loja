@@ -801,7 +801,7 @@ export function CaixaSessaoGuard() {
                           Nome do devedor
                         </label>
                         <Input
-                          placeholder="Ex: Givanildo"
+                          placeholder="Digite o nome..."
                           value={vDevedor}
                           onChange={(e) => {
                             setVDevedor(e.target.value);
