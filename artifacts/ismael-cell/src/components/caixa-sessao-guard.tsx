@@ -43,7 +43,14 @@ interface Sessao {
   fechamentoAt: string | null;
 }
 
-interface Peca {
+interface ContaResumo {
+    conta: { id: number; nome: string; tipo: string };
+    saldo: number;
+    totalItens: number;
+    totalPago: number;
+  }
+
+  interface Peca {
   id: number;
   modelo: string;
   qualidade: string;
@@ -112,6 +119,11 @@ export function CaixaSessaoGuard() {
   const [vBusca, setVBusca] = useState("");
   const [vPecaSel, setVPecaSel] = useState<Peca | null>(null);
   const [vSubmitting, setVSubmitting] = useState(false);
+    // Fiado: anota a venda na conta de um devedor em vez de entrar no caixa
+    const [vFiado, setVFiado] = useState(false);
+    const [vDevedor, setVDevedor] = useState("");
+    const [vContaSel, setVContaSel] = useState<ContaResumo | null>(null);
+    const [avSubmitting, setAvSubmitting] = useState(false);
 
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
@@ -191,6 +203,23 @@ export function CaixaSessaoGuard() {
     },
   });
 
+    const { data: contasFiado = [] } = useQuery<ContaResumo[]>({
+      queryKey: ["caixa-sessao-contas"],
+      enabled: mode === "fechar" && showVenda && vFiado,
+      queryFn: async () => {
+        const r = await fetch(`${BASE}/api/contas-receber`);
+        return r.ok ? r.json() : [];
+      },
+    });
+
+    const vDevSugestoes = useMemo(() => {
+      const q = vDevedor.trim().toLowerCase();
+      if (!q || vContaSel) return [];
+      return contasFiado
+        .filter((c) => c.conta.nome.toLowerCase().includes(q))
+        .slice(0, 5);
+    }, [vDevedor, vContaSel, contasFiado]);
+
   const vSugestoes = useMemo(() => {
     const q = vBusca.trim().toLowerCase();
     if (!q) return [];
@@ -217,7 +246,10 @@ export function CaixaSessaoGuard() {
     setVVincular(false);
     setVBusca("");
     setVPecaSel(null);
-    setShowVenda(false);
+      setVFiado(false);
+      setVDevedor("");
+      setVContaSel(null);
+      setShowVenda(false);
   };
 
   const registrarVenda = async () => {
@@ -230,11 +262,60 @@ export function CaixaSessaoGuard() {
       return;
     }
     if (vVincular && !vPecaSel) {
-      toast({ title: "Selecione a peça na lista", variant: "destructive" });
-      return;
-    }
-    setVSubmitting(true);
-    try {
+        toast({ title: "Selecione a peça na lista", variant: "destructive" });
+        return;
+      }
+      if (vFiado && !vDevedor.trim()) {
+        toast({ title: "Diga o nome do devedor", variant: "destructive" });
+        return;
+      }
+      setVSubmitting(true);
+      try {
+        if (vFiado) {
+          // Fiado: anota na conta do devedor (não entra no caixa agora)
+          let r: Response;
+          if (vVincular && vPecaSel) {
+            // Peça do estoque: dá baixa + anota na conta numa venda só
+            r = await fetch(`${BASE}/api/pecas/${vPecaSel.id}/vender`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fiado: true,
+                nomeDevedor: vContaSel ? vContaSel.conta.nome : vDevedor.trim(),
+                tipoDevedor: vContaSel ? vContaSel.conta.tipo : "cliente",
+              }),
+            });
+          } else if (vContaSel) {
+            r = await fetch(`${BASE}/api/contas-receber/${vContaSel.conta.id}/item`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ descricao: vMotivo.trim(), valor: vValor.trim() }),
+            });
+          } else {
+            r = await fetch(`${BASE}/api/contas-receber/novo-servico`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                nome: vDevedor.trim(),
+                tipo: "cliente",
+                descricao: vMotivo.trim(),
+                valor: vValor.trim(),
+              }),
+            });
+          }
+          if (!r.ok) {
+            const j = await r.json().catch(() => ({}));
+            throw new Error(j.error || "Erro ao anotar o fiado");
+          }
+          toast({ title: "Fiado anotado na conta! 📝" });
+          resetVenda();
+          await qc.invalidateQueries({ queryKey: ["contas-receber"] });
+          await qc.invalidateQueries({ queryKey: ["caixa-sessao-contas"] });
+          await qc.invalidateQueries({ queryKey: ["pecas"] });
+          await qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
+          await qc.invalidateQueries({ queryKey: ["vendas"] });
+          return;
+        }
       const r = await fetch(`${BASE}/api/caixa`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -270,7 +351,42 @@ export function CaixaSessaoGuard() {
     }
   };
 
-  const abrir = async () => {
+  const receberAV = async () => {
+      if (!vContaSel) return;
+      if (!vValor.trim()) {
+        toast({ title: "Informe o valor do AV", variant: "destructive" });
+        return;
+      }
+      setAvSubmitting(true);
+      try {
+        const r = await fetch(`${BASE}/api/contas-receber/${vContaSel.conta.id}/pagamento`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ valor: vValor.trim(), formaPagamento: vForma }),
+        });
+        if (!r.ok) {
+          const j = await r.json().catch(() => ({}));
+          throw new Error(j.error || "Erro ao registrar o AV");
+        }
+        toast({ title: `AV recebido de ${vContaSel.conta.nome}! 💰` });
+        resetVenda();
+        setContadoTouched(false);
+        await qc.invalidateQueries({ queryKey: ["contas-receber"] });
+        await qc.invalidateQueries({ queryKey: ["caixa-sessao-contas"] });
+        await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+        await refetch();
+      } catch (e) {
+        toast({
+          title: "Erro ao registrar o AV",
+          description: e instanceof Error ? e.message : undefined,
+          variant: "destructive",
+        });
+      } finally {
+        setAvSubmitting(false);
+      }
+    };
+
+    const abrir = async () => {
     if (!valorInicial.trim()) {
       toast({ title: "Informe o valor inicial (troco)", variant: "destructive" });
       return;
@@ -567,13 +683,36 @@ export function CaixaSessaoGuard() {
                         );
                       })}
                     </div>
-                    {vForma === "pix" && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                          setVFiado(!vFiado);
+                          if (vFiado) {
+                            setVDevedor("");
+                            setVContaSel(null);
+                          }
+                        }}
+                        className={`mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-colors ${
+                          vFiado
+                            ? "bg-amber-500 text-white border-amber-500"
+                            : "bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
+                        }`}
+                      >
+                        📒 Fiado (anotar na conta de alguém)
+                      </button>
+                      {vFiado && (
+                        <p className="mt-1 text-[11px] text-amber-700">
+                          Fiado NÃO entra no caixa agora — fica anotado na conta
+                          do devedor.
+                        </p>
+                      )}
+                      {!vFiado && vForma === "pix" && (
                       <p className="mt-1 text-[11px] text-cyan-700">
                         PIX — sem taxa, cai na conta. NÃO entra na gaveta (fica
                         separado do dinheiro).
                       </p>
                     )}
-                    {isCartaoForma(vForma) && (
+                    {!vFiado && isCartaoForma(vForma) && (
                       <p className="mt-1 text-[11px] text-blue-700">
                         Cartão — a maquininha desconta{" "}
                         {TAXAS_CARTAO[vForma as FormaCartao].toLocaleString(
@@ -656,6 +795,66 @@ export function CaixaSessaoGuard() {
                     </div>
                   )}
 
+                  {vFiado && (
+                      <div className="relative">
+                        <label className="text-xs font-medium text-slate-600">
+                          Nome do devedor
+                        </label>
+                        <Input
+                          placeholder="Ex: Givanildo"
+                          value={vDevedor}
+                          onChange={(e) => {
+                            setVDevedor(e.target.value);
+                            setVContaSel(null);
+                          }}
+                          className="mt-1 h-11"
+                        />
+                        {!vContaSel && vDevSugestoes.length > 0 && (
+                          <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                            {vDevSugestoes.map((c) => (
+                              <button
+                                key={c.conta.id}
+                                type="button"
+                                onClick={() => {
+                                  setVContaSel(c);
+                                  setVDevedor(c.conta.nome);
+                                }}
+                                className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between gap-2"
+                              >
+                                <span className="text-sm font-medium">{c.conta.nome}</span>
+                                <span className={`text-xs font-semibold shrink-0 ${c.saldo > 0 ? "text-red-500" : "text-emerald-600"}`}>
+                                  {c.saldo > 0 ? `Deve ${formatMoney(c.saldo)}` : "Em dia"}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {vContaSel && (
+                          <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 space-y-1.5">
+                            <p className="text-xs text-amber-800">
+                              <b>{vContaSel.conta.nome}</b> —{" "}
+                              {vContaSel.saldo > 0 ? (
+                                <>dívida atual: <b>{formatMoney(vContaSel.saldo)}</b></>
+                              ) : (
+                                "conta em dia"
+                              )}
+                            </p>
+                            {vContaSel.saldo > 0 && (
+                              <button
+                                type="button"
+                                onClick={receberAV}
+                                disabled={avSubmitting}
+                                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                              >
+                                {avSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                💰 Receber AV (abater da dívida) — usa o valor acima
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
+  
                   <div>
                     <label className="text-xs font-medium text-slate-600">
                       O que foi? (motivo)
@@ -676,7 +875,7 @@ export function CaixaSessaoGuard() {
                     {vSubmitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    Registrar entrada
+                    {vFiado ? "Anotar fiado na conta" : "Registrar entrada"}
                   </Button>
                 </div>
               )}
