@@ -590,7 +590,7 @@ interface ImportarNotaDialogProps {
   itensIniciais: ImportRow[];
   pecasExistentes: { modelo: string; qualidade: string }[];
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
-  onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest) => void;
+  onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
   onClose: () => void;
   loading: boolean;
 }
@@ -598,6 +598,9 @@ interface ImportarNotaDialogProps {
 function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExistentes, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
   const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
   const [formaInvest, setFormaInvest] = useState<FormaInvest>("dinheiro");
+    // "Esse pedido chegou?" — estoque (já chegou) ou encomenda (a caminho)
+    const [destino, setDestino] = useState<Destino>("estoque");
+    const [fornecedor, setFornecedor] = useState("");
   const totalCusto = rows.reduce((s, r) => s + parsePtBR(r.valorCusto) * (parseInt(r.quantidade) || 0), 0);
 
   // Nomes de modelos já cadastrados (sem repetir) para o autocomplete.
@@ -780,7 +783,24 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
         </div>
 
         <div className="border-t p-4 space-y-2 shrink-0 bg-white">
-          {totalCusto > 0 && (
+          <div>
+              <label className="text-xs font-medium text-muted-foreground mb-1.5 block">Esse pedido chegou?</label>
+              <DestinoToggle value={destino} onChange={setDestino} />
+            </div>
+            {destino === "encomenda" && (
+              <div className="space-y-2 bg-amber-50 border border-amber-200 rounded-lg p-2.5">
+                <p className="text-[11px] text-amber-700 font-medium">🚚 Vai pra aba A Caminho. A saída será lançada no caixa quando você confirmar a chegada.</p>
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground mb-1 block">Fornecedor</label>
+                  <FornecedorSelect value={fornecedor} onChange={setFornecedor} />
+                </div>
+                <div>
+                  <label className="text-[11px] font-medium text-muted-foreground block mb-1">Vou pagar em</label>
+                  <InvestimentoToggle value={formaInvest} onChange={setFormaInvest} />
+                </div>
+              </div>
+            )}
+          {totalCusto > 0 && destino === "estoque" && (
             <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 space-y-1.5">
               <div className="flex items-center justify-between text-sm">
                 <span className="text-red-700 font-medium">Investimento (vai pra saída)</span>
@@ -802,11 +822,12 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             </Button>
             <Button
               className="flex-1 bg-emerald-600 hover:bg-emerald-700"
-              onClick={() => onConfirm(rows, formaInvest)}
-              disabled={!todasValidas || loading}
+              onClick={() => onConfirm(rows, formaInvest, destino, fornecedor)}
+              /* encomenda exige fornecedor */
+              disabled={!todasValidas || loading || (destino === "encomenda" && !fornecedor.trim())}
             >
               <Check className="w-4 h-4 mr-1" />
-              {loading ? "Cadastrando..." : `Cadastrar ${rows.length} ${rows.length === 1 ? "peça" : "peças"}`}
+              {loading ? "Cadastrando..." : destino === "encomenda" ? `Criar encomenda (${rows.length})` : `Cadastrar ${rows.length} ${rows.length === 1 ? "peça" : "peças"}`}
             </Button>
           </div>
         </div>
@@ -1048,10 +1069,32 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     }
   };
 
-  const confirmImport = async (rows: ImportRow[], formaInvestimento: FormaInvest) => {
+  const confirmImport = async (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => {
     setImportSaving(true);
-    try {
-      const resp = await apiFetch("/api/pecas/importar/confirmar", {
+      try {
+        if (destino === "encomenda") {
+          await apiFetch("/api/encomendas", {
+            method: "POST",
+            body: JSON.stringify({
+              fornecedor: fornecedor.trim(),
+              formaInvestimento,
+              itens: rows.map((r) => ({
+                modelo: r.modelo.trim(),
+                qualidade: r.qualidade,
+                quantidade: parseInt(r.quantidade) || 0,
+                valorCusto: r.valorCusto.trim(),
+                valorCliente: r.valorCliente.trim(),
+                valorLojista: r.valorLojista.trim(),
+              })),
+            }),
+          });
+          queryClient.invalidateQueries({ queryKey: ["encomendas"] });
+          setImportOpen(false);
+          setImportRows([]);
+          toast({ title: "🚚 Encomenda criada!", description: `${rows.length} ${rows.length === 1 ? "peça" : "peças"} na aba A Caminho. Confirme quando chegar.` });
+          return;
+        }
+        const resp = await apiFetch("/api/pecas/importar/confirmar", {
         method: "POST",
         body: JSON.stringify({
           formaInvestimento,
@@ -1096,12 +1139,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       apiFetch("/api/encomendas", {
         method: "POST",
         body: JSON.stringify({
-          modelo: data.modelo,
-          qualidade: data.qualidade,
-          quantidade: data.quantidade,
-          valorLojista: data.valorLojista ? parseFloat(data.valorLojista.replace(",", ".")) : undefined,
-          fornecedor: data.fornecedor,
-          valorCliente: data.valor ? parseFloat(data.valor.replace(",", ".")) : undefined,
+          fornecedor: data.fornecedor ?? "",
+            formaInvestimento: data.formaInvestimento,
+            itens: [
+              {
+                modelo: data.modelo,
+                qualidade: data.qualidade,
+                quantidade: data.quantidade,
+                valorCusto: data.valorCusto ?? "",
+                valorCliente: data.valor,
+                valorLojista: data.valorLojista ?? "",
+              },
+            ],
         }),
       }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["encomendas"] }); setShowAdd(false); },
