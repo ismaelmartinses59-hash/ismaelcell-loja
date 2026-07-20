@@ -867,6 +867,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setAddItemContaId(null);
       setItemDescricao("");
       setItemValor("");
+      setItemForma("fiado");
       setShowNovoServico(false);
       setServNome("");
       setServDescricao("");
@@ -889,6 +890,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [addItemContaId, setAddItemContaId] = useState<number | null>(null);
   const [itemDescricao, setItemDescricao] = useState("");
   const [itemValor, setItemValor] = useState("");
+  const [itemForma, setItemForma] = useState<string>("fiado");
   // Novo serviço fiado (cria/reusa conta)
   const [showNovoServico, setShowNovoServico] = useState(false);
   const [servNome, setServNome] = useState("");
@@ -1264,7 +1266,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   // ── Contas a Receber ──────────────────────────────────────────────────────────
   interface ContaResumo {
     conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
-    itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; createdAt: string }>;
+    itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; createdAt: string }>;
     pagamentos: Array<{ id: number; valor: string; createdAt: string }>;
     totalItens: number;
     totalPago: number;
@@ -1297,9 +1299,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
   const addItemMutation = useMutation({
-    mutationFn: ({ contaId, descricao, valor }: { contaId: number; descricao: string; valor: string }) =>
-      apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor }) }),
-    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); toast({ title: "📒 Serviço adicionado à conta!" }); },
+    mutationFn: ({ contaId, descricao, valor, formaPagamento }: { contaId: number; descricao: string; valor: string; formaPagamento: string }) =>
+      apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor, formaPagamento }) }),
+    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); toast({ title: "📒 Serviço adicionado à conta!" }); },
     onError: () => toast({ title: "Erro ao adicionar serviço", variant: "destructive" }),
   });
   const novoServicoMutation = useMutation({
@@ -2069,10 +2071,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 onChange={(e) => setItemValor(e.target.value)}
                                 className="h-9 text-sm"
                               />
-                              <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim() })}>
+                              <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim(), formaPagamento: itemForma })}>
                                 <Check className="w-4 h-4" />
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); }}>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); }}>
                                 <X className="w-4 h-4" />
                               </Button>
                             </div>
@@ -2187,12 +2189,25 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <div className="space-y-1">
                               {c.itens.map((item) => {
                                 const dia = new Date(item.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                const hora = new Date(item.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                const formaLabel = item.formaPagamento
+                                  ? item.formaPagamento === "fiado" ? "Fiado"
+                                  : item.formaPagamento === "pix" ? "PIX"
+                                  : item.formaPagamento === "dinheiro" ? "Dinheiro"
+                                  : item.formaPagamento === "debito" ? "Débito"
+                                  : item.formaPagamento === "credito_1x" ? "Créd 1x"
+                                  : item.formaPagamento === "credito_2x" ? "Créd 2x"
+                                  : item.formaPagamento === "credito_3x" ? "Créd 3x"
+                                  : item.formaPagamento
+                                  : null;
                                 const isDel = deletingItemId === item.id;
                                 return (
                                   <div key={item.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : "bg-white"}`}>
                                     <div className="flex-1 min-w-0">
                                       <div className="font-semibold truncate">{item.modelo}</div>
-                                      <div className="text-[10px] text-muted-foreground">{item.qualidade} · {dia}</div>
+                                      <div className="text-[10px] text-muted-foreground">
+                                        {item.qualidade} · {dia} às {hora}{formaLabel ? <span className="font-semibold text-orange-600"> · {formaLabel}</span> : ""}
+                                      </div>
                                     </div>
                                     <div className="font-bold text-orange-700">{formatMoney(item.valor)}</div>
                                     {isDel ? (

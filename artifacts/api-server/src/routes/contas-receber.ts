@@ -185,6 +185,7 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
   }
   const descricao = String(req.body?.descricao ?? "").trim();
   const valor = String(req.body?.valor ?? "").trim();
+  const formaPagamento = req.body?.formaPagamento ? String(req.body.formaPagamento) : null;
   if (!descricao) {
     res.status(400).json({ error: "Descrição obrigatória" });
     return;
@@ -206,6 +207,7 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
     modelo: descricao,
     qualidade: "Serviço",
     valor,
+    formaPagamento,
   });
   // Adicionar dívida reabre a conta caso estivesse quitada
   await db
