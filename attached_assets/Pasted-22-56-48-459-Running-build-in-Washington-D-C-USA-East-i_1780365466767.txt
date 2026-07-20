@@ -1,0 +1,33 @@
+22:56:48.459 Running build in Washington, D.C., USA (East) – iad1
+22:56:48.460 Build machine configuration: 2 cores, 8 GB
+22:56:48.583 Cloning github.com/ismaelmartinses59-hash/Ismaelcell26_ (Branch: main, Commit: 0dc791d)
+22:56:48.584 Previous build caches not available.
+22:56:48.794 Cloning completed: 211.000ms
+22:56:49.062 Running "vercel build"
+22:56:49.079 Vercel CLI 54.4.1
+22:56:49.553 Installing dependencies...
+22:57:21.283 npm warn deprecated source-map@0.8.0-beta.0: The work that was done in this beta branch won't be included in future versions
+22:57:22.210 npm warn deprecated glob@11.1.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
+22:57:23.658 npm warn deprecated recharts@2.15.4: 1.x and 2.x branches are no longer active. Bump to Recharts v3 to receive latest features and bugfixes. See https://github.com/recharts/recharts/wiki/3.0-migration-guide
+22:57:27.421 
+22:57:27.422 added 526 packages in 38s
+22:57:27.422 
+22:57:27.422 111 packages are looking for funding
+22:57:27.423   run `npm fund` for details
+22:57:27.514 Running "npm run build"
+22:57:27.619 
+22:57:27.619 > @workspace/ismael-cell@0.0.0 build
+22:57:27.619 > vite build --config vite.config.ts
+22:57:27.619 
+22:57:27.831 vite v7.3.5 building client environment for production...
+22:57:27.891 transforming...
+22:57:29.703 ✓ 2049 modules transformed.
+22:57:29.706 ✗ Build failed in 1.85s
+22:57:29.707 error during build:
+22:57:29.707 Could not resolve "./lib/api-client-react/src/index.ts" from "order-card.tsx"
+22:57:29.707 file: /vercel/path0/order-card.tsx
+22:57:29.708     at getRollupError (file:///vercel/path0/node_modules/rollup/dist/es/shared/parseAst.js:317:41)
+22:57:29.708     at error (file:///vercel/path0/node_modules/rollup/dist/es/shared/parseAst.js:313:42)
+22:57:29.709     at ModuleLoader.handleInvalidResolvedId (file:///vercel/path0/node_modules/rollup/dist/es/shared/node-entry.js:22119:24)
+22:57:29.709     at file:///vercel/path0/node_modules/rollup/dist/es/shared/node-entry.js:22079:26
+22:57:29.743 Error: Command "npm run build" exited with 1

@@ -1,0 +1,42 @@
+---
+name: Ismael Cell estoque compartilhado (twin parts)
+description: Cross-cutting stock invariant any peça-mutating endpoint must honor
+---
+
+# Estoque compartilhado / twin parts invariant
+
+Peças exist in two setores (`cliente`, `lojista`) and stock is meant to be MIRRORED:
+a part has a "twin" = the row in the opposite setor with the same `modelo` + `qualidade`
+(compared case-insensitively, trimmed).
+
+**Rule:** Any endpoint that mutates peça `quantidade` must apply the SAME change to the
+twin. Existing examples: `/pecas/:id/vender`, `/pecas/:id/devolver`, and `/caixa`
+(peça-linked entrada). Decrements are guarded with `quantidade > 0`.
+
+**Edit endpoint (`PUT /pecas/:id`):** mirrors `quantidade` AND `modelo`/`qualidade`
+(renames) to the twin, found by the ORIGINAL pre-edit modelo+qualidade, so the pair stays
+linked after a rename. It does NOT copy `valor`/`valorCusto` (each setor keeps its own
+price). Match the twin by the pre-update values, never the new ones.
+
+**Caixa coupling:** a peça-linked `entrada` in `/caixa` ALSO inserts a row into `vendas`
+(so it shows in the Vendas list), and `DELETE /caixa/:id` reverts both the stock (peça +
+twin) and the venda. These multi-write flows are wrapped in `db.transaction(...)` for
+atomicity; use atomic `sql\`quantidade ± 1\`` updates, not read-then-write.
+
+**Supplier-note import (`POST /pecas/importar/confirmar`):** UPSERTS, not blind insert —
+if a peça with same `modelo`(lower+trim)+`qualidade`+`setor` exists, it INCREMENTS that
+row's `quantidade` (atomic `sql\`quantidade + n\``, oldest row by id) instead of creating a
+duplicate; else inserts a new twin pair. Merge KEEPS the existing `valor`/`valorCusto`
+(only adds quantity). Create-vs-merge status is decided by the CLIENTE side; the lojista
+twin follows. Returns `{cadastrados, criados, somados}`. The dialog has a datalist
+autocomplete of existing model names + a green "vai somar no estoque" hint on exact match.
+**Why:** users kept creating near-duplicate models from imports; merging keeps one row per
+model and avoids confusion.
+
+**Why:** the shop treats both setores as one shared inventory; forgetting the twin makes
+the two setores drift out of sync and produces wrong stock counts.
+
+**How to apply:** when adding/editing any route that changes peça quantity or sells/returns
+a part, mirror the twin and, if it represents a sale, keep the `vendas` list in sync.
+Money `valor` is stored as pt-BR text ("220,00", "1.234,56"); parse with a helper that
+strips thousands dots and converts comma→dot, never a bare `parseFloat`.

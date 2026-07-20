@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: orders
+    description: Service order operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,123 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /orders:
+    get:
+      operationId: listOrders
+      tags: [orders]
+      summary: List service orders
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+          description: Search by model, service, or line
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [aguardando, "em andamento", concluido, problema, encerrado]
+          description: Filter by status
+      responses:
+        "200":
+          description: List of orders
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Order"
+    post:
+      operationId: createOrder
+      tags: [orders]
+      summary: Create a new service order
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateOrderBody"
+      responses:
+        "201":
+          description: Created order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+
+  /orders/{id}:
+    get:
+      operationId: getOrder
+      tags: [orders]
+      summary: Get a single order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Single order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateOrderStatus
+      tags: [orders]
+      summary: Update order status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateOrderStatusBody"
+      responses:
+        "200":
+          description: Updated order
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Order"
+    delete:
+      operationId: deleteOrder
+      tags: [orders]
+      summary: Delete a service order
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted successfully
+        "404":
+          description: Not found
+
+  /orders/stats:
+    get:
+      operationId: getOrderStats
+      tags: [orders]
+      summary: Get order statistics
+      responses:
+        "200":
+          description: Order statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderStats"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +153,93 @@ components:
       required:
         - status
 
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+        codigo:
+          type: string
+        modelo:
+          type: string
+        linha:
+          type: string
+          enum: [xiaomi, samsung, motorola, ios]
+        servico:
+          type: string
+        valor:
+          type: string
+        tempo:
+          type: string
+        status:
+          type: string
+          enum: [aguardando, "em andamento", concluido, problema, encerrado]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - codigo
+        - modelo
+        - linha
+        - servico
+        - valor
+        - tempo
+        - status
+        - createdAt
+
+    CreateOrderBody:
+      type: object
+      properties:
+        modelo:
+          type: string
+        linha:
+          type: string
+          enum: [xiaomi, samsung, motorola, ios]
+        servico:
+          type: string
+        valor:
+          type: string
+        tempo:
+          type: string
+      required:
+        - modelo
+        - linha
+        - servico
+        - valor
+        - tempo
+
+    UpdateOrderStatusBody:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [aguardando, "em andamento", concluido, problema, encerrado]
+      required:
+        - status
+
+    OrderStats:
+      type: object
+      properties:
+        total:
+          type: integer
+        aguardando:
+          type: integer
+        emAndamento:
+          type: integer
+        concluido:
+          type: integer
+        problema:
+          type: integer
+        encerrado:
+          type: integer
+        comGarantia:
+          type: integer
+      required:
+        - total
+        - aguardando
+        - emAndamento
+        - concluido
+        - problema
+        - encerrado
+        - comGarantia
