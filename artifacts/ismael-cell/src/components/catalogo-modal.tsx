@@ -2020,17 +2020,45 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         )}
 
                         {/* Form adicionar serviço/item à conta */}
-                        {addItemContaId === c.conta.id && (
+                        {addItemContaId === c.conta.id && (() => {
+                          const sugestoes = itemDescricao.trim().length >= 2
+                            ? pecasTodas.filter((p) =>
+                                p.quantidade > 0 &&
+                                p.modelo.toLowerCase().includes(itemDescricao.toLowerCase().trim())
+                              ).slice(0, 6)
+                            : [];
+                          return (
                           <div className="bg-white border border-orange-200 rounded-lg p-2.5 space-y-2">
                             <div className="text-xs font-semibold text-orange-800">Adicionar serviço à conta de {c.conta.nome}</div>
-                            <Input
-                              type="text"
-                              placeholder="Serviço (ex: Remoção de conta Google)"
-                              value={itemDescricao}
-                              onChange={(e) => setItemDescricao(e.target.value)}
-                              className="h-9 text-sm"
-                              autoFocus
-                            />
+                            <div className="relative">
+                              <Input
+                                type="text"
+                                placeholder="Serviço (ex: Remoção de conta Google)"
+                                value={itemDescricao}
+                                onChange={(e) => setItemDescricao(e.target.value)}
+                                className="h-9 text-sm"
+                                autoFocus
+                              />
+                              {sugestoes.length > 0 && (
+                                <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-white border border-orange-200 rounded-lg shadow-lg overflow-hidden">
+                                  {sugestoes.map((p) => (
+                                    <button
+                                      key={p.id}
+                                      type="button"
+                                      className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-orange-100 last:border-0"
+                                      onMouseDown={(e) => {
+                                        e.preventDefault();
+                                        setItemDescricao(`${p.modelo} ${p.qualidade}`);
+                                        setItemValor(p.valor);
+                                      }}
+                                    >
+                                      <div className="text-xs font-semibold text-gray-800 truncate">{p.modelo}</div>
+                                      <div className="text-[10px] text-muted-foreground">{p.qualidade} · {p.quantidade} un. · {p.valor}</div>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                             <div className="flex gap-2">
                               <Input
                                 type="text"
@@ -2048,7 +2076,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                               </Button>
                             </div>
                           </div>
-                        )}
+                          );
+                        })()}
                         {!aberta && !isDeleting && (
                           <Button size="sm" variant="outline" className="w-full h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeletingContaId(c.conta.id)}>
                             <Trash2 className="w-3.5 h-3.5 mr-1.5" /> Apagar conta quitada
