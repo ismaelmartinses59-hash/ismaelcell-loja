@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
-import { Truck, Check, X, Trash2, PackageCheck, Clock, Undo2, AlertTriangle } from "lucide-react";
+import { Truck, Check, X, Trash2, PackageCheck, Clock, Undo2, AlertTriangle, HelpCircle } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -85,6 +85,15 @@ export function EncomendasTab({ open }: { open: boolean }) {
   const [cancelItemId, setCancelItemId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // "Sla" = chegada parcial (só 1 veio). Guarda qual item + etapa do fluxo.
+  type SlaStep = "escolha" | "reembolso-parcial" | "reembolso-total";
+  const [slaState, setSlaState] = useState<{
+    itemId: number;
+    encId: number;
+    faltante: number;
+    step: SlaStep;
+  } | null>(null);
+
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["encomendas"] });
     qc.invalidateQueries({ queryKey: ["pecas"] });
@@ -123,6 +132,41 @@ export function EncomendasTab({ open }: { open: boolean }) {
       toast({ title: "Item cancelado", description: `Reembolso em ${v.reembolsoForma}.` });
     },
     onError: () => toast({ title: "Erro ao cancelar", variant: "destructive" }),
+  });
+
+  // "Sla": registra 1 recebido + cancela o resto (quando faltante > 1).
+  const slaReceberCancelarMutation = useMutation({
+    mutationFn: async (payload: { encId: number; itemId: number; reembolsoForma: "dinheiro" | "pix" }) => {
+      await apiFetch(`/api/encomendas/${payload.encId}/receber`, {
+        method: "POST",
+        body: JSON.stringify({ recebimentos: [{ itemId: payload.itemId, qtd: 1 }] }),
+      });
+      await apiFetch(`/api/encomendas/${payload.encId}/itens/${payload.itemId}/cancelar`, {
+        method: "POST",
+        body: JSON.stringify({ reembolsoForma: payload.reembolsoForma }),
+      });
+    },
+    onSuccess: (_r, v) => {
+      invalidate();
+      setSlaState(null);
+      toast({ title: "Chegada parcial confirmada", description: `1 unidade entrou no estoque. Restante cancelado — reembolso em ${v.reembolsoForma}.` });
+    },
+    onError: () => toast({ title: "Erro ao registrar chegada parcial", variant: "destructive" }),
+  });
+
+  // "Sla": quando faltante = 1, só registra 1 (item fica totalmente recebido, sem reembolso).
+  const slaReceberMutation = useMutation({
+    mutationFn: (payload: { encId: number; itemId: number }) =>
+      apiFetch(`/api/encomendas/${payload.encId}/receber`, {
+        method: "POST",
+        body: JSON.stringify({ recebimentos: [{ itemId: payload.itemId, qtd: 1 }] }),
+      }),
+    onSuccess: () => {
+      invalidate();
+      setSlaState(null);
+      toast({ title: "Chegou! ✅", description: "1 unidade entrou no estoque." });
+    },
+    onError: () => toast({ title: "Erro ao confirmar chegada", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -257,41 +301,131 @@ export function EncomendasTab({ open }: { open: boolean }) {
                       </div>
                     )}
 
-                    {/* Cancelar item */}
-                    {!isReceiving && it.status === "aguardando" && (
-                      isCancelling ? (
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] text-muted-foreground">Reembolso:</span>
-                          <Button
-                            size="sm"
-                            className="h-7 flex-1 text-[11px] bg-emerald-600 hover:bg-emerald-700"
-                            disabled={cancelarMutation.isPending}
-                            onClick={() => cancelarMutation.mutate({ encomendaId: enc.id, itemId: it.id, reembolsoForma: "dinheiro" })}
+                    {/* Cancelar / Sla */}
+                    {!isReceiving && it.status === "aguardando" && (() => {
+                      const isSla = slaState?.itemId === it.id;
+
+                      // ── Fluxo "Sla": escolha inicial ────────────────────
+                      if (isSla && slaState!.step === "escolha") {
+                        return (
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] text-muted-foreground font-medium">O que chegou?</p>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                size="sm"
+                                className="h-7 flex-1 text-[11px] bg-amber-500 hover:bg-amber-600"
+                                onClick={() => {
+                                  if (faltante === 1) {
+                                    // Só 1 pedido e veio 1 → item completamente recebido
+                                    slaReceberMutation.mutate({ encId: enc.id, itemId: it.id });
+                                  } else {
+                                    setSlaState((s) => s ? { ...s, step: "reembolso-parcial" } : s);
+                                  }
+                                }}
+                                disabled={slaReceberMutation.isPending}
+                              >
+                                🟡 Veio só 1
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 flex-1 text-[11px] bg-red-500 hover:bg-red-600"
+                                onClick={() => setSlaState((s) => s ? { ...s, step: "reembolso-total" } : s)}
+                              >
+                                ❌ Não veio nenhuma
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setSlaState(null)}>
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── Fluxo "Sla": reembolso da diferença (veio 1, sobrou faltante-1) ──
+                      if (isSla && slaState!.step === "reembolso-parcial") {
+                        return (
+                          <div className="space-y-1.5">
+                            <p className="text-[10px] text-muted-foreground font-medium">
+                              1 entrou no estoque. Reembolso das {faltante - 1} restantes:
+                            </p>
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                size="sm"
+                                className="h-7 flex-1 text-[11px] bg-emerald-600 hover:bg-emerald-700"
+                                disabled={slaReceberCancelarMutation.isPending}
+                                onClick={() => slaReceberCancelarMutation.mutate({ encId: enc.id, itemId: it.id, reembolsoForma: "dinheiro" })}
+                              >
+                                💵 Dinheiro
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 flex-1 text-[11px] bg-blue-600 hover:bg-blue-700"
+                                disabled={slaReceberCancelarMutation.isPending}
+                                onClick={() => slaReceberCancelarMutation.mutate({ encId: enc.id, itemId: it.id, reembolsoForma: "pix" })}
+                              >
+                                📱 PIX
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setSlaState(null)}>
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── Fluxo "cancelar" normal (não veio nada) ─────────
+                      if (isCancelling || (isSla && slaState!.step === "reembolso-total")) {
+                        return (
+                          <div className="space-y-1.5">
+                            {isSla && (
+                              <p className="text-[10px] text-muted-foreground font-medium">Reembolso das {faltante} peças:</p>
+                            )}
+                            <div className="flex items-center gap-1.5">
+                              {!isSla && <span className="text-[10px] text-muted-foreground">Reembolso:</span>}
+                              <Button
+                                size="sm"
+                                className="h-7 flex-1 text-[11px] bg-emerald-600 hover:bg-emerald-700"
+                                disabled={cancelarMutation.isPending}
+                                onClick={() => cancelarMutation.mutate({ encomendaId: enc.id, itemId: it.id, reembolsoForma: "dinheiro" })}
+                              >
+                                💵 Dinheiro
+                              </Button>
+                              <Button
+                                size="sm"
+                                className="h-7 flex-1 text-[11px] bg-blue-600 hover:bg-blue-700"
+                                disabled={cancelarMutation.isPending}
+                                onClick={() => cancelarMutation.mutate({ encomendaId: enc.id, itemId: it.id, reembolsoForma: "pix" })}
+                              >
+                                📱 PIX
+                              </Button>
+                              <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => { setCancelItemId(null); setSlaState(null); }}>
+                                <X className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── Botões padrão ────────────────────────────────────
+                      return (
+                        <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => { setSlaState(null); setCancelItemId(it.id); }}
+                            className="text-[10px] text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
                           >
-                            💵 Dinheiro
-                          </Button>
-                          <Button
-                            size="sm"
-                            className="h-7 flex-1 text-[11px] bg-blue-600 hover:bg-blue-700"
-                            disabled={cancelarMutation.isPending}
-                            onClick={() => cancelarMutation.mutate({ encomendaId: enc.id, itemId: it.id, reembolsoForma: "pix" })}
+                            <Undo2 className="w-3 h-3" /> Cancelar (não veio)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setCancelItemId(null); setSlaState({ itemId: it.id, encId: enc.id, faltante, step: "escolha" }); }}
+                            className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1"
                           >
-                            📱 PIX
-                          </Button>
-                          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setCancelItemId(null)}>
-                            <X className="w-3.5 h-3.5" />
-                          </Button>
+                            <HelpCircle className="w-3 h-3" /> Veio parte
+                          </button>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => setCancelItemId(it.id)}
-                          className="text-[10px] text-red-500 hover:text-red-700 font-medium flex items-center gap-1"
-                        >
-                          <Undo2 className="w-3 h-3" /> Cancelar (não veio)
-                        </button>
-                      )
-                    )}
+                      );
+                    })()}
                   </div>
                 );
               })}
