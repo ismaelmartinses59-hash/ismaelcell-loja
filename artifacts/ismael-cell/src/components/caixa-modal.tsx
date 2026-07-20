@@ -1103,6 +1103,15 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         locale: ptBR,
                       })}
                       {m.modelo ? ` · ${m.modelo}` : ""}
+                      {m.formaPagamento ? ` · ${
+                        m.formaPagamento === "pix" ? "PIX"
+                        : m.formaPagamento === "dinheiro" ? "Dinheiro"
+                        : m.formaPagamento === "debito" ? "Débito"
+                        : m.formaPagamento === "credito_1x" ? "Créd 1x"
+                        : m.formaPagamento === "credito_2x" ? "Créd 2x"
+                        : m.formaPagamento === "credito_3x" ? "Créd 3x"
+                        : m.formaPagamento
+                      }` : ""}
                     </p>
                   </div>
                   <span
