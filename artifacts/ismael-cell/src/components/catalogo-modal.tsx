@@ -871,6 +871,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [servTipo, setServTipo] = useState<"cliente" | "lojista">("cliente");
   const [servDescricao, setServDescricao] = useState("");
   const [servValor, setServValor] = useState("");
+    // Peça do estoque vinculada ao novo serviço fiado (dá baixa ao lançar)
+    const [servPecaSel, setServPecaSel] = useState<Peca | null>(null);
 
   // Peças state
   const [search, setSearch] = useState("");
@@ -1250,7 +1252,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const novoServicoMutation = useMutation({
     mutationFn: (data: { nome: string; tipo: string; descricao: string; valor: string }) =>
       apiFetch("/api/contas-receber/novo-servico", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => { invalidateContas(); setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); toast({ title: "📒 Serviço fiado registrado!" }); },
+    onSuccess: () => { invalidateContas(); setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServPecaSel(null); toast({ title: "📒 Serviço fiado registrado!" }); },
     onError: () => toast({ title: "Erro ao registrar serviço", variant: "destructive" }),
   });
   const totalAReceber = contas.reduce((a, c) => a + (c.saldo > 0 ? c.saldo : 0), 0);
@@ -1266,6 +1268,24 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     !contaExataServ && servNome.trim().length >= 2
       ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === servTipo && nomeSimilar(servNome, c.conta.nome))
       : undefined;
+
+    // Sugestões de peças do estoque ao digitar o serviço (ex: "tela do g24" acha "TELA G24")
+    const normPecaBusca = (t: string) =>
+      t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    const servPecasBase = servTipo === "cliente" ? pecasClienteAll : pecasLojistaAll;
+    const servPecaSugestoes = (() => {
+      if (servPecaSel) return [];
+      const q = normPecaBusca(servDescricao);
+      if (q.length < 2) return [];
+      const palavras = q.split(" ").filter((w) => w.length >= 2 && !["do", "da", "de"].includes(w));
+      if (palavras.length === 0) return [];
+      return servPecasBase
+        .filter((p) => {
+          const m = normPecaBusca(`${p.modelo} ${p.qualidade}`);
+          return palavras.every((w) => m.includes(w));
+        })
+        .slice(0, 5);
+    })();
 
   // Mesmas sugestões para o fluxo de venda FIADO de peça
   const fiadoNomeNorm = normNome(fiadoNome);
@@ -1829,12 +1849,42 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       💡 Já existe <b>{contaSugeridaServ.conta.nome}</b> devendo {fmtBRL(contaSugeridaServ.saldo)}. Toque para usar essa conta e juntar tudo numa nota só.
                     </button>
                   )}
-                  <Input
-                    placeholder="Serviço (ex: Remoção de conta Google)"
-                    value={servDescricao}
-                    onChange={(e) => setServDescricao(e.target.value)}
-                    className="h-9 text-sm"
-                  />
+                  <div className="relative">
+                      <Input
+                        placeholder="Serviço ou peça (ex: Tela G24)"
+                        value={servDescricao}
+                        onChange={(e) => { setServDescricao(e.target.value); setServPecaSel(null); }}
+                        className="h-9 text-sm"
+                      />
+                      {servPecaSugestoes.length > 0 && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                          {servPecaSugestoes.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              disabled={p.quantidade === 0}
+                              onClick={() => {
+                                setServPecaSel(p);
+                                setServDescricao(`${p.modelo} (${p.qualidade})`);
+                                setServValor(p.valor);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between gap-2 disabled:opacity-50"
+                            >
+                              <span className="text-xs font-medium">{p.modelo} <span className="text-muted-foreground">({p.qualidade})</span></span>
+                              <span className={`text-[11px] font-semibold shrink-0 ${p.quantidade === 0 ? "text-red-500" : "text-emerald-600"}`}>
+                                {p.quantidade === 0 ? "Esgotado" : `${p.quantidade} no estoque`}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    {servPecaSel && (
+                      <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-2 text-[11px] text-emerald-800 flex items-center justify-between gap-2">
+                        <span>📦 Peça do estoque: <b>{servPecaSel.modelo}</b> — vai dar baixa de 1 un. (restam {servPecaSel.quantidade})</span>
+                        <button type="button" className="text-emerald-700 underline shrink-0" onClick={() => { setServPecaSel(null); setServDescricao(""); setServValor(""); }}>tirar</button>
+                      </div>
+                    )}
                   <Input
                     type="text"
                     inputMode="decimal"
@@ -1846,10 +1896,19 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   <Button
                     size="sm"
                     className="w-full h-9 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold"
-                    disabled={!servNome.trim() || !servDescricao.trim() || !servValor.trim() || novoServicoMutation.isPending}
-                    onClick={() => novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim() })}
+                    disabled={!servNome.trim() || !servDescricao.trim() || !servValor.trim() || novoServicoMutation.isPending || venderMutation.isPending}
+                    onClick={() => {
+                        if (servPecaSel) {
+                          venderMutation.mutate(
+                            { id: servPecaSel.id, fiado: true, nomeDevedor: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipoDevedor: servTipo },
+                            { onSuccess: () => { setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServPecaSel(null); } },
+                          );
+                        } else {
+                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim() });
+                        }
+                      }}
                   >
-                    <Check className="w-4 h-4 mr-1.5" /> {novoServicoMutation.isPending ? "Salvando..." : "Lançar no A Receber"}
+                    <Check className="w-4 h-4 mr-1.5" /> {novoServicoMutation.isPending || venderMutation.isPending ? "Salvando..." : "Lançar no A Receber"}
                   </Button>
                 </div>
               )}
