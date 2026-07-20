@@ -15,6 +15,7 @@ export const contasReceberItensTable = pgTable("contas_receber_itens", {
   modelo: text("modelo").notNull(),
   qualidade: text("qualidade").notNull(),
   valor: text("valor").notNull(),
+  formaPagamento: text("forma_pagamento"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
