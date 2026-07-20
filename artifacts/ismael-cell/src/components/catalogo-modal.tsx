@@ -2021,8 +2021,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
 
                         {/* Form adicionar serviço/item à conta */}
                         {addItemContaId === c.conta.id && (() => {
+                          const pecasDoTipo = c.conta.tipo === "lojista" ? pecasLojistaAll : pecasClienteAll;
                           const sugestoes = itemDescricao.trim().length >= 2
-                            ? pecasTodas.filter((p) =>
+                            ? pecasDoTipo.filter((p) =>
                                 p.quantidade > 0 &&
                                 p.modelo.toLowerCase().includes(itemDescricao.toLowerCase().trim())
                               ).slice(0, 6)
