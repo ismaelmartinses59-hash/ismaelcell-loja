@@ -1091,7 +1091,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })),
             }),
           });
-          queryClient.invalidateQueries({ queryKey: ["encomendas"] });
+          qc.invalidateQueries({ queryKey: ["encomendas"] });
           setImportOpen(false);
           setImportRows([]);
           toast({ title: "🚚 Encomenda criada!", description: `${rows.length} ${rows.length === 1 ? "peça" : "peças"} na aba A Caminho. Confirme quando chegar.` });
@@ -1157,7 +1157,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             ],
         }),
       }),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["encomendas"] }); setShowAdd(false); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["encomendas"] }); setShowAdd(false); },
     onError: (err: unknown) => { const msg = err instanceof Error ? err.message : "Tente novamente."; toast({ title: "Erro ao criar encomenda", description: msg, variant: "destructive" }); },
   });
 
