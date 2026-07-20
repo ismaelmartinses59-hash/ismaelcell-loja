@@ -53,15 +53,18 @@ interface VendasResumo {
   quantidade: number;
 }
 
-function apiFetch(path: string, opts?: RequestInit) {
-  return fetch(`${BASE}${path}`, {
+async function apiFetch(path: string, opts?: RequestInit) {
+  const r = await fetch(`${BASE}${path}`, {
     ...opts,
     headers: { "Content-Type": "application/json", ...(opts?.headers ?? {}) },
-  }).then((r) => {
-    if (!r.ok) throw new Error(`Erro ${r.status}`);
-    if (r.status === 204) return null;
-    return r.json();
   });
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try { const j = await r.json(); msg = j?.error ?? j?.message ?? msg; } catch {}
+    throw new Error(msg);
+  }
+  if (r.status === 204) return null;
+  return r.json();
 }
 
 // Parse pt-BR money text ("1.234,56" → 1234.56) robustly, matching the backend.
@@ -1117,8 +1120,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         ? `${criados} nova(s) + ${somados} somada(s) ao estoque que já existia.`
         : `${criados} peças adicionadas nos dois setores.`;
       toast({ title: "Peças cadastradas!", description: desc });
-    } catch {
-      toast({ title: "Erro ao cadastrar", description: "Nada foi salvo, tente novamente.", variant: "destructive" });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Tente novamente.";
+      toast({ title: "Erro ao cadastrar", description: msg, variant: "destructive" });
     } finally {
       setImportSaving(false);
     }
@@ -1154,7 +1158,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         }),
       }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["encomendas"] }); setShowAdd(false); },
-    onError: () => { toast({ title: "Erro ao criar encomenda", variant: "destructive" }); },
+    onError: (err: unknown) => { const msg = err instanceof Error ? err.message : "Tente novamente."; toast({ title: "Erro ao criar encomenda", description: msg, variant: "destructive" }); },
   });
 
   const handleAddSubmit = (data: PecaSavePayload) => {
