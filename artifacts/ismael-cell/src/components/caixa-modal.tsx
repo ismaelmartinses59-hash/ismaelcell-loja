@@ -249,7 +249,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
 
   const { data: pecas = [] } = useQuery<Peca[]>({
     queryKey: ["caixa-pecas"],
-    enabled: open && tipo === "entrada" && vincularPeca,
+    enabled: open && tipo === "entrada",
     queryFn: async () => {
       const [loj, cli] = await Promise.all([
         fetch(`${BASE}/api/pecas?setor=lojista`).then((r) => (r.ok ? r.json() : [])),
@@ -279,6 +279,23 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
       )
       .slice(0, 6);
   }, [modeloBusca, pecas]);
+
+    // Sugestões de peças ao digitar o MODELO direto no campo Motivo (ex: "G24")
+    const motivoSugestoes = useMemo(() => {
+      if (pecaSel) return [];
+      const norm = (t: string) =>
+        t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+      const q = norm(motivo);
+      if (q.length < 2) return [];
+      const palavras = q.split(" ").filter((w) => w.length >= 2 && !["do", "da", "de", "conta", "troca", "tela"].includes(w));
+      if (palavras.length === 0) return [];
+      return pecas
+        .filter((p) => {
+          const m = norm(`${p.modelo} ${p.qualidade}`);
+          return palavras.every((w) => m.includes(w));
+        })
+        .slice(0, 5);
+    }, [motivo, pecaSel, pecas]);
 
   const [abrirValor, setAbrirValor] = useState("");
   const [sessaoBusy, setSessaoBusy] = useState(false);
@@ -868,11 +885,40 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               <label className="text-xs font-medium text-muted-foreground">
                 Motivo *
               </label>
-              <Input
-                placeholder="Ex: conta INSS"
-                value={motivo}
-                onChange={(e) => setMotivo(e.target.value)}
-              />
+              <div className="relative">
+                  <Input
+                    placeholder="Ex: conta INSS ou G24"
+                    value={motivo}
+                    onChange={(e) => setMotivo(e.target.value)}
+                  />
+                  {tipo === "entrada" && motivoSugestoes.length > 0 && (
+                    <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                      {motivoSugestoes.map((p) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          disabled={p.quantidade === 0}
+                          onClick={() => {
+                            setVincularPeca(true);
+                            setPecaSel(p);
+                            setModeloBusca(`${p.modelo} — ${p.qualidade}`);
+                            setMotivo(`Troca de tela (${p.modelo})`);
+                            if (!valor) setValor(p.valor);
+                          }}
+                          className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2 disabled:opacity-50"
+                        >
+                          <span className="text-xs">
+                            <span className="font-medium">{p.modelo}</span>
+                            <span className="text-muted-foreground"> — {p.qualidade}</span>
+                          </span>
+                          <span className={`text-[11px] font-semibold shrink-0 ${p.quantidade === 0 ? "text-red-500" : "text-emerald-600"}`}>
+                            {p.quantidade === 0 ? "Esgotado" : `${p.quantidade} no estoque`}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
             </div>
           </div>
 
