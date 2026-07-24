@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -868,6 +868,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setItemDescricao("");
       setItemValor("");
       setItemForma("fiado");
+      setMistoSplits([]);
+      setMistoForma("dinheiro");
+      setMistoValor("");
       setShowNovoServico(false);
       setServNome("");
       setServDescricao("");
@@ -877,7 +880,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
-  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista">("choose");
+  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista" | "misto">("choose");
+  const [mistoSplits, setMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
+  const [mistoForma, setMistoForma] = useState<string>("dinheiro");
+  const [mistoValor, setMistoValor] = useState<string>("");
   const [pagandoContaId, setPagandoContaId] = useState<number | null>(null);
   const [pagamentoValor, setPagamentoValor] = useState("");
   const [pagamentoForma, setPagamentoForma] = useState<FormaPagamento>("dinheiro");
@@ -1229,7 +1235,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao devolver", variant: "destructive" }),
   });
   const venderMutation = useMutation({
-    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; formaPagamento?: string }) =>
+    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }> }) =>
       apiFetch(`/api/pecas/${args.id}/vender`, {
         method: "POST",
         body: JSON.stringify({
@@ -1237,6 +1243,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           nomeDevedor: args.nomeDevedor ?? "",
           tipoDevedor: args.tipoDevedor ?? "cliente",
           formaPagamento: args.formaPagamento ?? "dinheiro",
+          splits: args.splits ?? null,
         }),
       }),
     onSuccess: (peca: Peca, vars) => {
@@ -1246,11 +1253,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       if (vars.fiado) invalidateContas();
       const tipoLabel = vars.fiado
         ? `📒 Fiado p/ ${vars.nomeDevedor}`
-        : vars.formaPagamento === "pix"
-          ? "✅ Vendida no PIX"
-          : vars.formaPagamento && vars.formaPagamento !== "dinheiro"
-            ? `💳 Vendida no ${LABELS_FORMA[vars.formaPagamento as FormaPagamento]}`
-            : "✅ Vendida à vista";
+        : vars.splits
+          ? "✅ Vendida (Misto)"
+          : vars.formaPagamento === "pix"
+            ? "✅ Vendida no PIX"
+            : vars.formaPagamento && vars.formaPagamento !== "dinheiro"
+              ? `💳 Vendida no ${LABELS_FORMA[vars.formaPagamento as FormaPagamento]}`
+              : "✅ Vendida à vista";
       if (peca.quantidade === 0) {
         toast({ title: `${tipoLabel} — Estoque esgotado.`, description: `${peca.modelo}` });
       } else {
@@ -1259,6 +1268,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setVenderDialogPeca(null);
       setFiadoNome("");
       setFiadoStep("choose");
+      setMistoSplits([]);
+      setMistoForma("dinheiro");
+      setMistoValor("");
     },
     onError: () => toast({ title: "Erro ao registrar venda", variant: "destructive" }),
   });
@@ -1267,7 +1279,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   interface ContaResumo {
     conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
     itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; createdAt: string }>;
-    pagamentos: Array<{ id: number; valor: string; createdAt: string }>;
+    pagamentos: Array<{ id: number; valor: string; formaPagamento: string | null; createdAt: string }>;
     totalItens: number;
     totalPago: number;
     saldo: number;
@@ -2234,11 +2246,23 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <div className="space-y-1">
                               {c.pagamentos.map((p) => {
                                 const dia = new Date(p.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                const hora = new Date(p.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                const pagFormaLabel = p.formaPagamento
+                                  ? p.formaPagamento === "pix" ? "PIX"
+                                  : p.formaPagamento === "dinheiro" ? "Dinheiro"
+                                  : p.formaPagamento === "debito" ? "Débito"
+                                  : p.formaPagamento === "credito_1x" ? "Créd 1x"
+                                  : p.formaPagamento === "credito_2x" ? "Créd 2x"
+                                  : p.formaPagamento === "credito_3x" ? "Créd 3x"
+                                  : p.formaPagamento
+                                  : null;
                                 const isDel = deletingPagamentoId === p.id;
                                 return (
                                   <div key={p.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : "bg-green-50 border border-green-100"}`}>
                                     <DollarSign className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                                    <div className="flex-1 text-[10px] text-muted-foreground">{dia}</div>
+                                    <div className="flex-1 text-[10px] text-muted-foreground">
+                                      {dia} às {hora}{pagFormaLabel ? <span className="font-semibold text-green-700"> · {pagFormaLabel}</span> : ""}
+                                    </div>
                                     <div className="font-bold text-green-700">{formatMoney(p.valor)}</div>
                                     {isDel ? (
                                       <div className="flex gap-0.5">
@@ -2331,7 +2355,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               </div>
 
               {fiadoStep === "choose" && (
-                <div className="grid grid-cols-3 gap-2 pt-1">
+                <div className="grid grid-cols-2 gap-2 pt-1">
                   <Button
                     className="h-16 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
                     disabled={venderMutation.isPending}
@@ -2355,6 +2379,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   >
                     <HandCoins className="w-5 h-5" />
                     <span className="font-bold text-xs">FIADO</span>
+                  </Button>
+                  <Button
+                    className="h-16 flex flex-col items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-0.5"
+                    disabled={venderMutation.isPending}
+                    onClick={() => { setMistoSplits([]); setMistoForma("dinheiro"); setMistoValor(""); setFiadoStep("misto"); }}
+                  >
+                    <Shuffle className="w-5 h-5" />
+                    <span className="font-bold text-xs">MISTO</span>
                   </Button>
                 </div>
               )}
@@ -2442,6 +2474,93 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("cartao")} disabled={venderMutation.isPending}>Voltar</Button>
                 </div>
               )}
+
+              {fiadoStep === "misto" && (() => {
+                const pecaValorNum = parsePtBR(venderDialogPeca.valor);
+                const splitTotal = mistoSplits.reduce((s, sp) => s + parsePtBR(sp.valor), 0);
+                const restante = pecaValorNum - splitTotal;
+                const pronto = Math.abs(restante) < 0.01 && mistoSplits.length > 0;
+                const formaLabel = (f: string) =>
+                  f === "dinheiro" ? "Dinheiro" : f === "pix" ? "PIX" : f === "debito" ? "Débito"
+                  : f === "credito_1x" ? "Créd 1x" : f === "credito_2x" ? "Créd 2x" : f === "credito_3x" ? "Créd 3x" : f;
+                const addSplit = () => {
+                  const v = parsePtBR(mistoValor);
+                  if (v <= 0 || v > restante + 0.01) return;
+                  setMistoSplits(prev => [...prev, { forma: mistoForma, valor: mistoValor.trim() }]);
+                  setMistoValor("");
+                };
+                return (
+                <div className="space-y-2.5 pt-1">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-semibold text-muted-foreground">Pagamento misto</span>
+                    <span className="font-bold">{formatMoney(venderDialogPeca.valor)}</span>
+                  </div>
+
+                  {/* Splits adicionados */}
+                  {mistoSplits.length > 0 && (
+                    <div className="space-y-1">
+                      {mistoSplits.map((sp, i) => (
+                        <div key={i} className="flex items-center gap-2 px-2 py-1.5 bg-violet-50 border border-violet-200 rounded-lg text-xs">
+                          <span className="flex-1 font-semibold text-violet-800">{formaLabel(sp.forma)}</span>
+                          <span className="font-bold text-violet-700">{formatMoney(sp.valor)}</span>
+                          <button type="button" onClick={() => setMistoSplits(prev => prev.filter((_, j) => j !== i))}>
+                            <X className="w-3 h-3 text-red-400 hover:text-red-600" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Falta */}
+                  {!pronto && (
+                    <div className={`text-center text-xs font-semibold rounded-lg py-1.5 ${restante > 0 ? "bg-amber-50 text-amber-700" : "bg-red-50 text-red-700"}`}>
+                      {restante > 0 ? `Falta: ${formatMoney(String(restante.toFixed(2).replace(".", ",")))}` : `Excesso: ${formatMoney(String(Math.abs(restante).toFixed(2).replace(".", ",")))} — remova um split`}
+                    </div>
+                  )}
+                  {pronto && (
+                    <div className="text-center text-xs font-semibold rounded-lg py-1.5 bg-green-50 text-green-700">✓ Total confere — pode confirmar!</div>
+                  )}
+
+                  {/* Adicionar split */}
+                  {!pronto && (
+                    <div className="space-y-1.5 rounded-xl border border-violet-100 bg-violet-50/50 p-2">
+                      <div className="grid grid-cols-3 gap-1">
+                        {(["dinheiro","pix","debito","credito_1x","credito_2x","credito_3x"] as const).map((f) => (
+                          <button key={f} type="button" onClick={() => setMistoForma(f)}
+                            className={`rounded-lg border py-1 text-[10px] font-semibold transition-colors ${mistoForma === f ? "bg-violet-600 text-white border-violet-600" : "text-gray-600 border-gray-200 hover:border-violet-400 bg-white"}`}>
+                            {formaLabel(f)}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="flex gap-1.5">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder={restante > 0 ? `Valor (máx ${restante.toFixed(2).replace(".",",")})`  : "0,00"}
+                          value={mistoValor}
+                          onChange={(e) => setMistoValor(e.target.value)}
+                          onKeyDown={(e) => e.key === "Enter" && addSplit()}
+                          className="flex-1 h-8 rounded-lg border border-gray-200 px-2 text-xs outline-none focus:border-violet-400"
+                        />
+                        <Button size="sm" className="h-8 bg-violet-600 hover:bg-violet-700 text-white px-3" onClick={addSplit}
+                          disabled={!mistoValor.trim() || parsePtBR(mistoValor) <= 0}>
+                          <Plus className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  <Button
+                    className="w-full bg-violet-600 hover:bg-violet-700 text-white font-bold"
+                    disabled={!pronto || venderMutation.isPending}
+                    onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, splits: mistoSplits })}
+                  >
+                    {venderMutation.isPending ? "..." : "Confirmar Venda Mista"}
+                  </Button>
+                  <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
+                </div>
+                );
+              })()}
 
               {fiadoStep === "fiado" && (
                 <div className="space-y-2.5 pt-1">

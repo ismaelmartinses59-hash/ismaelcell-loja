@@ -376,6 +376,10 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   const tipoDevedor = req.body?.tipoDevedor === "lojista" ? "lojista" : "cliente";
   // Forma de pagamento da venda à vista (dinheiro, PIX ou cartão). Só vale quando NÃO é fiado.
   const forma = fiado ? null : normalizeForma(req.body?.formaPagamento);
+  // Splits de pagamento misto: [{ forma, valor }]
+  const rawSplits = req.body?.splits;
+  const splits: Array<{ forma: string; valor: string }> | null =
+    Array.isArray(rawSplits) && rawSplits.length > 0 ? rawSplits : null;
   if (fiado && !nomeDevedor) {
     res.status(400).json({ error: "Nome do devedor obrigatório no fiado" });
     return;
@@ -432,17 +436,36 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
     // caixa, vinculada à venda+peça, para que excluir a movimentação reverta
     // estoque e venda. Dinheiro e PIX têm taxa 0; cartão carrega a taxa.
     // Só o fiado NÃO gera entrada (vira conta a receber).
-    if (!fiado && forma) {
-      await tx.insert(caixaTable).values({
-        tipo: "entrada",
-        valor: atual.valor,
-        motivo: `Venda ${atual.modelo} (${LABELS[forma]})`,
-        pecaId: id,
-        vendaId: venda.id,
-        modelo: atual.modelo,
-        formaPagamento: forma,
-        taxaPercent: String(taxaFor(forma)),
-      });
+    if (!fiado) {
+      if (splits && splits.length > 0) {
+        // Pagamento misto: uma entrada no caixa por split
+        for (const split of splits) {
+          const splitForma = normalizeForma(split.forma);
+          if (splitForma) {
+            await tx.insert(caixaTable).values({
+              tipo: "entrada",
+              valor: split.valor,
+              motivo: `Venda ${atual.modelo} (Misto · ${LABELS[splitForma]})`,
+              pecaId: id,
+              vendaId: venda.id,
+              modelo: atual.modelo,
+              formaPagamento: splitForma,
+              taxaPercent: String(taxaFor(splitForma)),
+            });
+          }
+        }
+      } else if (forma) {
+        await tx.insert(caixaTable).values({
+          tipo: "entrada",
+          valor: atual.valor,
+          motivo: `Venda ${atual.modelo} (${LABELS[forma]})`,
+          pecaId: id,
+          vendaId: venda.id,
+          modelo: atual.modelo,
+          formaPagamento: forma,
+          taxaPercent: String(taxaFor(forma)),
+        });
+      }
     }
     return p;
   });

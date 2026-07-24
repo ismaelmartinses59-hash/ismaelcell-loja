@@ -101,6 +101,9 @@ async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     )
   `));
+  await runStatement("contas_receber_pagamentos.forma_pagamento", db.execute(sql`
+    ALTER TABLE contas_receber_pagamentos ADD COLUMN IF NOT EXISTS forma_pagamento text
+  `));
   await runStatement("caixa", db.execute(sql`
     CREATE TABLE IF NOT EXISTS caixa (
       id serial PRIMARY KEY,
