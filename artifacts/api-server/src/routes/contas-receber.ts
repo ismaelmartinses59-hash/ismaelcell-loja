@@ -124,7 +124,7 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
   await db.transaction(async (tx) => {
     const [pag] = await tx
       .insert(contasReceberPagamentosTable)
-      .values({ contaId: id, valor })
+      .values({ contaId: id, valor, formaPagamento: forma })
       .returning();
     await tx.insert(caixaTable).values({
       tipo: "entrada",

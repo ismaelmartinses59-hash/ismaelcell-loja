@@ -1279,7 +1279,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   interface ContaResumo {
     conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
     itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; createdAt: string }>;
-    pagamentos: Array<{ id: number; valor: string; createdAt: string }>;
+    pagamentos: Array<{ id: number; valor: string; formaPagamento: string | null; createdAt: string }>;
     totalItens: number;
     totalPago: number;
     saldo: number;
@@ -2246,11 +2246,23 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <div className="space-y-1">
                               {c.pagamentos.map((p) => {
                                 const dia = new Date(p.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                                const hora = new Date(p.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+                                const pagFormaLabel = p.formaPagamento
+                                  ? p.formaPagamento === "pix" ? "PIX"
+                                  : p.formaPagamento === "dinheiro" ? "Dinheiro"
+                                  : p.formaPagamento === "debito" ? "Débito"
+                                  : p.formaPagamento === "credito_1x" ? "Créd 1x"
+                                  : p.formaPagamento === "credito_2x" ? "Créd 2x"
+                                  : p.formaPagamento === "credito_3x" ? "Créd 3x"
+                                  : p.formaPagamento
+                                  : null;
                                 const isDel = deletingPagamentoId === p.id;
                                 return (
                                   <div key={p.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : "bg-green-50 border border-green-100"}`}>
                                     <DollarSign className="w-3.5 h-3.5 text-green-600 shrink-0" />
-                                    <div className="flex-1 text-[10px] text-muted-foreground">{dia}</div>
+                                    <div className="flex-1 text-[10px] text-muted-foreground">
+                                      {dia} às {hora}{pagFormaLabel ? <span className="font-semibold text-green-700"> · {pagFormaLabel}</span> : ""}
+                                    </div>
                                     <div className="font-bold text-green-700">{formatMoney(p.valor)}</div>
                                     {isDel ? (
                                       <div className="flex gap-0.5">
