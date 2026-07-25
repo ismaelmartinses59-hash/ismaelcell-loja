@@ -72,12 +72,15 @@ router.get("/caixa", async (req, res): Promise<void> => {
       sql`(${caixaTable.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date = ${dia}::date`,
     );
   } else if (inicio && fim) {
-    const inicioDate = new Date(`${inicio}T00:00:00`);
-    const fimDate = new Date(`${fim}T00:00:00`);
-    fimDate.setDate(fimDate.getDate() + 1);
-    if (!isNaN(inicioDate.getTime()) && !isNaN(fimDate.getTime())) {
-      conditions.push(gte(caixaTable.createdAt, inicioDate));
-      conditions.push(lt(caixaTable.createdAt, fimDate));
+    // Filtra pelo dia SP (mesmo padrão do filtro ?dia=), para não
+    // capturar registros do dia vizinho por causa do offset UTC-3.
+    if (/^\d{4}-\d{2}-\d{2}$/.test(inicio) && /^\d{4}-\d{2}-\d{2}$/.test(fim)) {
+      conditions.push(
+        sql`(${caixaTable.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date >= ${inicio}::date`,
+      );
+      conditions.push(
+        sql`(${caixaTable.createdAt} AT TIME ZONE 'UTC' AT TIME ZONE 'America/Sao_Paulo')::date <= ${fim}::date`,
+      );
     }
   } else if (periodo === "semana") {
     conditions.push(gte(caixaTable.createdAt, inicioSemanaSP()));
