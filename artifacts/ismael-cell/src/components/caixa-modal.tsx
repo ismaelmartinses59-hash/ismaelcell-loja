@@ -513,7 +513,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         }
       }}
     >
-      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <Wallet className="w-5 h-5 text-emerald-600" />
@@ -526,8 +526,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         {/* Caixa de hoje */}
         {hoje?.sessao ? (
           <div className="rounded-xl border bg-emerald-50/60 p-3">
-            <div className="flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-800">
+            <div className="flex items-start justify-between gap-2">
+              <span className="flex items-center gap-1.5 text-sm font-bold text-emerald-800 shrink-0">
                 {hoje.sessao.status === "fechado" ? (
                   <Moon className="h-4 w-4 text-indigo-500" />
                 ) : (
@@ -537,14 +537,14 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   ? "Caixa fechado hoje"
                   : "Caixa aberto hoje"}
               </span>
-              <span className="text-right text-[11px] font-medium text-slate-600">
+              <span className="text-right text-[10px] font-medium text-slate-500 leading-tight">
                 Abriu {formatHoraSP(hoje.sessao.aberturaAt)}
                 {hoje.sessao.fechamentoAt
-                  ? ` · Fechou ${formatHoraSP(hoje.sessao.fechamentoAt)}`
+                  ? <><br />Fechou {formatHoraSP(hoje.sessao.fechamentoAt)}</>
                   : ""}
               </span>
             </div>
-            <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
               <div className="flex justify-between">
                 <span className="text-slate-500">Troco inicial</span>
                 <span className="font-medium text-slate-700">
@@ -802,33 +802,33 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         )}
 
         {/* Saldo + totais */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="rounded-xl bg-green-50 border border-green-200 p-3 text-center">
-            <p className="text-[10px] text-green-700 uppercase tracking-wider font-medium">
+        <div className="grid grid-cols-3 gap-1.5">
+          <div className="rounded-xl bg-green-50 border border-green-200 p-2 text-center">
+            <p className="text-[9px] text-green-700 uppercase tracking-wide font-medium">
               Entradas
             </p>
-            <p className="text-sm font-bold text-green-700">
+            <p className="text-xs font-bold text-green-700 leading-tight">
               {formatMoney(totalEntradas)}
             </p>
           </div>
-          <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-center">
-            <p className="text-[10px] text-red-700 uppercase tracking-wider font-medium">
+          <div className="rounded-xl bg-red-50 border border-red-200 p-2 text-center">
+            <p className="text-[9px] text-red-700 uppercase tracking-wide font-medium">
               Saídas
             </p>
-            <p className="text-sm font-bold text-red-700">
+            <p className="text-xs font-bold text-red-700 leading-tight">
               {formatMoney(totalSaidas)}
             </p>
           </div>
           <div
-            className={`rounded-xl border p-3 text-center ${saldo >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}
+            className={`rounded-xl border p-2 text-center ${saldo >= 0 ? "bg-emerald-50 border-emerald-200" : "bg-amber-50 border-amber-200"}`}
           >
             <p
-              className={`text-[10px] uppercase tracking-wider font-medium ${saldo >= 0 ? "text-emerald-700" : "text-amber-700"}`}
+              className={`text-[9px] uppercase tracking-wide font-medium ${saldo >= 0 ? "text-emerald-700" : "text-amber-700"}`}
             >
               Saldo
             </p>
             <p
-              className={`text-sm font-bold ${saldo >= 0 ? "text-emerald-700" : "text-amber-700"}`}
+              className={`text-xs font-bold leading-tight ${saldo >= 0 ? "text-emerald-700" : "text-amber-700"}`}
             >
               {formatMoney(saldo)}
             </p>
@@ -1269,7 +1269,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         open={open && !!diaDetalhe}
         onOpenChange={(v) => !v && setDiaDetalhe(null)}
       >
-        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
               <History className="h-5 w-5 text-indigo-600" />
