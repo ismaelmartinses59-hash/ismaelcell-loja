@@ -184,7 +184,7 @@ export function CaixaSessaoGuard() {
 
   const { data: pecas = [] } = useQuery<Peca[]>({
     queryKey: ["caixa-sessao-pecas"],
-    enabled: mode === "fechar" && showVenda && vVincular,
+    enabled: mode === "fechar" && showVenda,
     queryFn: async () => {
       const [lojista, cliente] = await Promise.all([
         fetch(`${BASE}/api/pecas?setor=lojista`).then((r) => (r.ok ? r.json() : [])),
@@ -231,6 +231,23 @@ export function CaixaSessaoGuard() {
       )
       .slice(0, 6);
   }, [vBusca, pecas]);
+
+  // Sugestões de peças ao digitar o motivo (ex: "Note 60")
+  const vMotivoSugestoes = useMemo(() => {
+    if (vPecaSel) return [];
+    const norm = (t: string) =>
+      t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+    const q = norm(vMotivo);
+    if (q.length < 2) return [];
+    const palavras = q.split(" ").filter((w) => w.length >= 2 && !["do", "da", "de", "conta", "troca", "tela", "venda"].includes(w));
+    if (palavras.length === 0) return [];
+    return pecas
+      .filter((p) => {
+        const m = norm(`${p.modelo} ${p.qualidade}`);
+        return palavras.every((w) => m.includes(w));
+      })
+      .slice(0, 5);
+  }, [vMotivo, vPecaSel, pecas]);
 
   const selecionarVPeca = (p: Peca) => {
     setVPecaSel(p);
@@ -859,12 +876,41 @@ export function CaixaSessaoGuard() {
                     <label className="text-xs font-medium text-slate-600">
                       O que foi? (motivo)
                     </label>
-                    <Input
-                      placeholder="Ex: conta Google, carregador..."
-                      value={vMotivo}
-                      onChange={(e) => setVMotivo(e.target.value)}
-                      className="mt-1 h-11"
-                    />
+                    <div className="relative mt-1">
+                      <Input
+                        placeholder="Ex: Note 60, carregador..."
+                        value={vMotivo}
+                        onChange={(e) => setVMotivo(e.target.value)}
+                        className="h-11"
+                      />
+                      {vMotivoSugestoes.length > 0 && (
+                        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                          {vMotivoSugestoes.map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              disabled={p.quantidade === 0}
+                              onClick={() => {
+                                setVVincular(true);
+                                setVPecaSel(p);
+                                setVBusca(`${p.modelo} — ${p.qualidade}`);
+                                setVMotivo(`Venda de ${p.modelo}`);
+                                if (!vValor) setVValor(p.valor);
+                              }}
+                              className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2 disabled:opacity-50"
+                            >
+                              <span className="text-xs">
+                                <span className="font-medium">{p.modelo}</span>
+                                <span className="text-muted-foreground"> — {p.qualidade}</span>
+                              </span>
+                              <span className={`text-[11px] font-semibold shrink-0 ${p.quantidade === 0 ? "text-red-500" : "text-emerald-600"}`}>
+                                {p.quantidade === 0 ? "Esgotado" : `${p.quantidade} no estoque`}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <Button
