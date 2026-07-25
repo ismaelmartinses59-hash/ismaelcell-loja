@@ -513,7 +513,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         }
       }}
     >
-      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl">
             <Wallet className="w-5 h-5 text-emerald-600" />
@@ -755,23 +755,25 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         )}
 
         {/* Resumo do período */}
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="space-y-1.5">
           <span className="text-xs font-semibold text-slate-500">
             Resumo do período:
           </span>
-          {PERIODOS.map((p) => (
-            <button
-              key={p.key}
-              onClick={() => setPeriodo(p.key)}
-              className={`px-3 py-1 rounded-full text-xs font-medium transition-colors border ${
-                periodo === p.key
-                  ? "bg-primary text-primary-foreground border-primary"
-                  : "bg-muted text-muted-foreground border-transparent hover:border-muted-foreground"
-              }`}
-            >
-              {p.label}
-            </button>
-          ))}
+          <div className="flex flex-wrap gap-1.5">
+            {PERIODOS.map((p) => (
+              <button
+                key={p.key}
+                onClick={() => setPeriodo(p.key)}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors border ${
+                  periodo === p.key
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-muted text-muted-foreground border-transparent hover:border-muted-foreground"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {periodo === "custom" && (
@@ -1267,7 +1269,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         open={open && !!diaDetalhe}
         onOpenChange={(v) => !v && setDiaDetalhe(null)}
       >
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto overflow-x-hidden">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-lg">
               <History className="h-5 w-5 text-indigo-600" />
