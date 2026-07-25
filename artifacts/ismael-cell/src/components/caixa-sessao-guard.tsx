@@ -121,6 +121,7 @@ export function CaixaSessaoGuard() {
   const [vSubmitting, setVSubmitting] = useState(false);
     // Fiado: anota a venda na conta de um devedor em vez de entrar no caixa
     const [vFiado, setVFiado] = useState(false);
+    const [vAV, setVAV] = useState(false);
     const [vDevedor, setVDevedor] = useState("");
     const [vContaSel, setVContaSel] = useState<ContaResumo | null>(null);
     const [avSubmitting, setAvSubmitting] = useState(false);
@@ -205,7 +206,7 @@ export function CaixaSessaoGuard() {
 
     const { data: contasFiado = [] } = useQuery<ContaResumo[]>({
       queryKey: ["caixa-sessao-contas"],
-      enabled: mode === "fechar" && showVenda && vFiado,
+      enabled: mode === "fechar" && showVenda && (vFiado || vAV),
       queryFn: async () => {
         const r = await fetch(`${BASE}/api/contas-receber`);
         return r.ok ? r.json() : [];
@@ -264,6 +265,7 @@ export function CaixaSessaoGuard() {
     setVBusca("");
     setVPecaSel(null);
       setVFiado(false);
+      setVAV(false);
       setVDevedor("");
       setVContaSel(null);
       setShowVenda(false);
@@ -274,7 +276,7 @@ export function CaixaSessaoGuard() {
       toast({ title: "Informe o valor", variant: "destructive" });
       return;
     }
-    if (!vMotivo.trim()) {
+    if (!vAV && !vMotivo.trim()) {
       toast({ title: "Diga o que foi (motivo)", variant: "destructive" });
       return;
     }
@@ -282,8 +284,13 @@ export function CaixaSessaoGuard() {
         toast({ title: "Selecione a peça na lista", variant: "destructive" });
         return;
       }
-      if (vFiado && !vDevedor.trim()) {
+      if ((vFiado || vAV) && !vDevedor.trim()) {
         toast({ title: "Diga o nome do devedor", variant: "destructive" });
+        return;
+      }
+      if (vAV) {
+        // Modo AV: recebe diretamente (entra no caixa + abate dívida)
+        await receberAV();
         return;
       }
       setVSubmitting(true);
@@ -700,27 +707,49 @@ export function CaixaSessaoGuard() {
                         );
                       })}
                     </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                          setVFiado(!vFiado);
-                          if (vFiado) {
-                            setVDevedor("");
-                            setVContaSel(null);
-                          }
-                        }}
-                        className={`mt-1 flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-colors ${
-                          vFiado
-                            ? "bg-amber-500 text-white border-amber-500"
-                            : "bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
-                        }`}
-                      >
-                        📒 Fiado (anotar na conta de alguém)
-                      </button>
+                    <div className="mt-1 grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !vFiado;
+                            setVFiado(next);
+                            setVAV(false);
+                            if (!next) { setVDevedor(""); setVContaSel(null); }
+                          }}
+                          className={`flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-colors ${
+                            vFiado
+                              ? "bg-amber-500 text-white border-amber-500"
+                              : "bg-white text-amber-700 border-amber-300 hover:bg-amber-50"
+                          }`}
+                        >
+                          📒 Fiado (anotar)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = !vAV;
+                            setVAV(next);
+                            setVFiado(false);
+                            if (!next) { setVDevedor(""); setVContaSel(null); }
+                          }}
+                          className={`flex w-full items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-bold transition-colors ${
+                            vAV
+                              ? "bg-emerald-600 text-white border-emerald-600"
+                              : "bg-white text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                          }`}
+                        >
+                          💰 AV (abater dívida)
+                        </button>
+                      </div>
                       {vFiado && (
                         <p className="mt-1 text-[11px] text-amber-700">
                           Fiado NÃO entra no caixa agora — fica anotado na conta
                           do devedor.
+                        </p>
+                      )}
+                      {vAV && (
+                        <p className="mt-1 text-[11px] text-emerald-700">
+                          AV entra no caixa AGORA e abate da dívida do devedor.
                         </p>
                       )}
                       {!vFiado && vForma === "pix" && (
@@ -812,7 +841,7 @@ export function CaixaSessaoGuard() {
                     </div>
                   )}
 
-                  {vFiado && (
+                  {(vFiado || vAV) && (
                       <div className="relative">
                         <label className="text-xs font-medium text-slate-600">
                           Nome do devedor
@@ -847,32 +876,24 @@ export function CaixaSessaoGuard() {
                           </div>
                         )}
                         {vContaSel && (
-                          <div className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 space-y-1.5">
-                            <p className="text-xs text-amber-800">
+                          <div className={`mt-1.5 rounded-lg border px-3 py-2 ${vAV ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+                            <p className={`text-xs ${vAV ? "text-emerald-800" : "text-amber-800"}`}>
                               <b>{vContaSel.conta.nome}</b> —{" "}
                               {vContaSel.saldo > 0 ? (
                                 <>dívida atual: <b>{formatMoney(vContaSel.saldo)}</b></>
                               ) : (
-                                "conta em dia"
+                                "conta em dia ✅"
                               )}
                             </p>
-                            {vContaSel.saldo > 0 && (
-                              <button
-                                type="button"
-                                onClick={receberAV}
-                                disabled={avSubmitting}
-                                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
-                              >
-                                {avSubmitting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                                💰 Receber AV (abater da dívida) — usa o valor acima
-                              </button>
+                            {vAV && vContaSel.saldo <= 0 && (
+                              <p className="mt-1 text-[11px] text-slate-500">Sem dívida pendente.</p>
                             )}
                           </div>
                         )}
                       </div>
                     )}
   
-                  <div>
+                  {!vAV && <div>
                     <label className="text-xs font-medium text-slate-600">
                       O que foi? (motivo)
                     </label>
@@ -911,7 +932,7 @@ export function CaixaSessaoGuard() {
                         </div>
                       )}
                     </div>
-                  </div>
+                  </div>}
 
                   <Button
                     className="h-11 w-full font-bold"
@@ -921,7 +942,7 @@ export function CaixaSessaoGuard() {
                     {vSubmitting && (
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     )}
-                    {vFiado ? "Anotar fiado na conta" : "Registrar entrada"}
+                    {vAV ? "💰 Registrar AV" : vFiado ? "Anotar fiado na conta" : "Registrar entrada"}
                   </Button>
                 </div>
               )}
