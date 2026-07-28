@@ -242,19 +242,43 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
     if (precoSugerido !== null) setValor(String(precoSugerido).replace(".", ","));
   };
 
-  // Bloqueia cadastro de modelo já existente (igual ou muito parecido).
-    const normalizar = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
-    const modeloNorm = normalizar(modelo);
-    const modeloOriginalNorm = normalizar(initial?.modelo ?? "");
-    const duplicada = modeloNorm.length >= 3
-      ? existentes.find((p) => {
-          if (initial?.id && p.id === initial.id) return false;
-          const pn = normalizar(p.modelo);
-          // Ao editar, ignora a própria peça e sua gêmea (mesmo modelo original).
-          if (modeloOriginalNorm && pn === modeloOriginalNorm) return false;
-          return pn === modeloNorm || pn.includes(modeloNorm) || modeloNorm.includes(pn);
-        })
-      : undefined;
+  // Bloqueia cadastro de modelo+qualidade duplicado.
+  const normalizar = (s: string) => s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  const modeloNorm = normalizar(modelo);
+  const modeloOriginalNorm = normalizar(initial?.modelo ?? "");
+  const isEdicao = !!initial?.id;
+
+  // Duplicado real = mesmo modelo E mesma qualidade já cadastrados
+  const duplicada = modeloNorm.length >= 3 && qualidade
+    ? existentes.find((p) => {
+        if (isEdicao && p.id === initial!.id) return false;
+        if (modeloOriginalNorm && normalizar(p.modelo) === modeloOriginalNorm) return false;
+        return normalizar(p.modelo) === modeloNorm && p.qualidade === qualidade;
+      })
+    : undefined;
+
+  // Aviso suave = mesmo modelo mas qualidade diferente (não bloqueia)
+  const mesmoModeloOutraQual = modeloNorm.length >= 3 && !duplicada
+    ? existentes.filter((p) => {
+        if (isEdicao && p.id === initial!.id) return false;
+        if (modeloOriginalNorm && normalizar(p.modelo) === modeloOriginalNorm) return false;
+        return normalizar(p.modelo) === modeloNorm;
+      })
+    : [];
+
+  // Sugestões de modelos existentes para o autocomplete
+  const modeloSugestoes = modeloNorm.length >= 2 && !duplicada
+    ? [...new Map(
+        existentes
+          .filter((p) => {
+            if (isEdicao && p.id === initial!.id) return false;
+            const pn = normalizar(p.modelo);
+            return pn.includes(modeloNorm) || modeloNorm.includes(pn.slice(0, modeloNorm.length));
+          })
+          .map((p) => [normalizar(p.modelo), p])
+      ).values()]
+      .slice(0, 5)
+    : [];
 
     const submit = () => {
       if (duplicada) return;
@@ -280,17 +304,44 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Modelo / Peça</label>
-          <Input
-            placeholder="Ex: Tela A03 Core, Bateria S21..."
-            value={modelo}
-            onChange={(e) => { setModelo(e.target.value); setQualidade(""); }}
-          />
+          <div className="relative">
+            <Input
+              placeholder="Ex: Tela A03 Core, Bateria S21..."
+              value={modelo}
+              onChange={(e) => { setModelo(e.target.value); setQualidade(""); }}
+            />
+            {modeloSugestoes.length > 0 && (
+              <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                {modeloSugestoes.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => { setModelo(p.modelo); setQualidade(""); }}
+                    className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2"
+                  >
+                    <span className="text-xs font-medium">{p.modelo}</span>
+                    <span className="text-[11px] text-muted-foreground shrink-0">{p.qualidade} · {p.quantidade} un.</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           {duplicada && (
             <div className="mt-1.5 flex items-start gap-1.5 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
               <ShieldAlert className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
               <p className="text-xs text-red-700">
-                <b>Esse modelo já está cadastrado:</b> {duplicada.modelo} — {duplicada.qualidade} ({duplicada.quantidade} un.).
-                Não é possível cadastrar de novo. Edite a peça existente ou mude a quantidade dela.
+                <b>Esse modelo + qualidade já existe:</b> {duplicada.modelo} — {duplicada.qualidade} ({duplicada.quantidade} un.).
+                Edite a peça existente ou escolha uma qualidade diferente.
+              </p>
+            </div>
+          )}
+          {mesmoModeloOutraQual.length > 0 && (
+            <div className="mt-1.5 flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2">
+              <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <p className="text-xs text-amber-700">
+                <b>Já existe este modelo no estoque</b> com outra qualidade:{" "}
+                {mesmoModeloOutraQual.map((p) => `${p.qualidade} (${p.quantidade} un.)`).join(", ")}.
+                Você pode cadastrar uma qualidade diferente.
               </p>
             </div>
           )}
