@@ -211,19 +211,23 @@ interface PecaFormProps {
   onSave: (data: PecaSavePayload) => void;
   onCancel: () => void;
   loading: boolean;
-  // Quando true, mostra o seletor dinheiro/pix e o custo vira saída no caixa.
   pedirInvestimento?: boolean;
-  // Peças já cadastradas (cliente + lojista) p/ bloquear modelo duplicado.
   existentes?: Peca[];
+  onAdicionarEstoque?: (peca: Peca, qtd: number, custo: string, forma: string) => void;
+  adicionandoEstoque?: boolean;
 }
 
-function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, existentes = [] }: PecaFormProps) {
+function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, existentes = [], onAdicionarEstoque, adicionandoEstoque }: PecaFormProps) {
   const [modelo, setModelo] = useState(initial?.modelo ?? "");
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
   const [valor, setValor] = useState(initial?.valor ?? "");
   const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 1));
   const [custo, setCusto] = useState(initial?.valorCusto ?? "");
   const [precoSugerido, setPrecoSugerido] = useState<number | null>(null);
+  // Estado para modo "adicionar ao estoque de existente"
+  const [adQtd, setAdQtd] = useState("1");
+  const [adCusto, setAdCusto] = useState("");
+  const [adForma, setAdForma] = useState<FormaInvest>("dinheiro");
   const [formaInvest, setFormaInvest] = useState<FormaInvest>("dinheiro");
   const [destino, setDestino] = useState<Destino>("estoque");
   const [fornecedor, setFornecedor] = useState("");
@@ -316,7 +320,7 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
                   <button
                     key={p.id}
                     type="button"
-                    onClick={() => { setModelo(p.modelo); setQualidade(""); }}
+                    onClick={() => { setModelo(p.modelo); setQualidade(p.qualidade); }}
                     className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2"
                   >
                     <span className="text-xs font-medium">{p.modelo}</span>
@@ -327,12 +331,46 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
             )}
           </div>
           {duplicada && (
-            <div className="mt-1.5 flex items-start gap-1.5 bg-red-50 border border-red-200 rounded-lg px-2.5 py-2">
-              <ShieldAlert className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
-              <p className="text-xs text-red-700">
-                <b>Esse modelo + qualidade já existe:</b> {duplicada.modelo} — {duplicada.qualidade} ({duplicada.quantidade} un.).
-                Edite a peça existente ou escolha uma qualidade diferente.
-              </p>
+            <div className="mt-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 space-y-2">
+              <div className="flex items-center gap-1.5">
+                <Package className="w-4 h-4 text-blue-600 shrink-0" />
+                <p className="text-xs text-blue-800 font-semibold">
+                  {duplicada.modelo} — {duplicada.qualidade} já tem {duplicada.quantidade} un. em estoque.
+                </p>
+              </div>
+              <p className="text-[11px] text-blue-700">Adicionar mais unidades a essa peça:</p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-[10px] font-medium text-blue-700">Qtd a adicionar</label>
+                  <Input type="number" min={1} value={adQtd} onChange={(e) => setAdQtd(e.target.value)} className="h-8 text-sm mt-0.5" />
+                </div>
+                <div>
+                  <label className="text-[10px] font-medium text-blue-700">Custo unit. (R$)</label>
+                  <Input inputMode="decimal" placeholder="Ex: 60,00" value={adCusto} onChange={(e) => setAdCusto(e.target.value)} className="h-8 text-sm mt-0.5" />
+                </div>
+              </div>
+              {adCusto.trim() && (
+                <div>
+                  <label className="text-[10px] font-medium text-blue-700 mb-1 block">Paguei em</label>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(["dinheiro", "pix"] as FormaInvest[]).map((f) => (
+                      <button key={f} type="button" onClick={() => setAdForma(f)}
+                        className={`flex items-center justify-center gap-1 rounded-lg border py-1 text-xs font-semibold transition-colors ${adForma === f ? "bg-blue-600 text-white border-blue-600" : "bg-white text-blue-700 border-blue-300 hover:bg-blue-50"}`}>
+                        {f === "dinheiro" ? "💵 Dinheiro" : "📲 PIX"}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-blue-600 mt-1">Vai lançar o custo como saída no caixa.</p>
+                </div>
+              )}
+              <button
+                type="button"
+                disabled={adicionandoEstoque}
+                onClick={() => onAdicionarEstoque?.(duplicada, parseInt(adQtd) || 1, adCusto.trim(), adCusto.trim() ? adForma : "")}
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-blue-600 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-60"
+              >
+                {adicionandoEstoque ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Salvando...</> : <>📦 Adicionar {adQtd || 1} un. ao estoque</>}
+              </button>
             </div>
           )}
           {mesmoModeloOutraQual.length > 0 && (
@@ -1264,6 +1302,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onSuccess: () => { invalidatePecas(); setEditingId(null); toast({ title: "Peça atualizada!" }); },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
+  const adicionarEstoqueMutation = useMutation({
+    mutationFn: ({ id, quantidade, valorCusto, formaInvestimento }: { id: number; quantidade: number; valorCusto: string; formaInvestimento: string }) =>
+      apiFetch(`/api/pecas/${id}/adicionar-estoque`, { method: "POST", body: JSON.stringify({ quantidade, valorCusto, formaInvestimento }) }),
+    onSuccess: (_, vars) => {
+      invalidatePecas();
+      setShowAdd(false);
+      toast({ title: `+${vars.quantidade} un. adicionada${vars.quantidade > 1 ? "s" : ""} ao estoque! 📦` });
+    },
+    onError: () => toast({ title: "Erro ao adicionar estoque", variant: "destructive" }),
+  });
   const deletePecaMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/pecas/${id}`, { method: "DELETE" }),
     onSuccess: () => { invalidatePecas(); setDeletingId(null); toast({ title: "Peça removida" }); },
@@ -1653,6 +1701,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     onCancel={() => { setShowAdd(false); setPreviewData(null); }}
                     loading={addMutation.isPending || savingTwin}
                     pedirInvestimento
+                    adicionandoEstoque={adicionarEstoqueMutation.isPending}
+                    onAdicionarEstoque={(peca, qtd, custo, forma) =>
+                      adicionarEstoqueMutation.mutate({ id: peca.id, quantidade: qtd, valorCusto: custo, formaInvestimento: forma })
+                    }
                   />
                 )}
                 {!search.trim() && lowStock.length === 0 && (
