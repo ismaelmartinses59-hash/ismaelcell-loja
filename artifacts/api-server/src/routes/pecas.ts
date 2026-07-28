@@ -312,6 +312,57 @@ router.post("/pecas/twin", async (req, res): Promise<void> => {
   }
 });
 
+// Adiciona unidades a uma peça já existente + lança saída no caixa (opcional).
+router.post("/pecas/:id/adicionar-estoque", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const { quantidade, valorCusto, formaInvestimento } = req.body;
+  const qtd = parseInt(quantidade) || 0;
+  if (qtd < 1) { res.status(400).json({ error: "Quantidade deve ser ≥ 1" }); return; }
+  try {
+    const peca = await db.transaction(async (tx) => {
+      const [atual] = await tx.select().from(pecasTable).where(eq(pecasTable.id, id));
+      if (!atual) return null;
+      const novaQtd = atual.quantidade + qtd;
+      const [atualizada] = await tx
+        .update(pecasTable)
+        .set({ quantidade: novaQtd, ...(valorCusto != null ? { valorCusto: String(valorCusto) } : {}) })
+        .where(eq(pecasTable.id, id))
+        .returning();
+      // Espelha na gêmea (twin invariant)
+      await tx
+        .update(pecasTable)
+        .set({ quantidade: novaQtd })
+        .where(
+          and(
+            eq(pecasTable.setor, atual.setor === "cliente" ? "lojista" : "cliente"),
+            sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
+            sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
+          ),
+        );
+      // Saída no caixa se o usuário escolheu forma de investimento
+      const forma = formaInvestimentoSaida(formaInvestimento);
+      const totalCusto = parseValorBR(valorCusto) * qtd;
+      if (forma && totalCusto > 0) {
+        await tx.insert(caixaTable).values({
+          tipo: "saida",
+          valor: valorParaTexto(totalCusto),
+          motivo: `Compra de estoque: ${atual.modelo}${qtd > 1 ? ` (${qtd}x)` : ""}`,
+          formaPagamento: forma,
+          taxaPercent: "0",
+          modelo: atual.modelo,
+        });
+      }
+      return atualizada;
+    });
+    if (!peca) { res.status(404).json({ error: "Peça não encontrada" }); return; }
+    res.json(peca);
+  } catch (err) {
+    req.log.error({ err }, "adicionar-estoque failed");
+    res.status(500).json({ error: "Falha ao adicionar estoque (nada foi salvo)" });
+  }
+});
+
 router.put("/pecas/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
