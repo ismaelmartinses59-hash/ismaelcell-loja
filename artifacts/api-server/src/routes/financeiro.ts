@@ -42,6 +42,29 @@ const CHAVES = {
   custoAgua: { key: "fin_custo_agua", def: "0" },
 } as const;
 
+/** Conta personalizada criada pelo usuário (além das 4 fixas). */
+export interface ContaExtra {
+  id: string;
+  nome: string;
+  valor: string;   // texto pt-BR, ex: "1.133,33"
+  pagoEm: string | null; // "YYYY-MM-DD" ou null
+}
+
+const EXTRAS_KEY = "fin_contas_extras";
+
+async function lerExtras(): Promise<ContaExtra[]> {
+  const [row] = await db.select().from(appConfigTable).where(eq(appConfigTable.key, EXTRAS_KEY));
+  if (!row?.value) return [];
+  try { return JSON.parse(row.value) as ContaExtra[]; } catch { return []; }
+}
+
+async function salvarExtras(tx: typeof db | Parameters<Parameters<typeof db.transaction>[0]>[0], extras: ContaExtra[]) {
+  const value = JSON.stringify(extras);
+  await (tx as typeof db).insert(appConfigTable)
+    .values({ key: EXTRAS_KEY, value })
+    .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+}
+
 type ConfigCampo = keyof typeof CHAVES;
 
 async function lerConfig(): Promise<Record<ConfigCampo, string>> {
@@ -125,18 +148,20 @@ async function contarDiasDesde(
 router.get("/financeiro/config", async (_req, res): Promise<void> => {
   const cfg = await lerConfig();
   const pagos = await lerPagos();
-  const contas = {} as Record<
-    Conta,
-    { pagoEm: string | null; diasContados: number }
-  >;
+  const contas = {} as Record<Conta, { pagoEm: string | null; diasContados: number }>;
   for (const c of CONTAS) {
     const { anchor, exclusive } = ancoraDaConta(pagos[c]);
-    contas[c] = {
-      pagoEm: pagos[c],
-      diasContados: await contarDiasDesde(anchor, exclusive),
-    };
+    contas[c] = { pagoEm: pagos[c], diasContados: await contarDiasDesde(anchor, exclusive) };
   }
-  res.json({ ...cfg, contas });
+  // Contas extras: enriquecer com diasContados (mesmo cálculo)
+  const extras = await lerExtras();
+  const extrasComDias = await Promise.all(
+    extras.map(async (e) => {
+      const { anchor, exclusive } = ancoraDaConta(e.pagoEm);
+      return { ...e, diasContados: await contarDiasDesde(anchor, exclusive) };
+    }),
+  );
+  res.json({ ...cfg, contas, contasExtras: extrasComDias });
 });
 
 /** Marca (ou desmarca) uma conta fixa como paga hoje; ao marcar, o acúmulo reinicia. */
@@ -150,14 +175,24 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
   await db
     .insert(appConfigTable)
     .values({ key: PAGO_KEYS[conta], value })
-    .onConflictDoUpdate({
-      target: appConfigTable.key,
-      set: { value, updatedAt: new Date() },
-    });
+    .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
   res.json({ ok: true });
 });
 
-/** Atualiza um ou mais valores editáveis. */
+/** Marca (ou desmarca) uma conta EXTRA como paga hoje. */
+router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
+  const id = String(req.body?.id ?? "");
+  const pago: boolean = req.body?.pago !== false;
+  if (!id) { res.status(400).json({ error: "id obrigatório" }); return; }
+  const extras = await lerExtras();
+  const idx = extras.findIndex((e) => e.id === id);
+  if (idx === -1) { res.status(404).json({ error: "conta não encontrada" }); return; }
+  extras[idx] = { ...extras[idx], pagoEm: pago ? hojeSP() : null };
+  await salvarExtras(db, extras);
+  res.json({ ok: true });
+});
+
+/** Atualiza um ou mais valores editáveis (campos + contasExtras). */
 router.put("/financeiro/config", async (req, res): Promise<void> => {
   const body = req.body ?? {};
   const updates: { key: string; value: string }[] = [];
@@ -166,19 +201,24 @@ router.put("/financeiro/config", async (req, res): Promise<void> => {
     if (raw === undefined || raw === null) continue;
     updates.push({ key: CHAVES[campo].key, value: String(raw).trim() });
   }
-  if (updates.length) {
-    await db.transaction(async (tx) => {
-      for (const u of updates) {
-        await tx
-          .insert(appConfigTable)
-          .values({ key: u.key, value: u.value })
-          .onConflictDoUpdate({
-            target: appConfigTable.key,
-            set: { value: u.value, updatedAt: new Date() },
-          });
-      }
-    });
-  }
+  await db.transaction(async (tx) => {
+    for (const u of updates) {
+      await tx
+        .insert(appConfigTable)
+        .values({ key: u.key, value: u.value })
+        .onConflictDoUpdate({ target: appConfigTable.key, set: { value: u.value, updatedAt: new Date() } });
+    }
+    // Salva contas extras se enviadas
+    if (Array.isArray(body.contasExtras)) {
+      const extras: ContaExtra[] = (body.contasExtras as ContaExtra[]).map((e) => ({
+        id: String(e.id ?? "").trim(),
+        nome: String(e.nome ?? "").trim(),
+        valor: String(e.valor ?? "").trim(),
+        pagoEm: e.pagoEm && DATA_RE.test(e.pagoEm) ? e.pagoEm : null,
+      })).filter((e) => e.id && e.nome);
+      await salvarExtras(tx, extras);
+    }
+  });
   res.json(await lerConfig());
 });
 
@@ -235,7 +275,17 @@ router.get("/financeiro/divisao", async (req, res): Promise<void> => {
   const despEnergia = energiaMes / dias;
   const despInternet = internetMes / dias;
   const despAgua = aguaMes / dias;
-  const despesasTotal = despAluguel + despEnergia + despInternet + despAgua;
+
+  // Contas extras do usuário
+  const extras = await lerExtras();
+  const despesasExtras = extras.map((e) => ({
+    id: e.id,
+    nome: e.nome,
+    valor: parseValor(e.valor) / dias,
+  }));
+  const totalExtras = despesasExtras.reduce((s, e) => s + e.valor, 0);
+
+  const despesasTotal = despAluguel + despEnergia + despInternet + despAgua + totalExtras;
   const reinvestimento = lucroBruto - salario - despesasTotal;
 
   res.json({
@@ -251,6 +301,7 @@ router.get("/financeiro/divisao", async (req, res): Promise<void> => {
       energia: despEnergia,
       internet: despInternet,
       agua: despAgua,
+      extras: despesasExtras,
       total: despesasTotal,
     },
     reinvestimento,
