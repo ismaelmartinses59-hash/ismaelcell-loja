@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,15 +9,14 @@ import {
   ChevronUp,
   Settings2,
   Loader2,
+  Plus,
+  Trash2,
 } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 function fmt(v: number): string {
-  return v.toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 /** Converte um valor digitado em pt-BR ("1.234,56" ou "400") para número. */
@@ -26,6 +25,18 @@ function parseNum(raw: string): number {
   if (s.includes(",")) s = s.replace(/\./g, "").replace(",", ".");
   const n = parseFloat(s);
   return isNaN(n) ? 0 : n;
+}
+
+function nanoid() {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+interface ContaExtra {
+  id: string;
+  nome: string;
+  valor: string;
+  pagoEm: string | null;
+  diasContados?: number;
 }
 
 interface Divisao {
@@ -41,19 +52,14 @@ interface Divisao {
     energia: number;
     internet: number;
     agua: number;
+    extras: { id: string; nome: string; valor: number }[];
     total: number;
   };
   reinvestimento: number;
 }
 
 /** Painel pequeno com a divisão do lucro de um dia. */
-export function DivisaoLucro({
-  dia,
-  enabled = true,
-}: {
-  dia: string;
-  enabled?: boolean;
-}) {
+export function DivisaoLucro({ dia, enabled = true }: { dia: string; enabled?: boolean }) {
   const { data, isLoading, isError } = useQuery<Divisao>({
     queryKey: ["financeiro-divisao", dia],
     enabled: enabled && !!dia,
@@ -89,11 +95,7 @@ export function DivisaoLucro({
 
       <div className="mt-2 space-y-1 text-[11px]">
         <Linha label="Entrou (vendas + serviços)" valor={fmt(data.receita)} />
-        <Linha
-          label="Custo das peças"
-          valor={`− ${fmt(data.custo)}`}
-          cor="text-red-600"
-        />
+        <Linha label="Custo das peças" valor={`− ${fmt(data.custo)}`} cor="text-red-600" />
         <div className="flex justify-between border-t border-emerald-200 pt-1 font-bold text-slate-800">
           <span>Lucro do dia</span>
           <span>{fmt(data.lucroBruto)}</span>
@@ -115,15 +117,16 @@ export function DivisaoLucro({
           <span className="text-slate-600">
             Despesas do dia (÷ {data.diasTrabalhados} dias)
           </span>
-          <span className="font-semibold text-red-600">
-            − {fmt(data.despesas.total)}
-          </span>
+          <span className="font-semibold text-red-600">− {fmt(data.despesas.total)}</span>
         </div>
         <div className="space-y-0.5 px-2 text-[10px] text-slate-400">
           <Mini label="Aluguel" valor={data.despesas.aluguel} />
           <Mini label="Energia" valor={data.despesas.energia} />
           <Mini label="Internet" valor={data.despesas.internet} />
           <Mini label="Água" valor={data.despesas.agua} />
+          {data.despesas.extras?.map((e) => (
+            <Mini key={e.id} label={e.nome} valor={e.valor} />
+          ))}
         </div>
       </div>
 
@@ -138,15 +141,7 @@ export function DivisaoLucro({
   );
 }
 
-function Linha({
-  label,
-  valor,
-  cor,
-}: {
-  label: string;
-  valor: string;
-  cor?: string;
-}) {
+function Linha({ label, valor, cor }: { label: string; valor: string; cor?: string }) {
   return (
     <div className="flex justify-between">
       <span className="text-slate-500">{label}</span>
@@ -173,26 +168,24 @@ interface ConfigFin {
   custoAgua: string;
 }
 
-type Conta = "aluguel" | "energia" | "internet" | "agua";
+type ContaFixa = "aluguel" | "energia" | "internet" | "agua";
 interface ContaStatus {
-  /** Data do último pagamento ("YYYY-MM-DD") ou null se nunca pago. */
   pagoEm: string | null;
-  /** Dias que o caixa foi aberto desde o último pagamento (ou desde o dia 7). */
   diasContados: number;
 }
 
-/** Resposta do GET /financeiro/config: valores editáveis + status de cada conta fixa. */
-type ConfigFinResp = ConfigFin & { contas: Record<Conta, ContaStatus> };
+type ConfigFinResp = ConfigFin & {
+  contas: Record<ContaFixa, ContaStatus>;
+  contasExtras: (ContaExtra & { diasContados: number })[];
+};
 
-/** De qual conta cada campo de custo faz o acompanhamento de pagamento. */
-const CONTA_DE: Partial<Record<keyof ConfigFin, Conta>> = {
+const CONTA_DE: Partial<Record<keyof ConfigFin, ContaFixa>> = {
   custoAluguel: "aluguel",
   custoEnergia: "energia",
   custoInternet: "internet",
   custoAgua: "agua",
 };
 
-/** "2026-07-07" → "07/07". */
 function fmtDia(d: string): string {
   const [, m, dd] = d.split("-");
   return `${dd}/${m}`;
@@ -207,17 +200,17 @@ const CAMPOS: { campo: keyof ConfigFin; label: string; conta?: boolean }[] = [
   { campo: "custoAgua", label: "Água (valor do mês)", conta: true },
 ];
 
-/** Editor retrátil dos valores (salário %, dias, contas fixas). */
-export function ConfigFinanceiro({
-  defaultOpen = false,
-}: {
-  defaultOpen?: boolean;
-} = {}) {
+/** Editor retrátil dos valores (salário %, dias, contas fixas + personalizadas). */
+export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolean } = {}) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const [aberto, setAberto] = useState(defaultOpen);
   const [form, setForm] = useState<ConfigFin | null>(null);
+  const [extras, setExtras] = useState<ContaExtra[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const [pagandoConta, setPagandoConta] = useState<string | null>(null);
+  // track if user edited extras so we know to save them
+  const extrasEditados = useRef(false);
 
   const { data } = useQuery<ConfigFinResp>({
     queryKey: ["financeiro-config"],
@@ -229,10 +222,18 @@ export function ConfigFinanceiro({
     },
   });
 
-  const [pagandoConta, setPagandoConta] = useState<Conta | null>(null);
   const divisorDias = Math.max(1, parseNum(form?.diasTrabalhados ?? "0"));
 
-  const pagar = async (conta: Conta, pago: boolean) => {
+  // Sync form when data loads (first time only)
+  useEffect(() => {
+    if (data && !form) {
+      setForm(data);
+      setExtras(data.contasExtras ?? []);
+    }
+  }, [data, form]);
+
+  // ── Pagar conta fixa ──────────────────────────────────────────────────────
+  const pagarFixa = async (conta: ContaFixa, pago: boolean) => {
     setPagandoConta(conta);
     try {
       const r = await fetch(`${BASE}/api/financeiro/pagar`, {
@@ -250,20 +251,58 @@ export function ConfigFinanceiro({
     }
   };
 
-  useEffect(() => {
-    if (data && !form) setForm(data);
-  }, [data, form]);
+  // ── Pagar conta extra ─────────────────────────────────────────────────────
+  const pagarExtra = async (id: string, pago: boolean) => {
+    setPagandoConta(id);
+    try {
+      const r = await fetch(`${BASE}/api/financeiro/pagar-extra`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, pago }),
+      });
+      if (!r.ok) throw new Error("erro");
+      await qc.invalidateQueries({ queryKey: ["financeiro-config"] });
+      // reset form so it reloads fresh data
+      setForm(null);
+      toast({ title: pago ? "Marcado como pago!" : "Desmarcado" });
+    } catch {
+      toast({ title: "Não deu pra salvar", variant: "destructive" });
+    } finally {
+      setPagandoConta(null);
+    }
+  };
 
+  // ── Gerenciar extras ──────────────────────────────────────────────────────
+  const addExtra = () => {
+    extrasEditados.current = true;
+    setExtras((prev) => [...prev, { id: nanoid(), nome: "", valor: "", pagoEm: null }]);
+  };
+
+  const updateExtra = (id: string, field: "nome" | "valor", value: string) => {
+    extrasEditados.current = true;
+    setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const removeExtra = (id: string) => {
+    extrasEditados.current = true;
+    setExtras((prev) => prev.filter((e) => e.id !== id));
+  };
+
+  // ── Salvar ────────────────────────────────────────────────────────────────
   const salvar = async () => {
     if (!form) return;
     setSalvando(true);
     try {
+      const body: Record<string, unknown> = { ...form };
+      // Always send extras (even if unchanged) to avoid drift
+      body.contasExtras = extras.filter((e) => e.nome.trim());
       const r = await fetch(`${BASE}/api/financeiro/config`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
       if (!r.ok) throw new Error("erro ao salvar");
+      extrasEditados.current = false;
       await qc.invalidateQueries({ queryKey: ["financeiro-config"] });
       await qc.invalidateQueries({ queryKey: ["financeiro-divisao"] });
       toast({ title: "Valores salvos!" });
@@ -285,11 +324,7 @@ export function ConfigFinanceiro({
           <Settings2 className="h-4 w-4 text-slate-500" />
           Ajustar salário e contas fixas
         </span>
-        {aberto ? (
-          <ChevronUp className="h-4 w-4 text-slate-400" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-slate-400" />
-        )}
+        {aberto ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
       </button>
 
       {aberto && (
@@ -298,6 +333,7 @@ export function ConfigFinanceiro({
             <p className="text-center text-xs text-slate-400">Carregando...</p>
           ) : (
             <>
+              {/* ── Campos fixos (salário + 4 contas) ──────────────────── */}
               {CAMPOS.map(({ campo, label, conta }) => {
                 const contaKey = conta ? CONTA_DE[campo] : undefined;
                 const status = contaKey ? data?.contas?.[contaKey] : undefined;
@@ -308,17 +344,11 @@ export function ConfigFinanceiro({
                 const pagoEm = status?.pagoEm ?? null;
                 return (
                   <div key={campo} className="space-y-0.5">
-                    <label className="text-[11px] font-medium text-slate-600">
-                      {label}
-                    </label>
+                    <label className="text-[11px] font-medium text-slate-600">{label}</label>
                     <Input
                       inputMode="decimal"
                       value={form[campo]}
-                      onChange={(e) =>
-                        setForm((f) =>
-                          f ? { ...f, [campo]: e.target.value } : f,
-                        )
-                      }
+                      onChange={(e) => setForm((f) => f ? { ...f, [campo]: e.target.value } : f)}
                       className="h-9 text-sm"
                     />
                     {contaKey && (
@@ -326,14 +356,10 @@ export function ConfigFinanceiro({
                         <div className="min-w-0 space-y-0.5">
                           {valorMes > 0 && (
                             <p className="text-[10px] leading-tight text-emerald-700">
-                              {pagoEm
-                                ? "Guardando pro próximo: "
-                                : "Já guardado: "}
+                              {pagoEm ? "Guardando pro próximo: " : "Já guardado: "}
                               <b>{fmt(acum)}</b> de {fmt(valorMes)}
                               <span className="text-slate-400">
-                                {" "}
-                                · {fmt(porDia)}/dia × {diasContados}{" "}
-                                {diasContados === 1 ? "dia" : "dias"}
+                                {" "}· {fmt(porDia)}/dia × {diasContados} {diasContados === 1 ? "dia" : "dias"}
                               </span>
                             </p>
                           )}
@@ -348,32 +374,119 @@ export function ConfigFinanceiro({
                           size="sm"
                           variant={pagoEm ? "default" : "outline"}
                           disabled={pagandoConta === contaKey}
-                          onClick={() => pagar(contaKey, !pagoEm)}
+                          onClick={() => pagarFixa(contaKey, !pagoEm)}
                           className={
                             pagoEm
                               ? "h-7 shrink-0 bg-green-600 px-2.5 text-[11px] hover:bg-green-700"
                               : "h-7 shrink-0 border-green-300 px-2.5 text-[11px] text-green-700 hover:bg-green-50"
                           }
                         >
-                          {pagandoConta === contaKey
-                            ? "..."
-                            : pagoEm
-                              ? "Pago ✓"
-                              : "Já paguei"}
+                          {pagandoConta === contaKey ? "..." : pagoEm ? "Pago ✓" : "Já paguei"}
                         </Button>
                       </div>
                     )}
                   </div>
                 );
               })}
+
+              {/* ── Contas personalizadas ───────────────────────────────── */}
+              <div className="mt-3 space-y-2">
+                <div className="flex items-center justify-between">
+                  <p className="text-[11px] font-semibold text-slate-600">
+                    Outras contas do mês
+                  </p>
+                  <button
+                    type="button"
+                    onClick={addExtra}
+                    className="flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-medium text-slate-600 hover:bg-slate-50"
+                  >
+                    <Plus className="h-3 w-3" />
+                    Adicionar
+                  </button>
+                </div>
+
+                {extras.length === 0 && (
+                  <p className="text-[10px] leading-tight text-slate-400">
+                    Financiamento, gasolina, celular... adicione suas outras contas aqui.
+                  </p>
+                )}
+
+                {extras.map((e) => {
+                  const serverExtra = data?.contasExtras?.find((x) => x.id === e.id);
+                  const valorMes = parseNum(e.valor);
+                  const diasContados = serverExtra?.diasContados ?? 0;
+                  const porDia = valorMes / divisorDias;
+                  const acum = Math.min(valorMes, porDia * diasContados);
+                  const pagoEm = serverExtra?.pagoEm ?? null;
+
+                  return (
+                    <div key={e.id} className="space-y-1 rounded-lg border border-slate-200 bg-white p-2">
+                      <div className="flex gap-1.5">
+                        <Input
+                          placeholder="Nome da conta"
+                          value={e.nome}
+                          onChange={(ev) => updateExtra(e.id, "nome", ev.target.value)}
+                          className="h-8 flex-1 text-sm"
+                        />
+                        <Input
+                          inputMode="decimal"
+                          placeholder="R$ valor"
+                          value={e.valor}
+                          onChange={(ev) => updateExtra(e.id, "valor", ev.target.value)}
+                          className="h-8 w-24 text-sm"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeExtra(e.id)}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-red-100 text-red-400 hover:bg-red-50"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+
+                      {valorMes > 0 && serverExtra && (
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 space-y-0.5">
+                            <p className="text-[10px] leading-tight text-emerald-700">
+                              {pagoEm ? "Guardando pro próximo: " : "Já guardado: "}
+                              <b>{fmt(acum)}</b> de {fmt(valorMes)}
+                              <span className="text-slate-400">
+                                {" "}· {fmt(porDia)}/dia × {diasContados} {diasContados === 1 ? "dia" : "dias"}
+                              </span>
+                            </p>
+                            {pagoEm && (
+                              <p className="text-[10px] font-semibold text-green-600">
+                                Pago em {fmtDia(pagoEm)}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={pagoEm ? "default" : "outline"}
+                            disabled={pagandoConta === e.id}
+                            onClick={() => pagarExtra(e.id, !pagoEm)}
+                            className={
+                              pagoEm
+                                ? "h-7 shrink-0 bg-green-600 px-2.5 text-[11px] hover:bg-green-700"
+                                : "h-7 shrink-0 border-green-300 px-2.5 text-[11px] text-green-700 hover:bg-green-50"
+                            }
+                          >
+                            {pagandoConta === e.id ? "..." : pagoEm ? "Pago ✓" : "Já paguei"}
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
               <Button
                 onClick={salvar}
                 disabled={salvando}
                 className="mt-1 w-full bg-slate-700 hover:bg-slate-800"
               >
-                {salvando ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
+                {salvando ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {salvando ? "Salvando..." : "Salvar valores"}
               </Button>
               <p className="text-[10px] leading-tight text-slate-400">
