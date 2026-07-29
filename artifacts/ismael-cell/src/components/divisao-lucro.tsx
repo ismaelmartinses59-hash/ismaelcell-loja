@@ -413,14 +413,75 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
 
                 {extras.map((e) => {
                   const serverExtra = data?.contasExtras?.find((x) => x.id === e.id);
+                  // Conta já salva no servidor → renderiza igual às fixas (label + valor + já guardado)
+                  const jaSalva = !!serverExtra;
                   const valorMes = parseNum(e.valor);
                   const diasContados = serverExtra?.diasContados ?? 0;
                   const porDia = valorMes / divisorDias;
                   const acum = Math.min(valorMes, porDia * diasContados);
                   const pagoEm = serverExtra?.pagoEm ?? null;
 
+                  if (jaSalva) {
+                    return (
+                      <div key={e.id} className="space-y-0.5">
+                        <div className="flex items-center justify-between">
+                          <label className="text-[11px] font-medium text-slate-600">
+                            {e.nome} (valor do mês)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => removeExtra(e.id)}
+                            className="flex h-5 w-5 items-center justify-center rounded text-slate-300 hover:text-red-400"
+                            title="Remover conta"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
+                        </div>
+                        <Input
+                          inputMode="decimal"
+                          value={e.valor}
+                          onChange={(ev) => updateExtra(e.id, "valor", ev.target.value)}
+                          className="h-9 text-sm"
+                        />
+                        <div className="flex items-start justify-between gap-2 pt-0.5">
+                          <div className="min-w-0 space-y-0.5">
+                            {valorMes > 0 && (
+                              <p className="text-[10px] leading-tight text-emerald-700">
+                                {pagoEm ? "Guardando pro próximo: " : "Já guardado: "}
+                                <b>{fmt(acum)}</b> de {fmt(valorMes)}
+                                <span className="text-slate-400">
+                                  {" "}· {fmt(porDia)}/dia × {diasContados} {diasContados === 1 ? "dia" : "dias"}
+                                </span>
+                              </p>
+                            )}
+                            {pagoEm && (
+                              <p className="text-[10px] font-semibold text-green-600">
+                                Pago em {fmtDia(pagoEm)}
+                              </p>
+                            )}
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant={pagoEm ? "default" : "outline"}
+                            disabled={pagandoConta === e.id}
+                            onClick={() => pagarExtra(e.id, !pagoEm)}
+                            className={
+                              pagoEm
+                                ? "h-7 shrink-0 bg-green-600 px-2.5 text-[11px] hover:bg-green-700"
+                                : "h-7 shrink-0 border-green-300 px-2.5 text-[11px] text-green-700 hover:bg-green-50"
+                            }
+                          >
+                            {pagandoConta === e.id ? "..." : pagoEm ? "Pago ✓" : "Já paguei"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Conta nova (ainda não salva) → formulário de criação
                   return (
-                    <div key={e.id} className="space-y-1 rounded-lg border border-slate-200 bg-white p-2">
+                    <div key={e.id} className="space-y-1 rounded-lg border border-dashed border-slate-300 bg-white p-2">
                       <div className="flex gap-1.5">
                         <Input
                           placeholder="Nome da conta"
@@ -443,39 +504,7 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
                       </div>
-
-                      {valorMes > 0 && serverExtra && (
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0 space-y-0.5">
-                            <p className="text-[10px] leading-tight text-emerald-700">
-                              {pagoEm ? "Guardando pro próximo: " : "Já guardado: "}
-                              <b>{fmt(acum)}</b> de {fmt(valorMes)}
-                              <span className="text-slate-400">
-                                {" "}· {fmt(porDia)}/dia × {diasContados} {diasContados === 1 ? "dia" : "dias"}
-                              </span>
-                            </p>
-                            {pagoEm && (
-                              <p className="text-[10px] font-semibold text-green-600">
-                                Pago em {fmtDia(pagoEm)}
-                              </p>
-                            )}
-                          </div>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant={pagoEm ? "default" : "outline"}
-                            disabled={pagandoConta === e.id}
-                            onClick={() => pagarExtra(e.id, !pagoEm)}
-                            className={
-                              pagoEm
-                                ? "h-7 shrink-0 bg-green-600 px-2.5 text-[11px] hover:bg-green-700"
-                                : "h-7 shrink-0 border-green-300 px-2.5 text-[11px] text-green-700 hover:bg-green-50"
-                            }
-                          >
-                            {pagandoConta === e.id ? "..." : pagoEm ? "Pago ✓" : "Já paguei"}
-                          </Button>
-                        </div>
-                      )}
+                      <p className="text-[10px] text-slate-400">Preencha e clique em Salvar valores.</p>
                     </div>
                   );
                 })}
