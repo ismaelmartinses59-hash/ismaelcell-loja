@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -652,6 +652,166 @@ function PreviewLojistaDialog({ open, data, onConfirm, onCancel, onVoltar, loadi
             </div>
           </div>
         </div>
+        {/* ── ABA ESPERA ──────────────────────────────────────────────────────── */}
+        {aba === "espera" && (
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            <div className="text-xs text-muted-foreground leading-tight">
+              Itens separados para o cliente — sem pagamento ainda. Quando ele pagar, toque aqui para registrar.
+            </div>
+
+            {esperaItems.filter(e => e.status === "aguardando").length === 0 && (
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                <Timer className="w-8 h-8 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">Nenhum item em espera</p>
+                <p className="text-xs mt-1 opacity-70">Use "Modo Espera" ao vender uma peça.</p>
+              </div>
+            )}
+
+            {esperaItems.filter(e => e.status === "aguardando").map((item) => {
+              const isPagando = esperaPagandoId === item.id;
+              return (
+                <div key={item.id} className="rounded-xl border bg-amber-50 border-amber-200 overflow-hidden">
+                  {/* Header do item */}
+                  <div className="flex items-start justify-between gap-2 px-3 py-2.5">
+                    <div>
+                      <div className="font-bold text-sm text-slate-800">{item.modelo}</div>
+                      <div className="text-xs text-muted-foreground">{item.qualidade} · {formatMoney(item.valor)}</div>
+                      {item.observacao && (
+                        <div className="text-xs text-amber-700 mt-0.5">📝 {item.observacao}</div>
+                      )}
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {new Date(item.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      {!isPagando && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => { setEsperaPagandoId(item.id); setEsperaFiadoStep("choose"); }}
+                            className="h-8 bg-green-600 hover:bg-green-700 text-white text-xs px-3"
+                          >
+                            Receber
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            disabled={esperaCancelarMutation.isPending}
+                            onClick={() => esperaCancelarMutation.mutate(item.id)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Painel de pagamento inline */}
+                  {isPagando && (
+                    <div className="border-t border-amber-200 bg-white px-3 py-3 space-y-2.5">
+                      {esperaFiadoStep === "choose" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Recebeu como?</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button className="h-14 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
+                              onClick={() => setEsperaFiadoStep("avista")}>
+                              <DollarSign className="w-4 h-4" /><span className="font-bold text-xs">À VISTA</span>
+                            </Button>
+                            <Button className="h-14 flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-700 text-white gap-0.5"
+                              onClick={() => setEsperaFiadoStep("cartao")}>
+                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CARTÃO</span>
+                            </Button>
+                            <Button className="col-span-2 h-11 flex items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
+                              onClick={() => { setEsperaMistoSplits([]); setEsperaMistoForma("dinheiro"); setEsperaMistoValor(""); setEsperaFiadoStep("misto"); }}>
+                              <Shuffle className="w-4 h-4" /><span className="font-bold text-xs">MISTO</span>
+                            </Button>
+                          </div>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaPagandoId(null)}>Cancelar</Button>
+                        </div>
+                      )}
+
+                      {esperaFiadoStep === "avista" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Recebeu em?</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button className="h-12 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "dinheiro" })}>
+                              <DollarSign className="w-4 h-4" /><span className="font-bold text-xs">DINHEIRO</span>
+                            </Button>
+                            <Button className="h-12 flex flex-col items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "pix" })}>
+                              <Wallet className="w-4 h-4" /><span className="font-bold text-xs">PIX</span>
+                            </Button>
+                          </div>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
+                        </div>
+                      )}
+
+                      {esperaFiadoStep === "cartao" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Cartão</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button className="h-12 flex flex-col items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "debito" })}>
+                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">DÉBITO</span>
+                            </Button>
+                            <Button className="h-12 flex flex-col items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "credito_1x" })}>
+                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CRÉDITO</span>
+                            </Button>
+                          </div>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
+                        </div>
+                      )}
+
+                      {esperaFiadoStep === "misto" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Pagamento misto</div>
+                          {esperaMistoSplits.map((s, i) => (
+                            <div key={i} className="flex gap-1.5 text-xs items-center">
+                              <span className="text-slate-500 w-16 shrink-0">{LABELS_FORMA[s.forma as FormaPagamento] ?? s.forma}</span>
+                              <span className="font-semibold">{formatMoney(s.valor)}</span>
+                              <button type="button" className="ml-auto text-red-400" onClick={() => setEsperaMistoSplits(p => p.filter((_, j) => j !== i))}>
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          <div className="flex gap-1.5">
+                            <select value={esperaMistoForma} onChange={e => setEsperaMistoForma(e.target.value)}
+                              className="h-8 flex-1 rounded border border-slate-200 text-xs px-1">
+                              {["dinheiro","pix","debito","credito_1x","credito_2x","credito_3x"].map(f => (
+                                <option key={f} value={f}>{LABELS_FORMA[f as FormaPagamento] ?? f}</option>
+                              ))}
+                            </select>
+                            <Input inputMode="decimal" placeholder="R$" value={esperaMistoValor}
+                              onChange={e => setEsperaMistoValor(e.target.value)}
+                              className="h-8 w-24 text-xs" />
+                            <Button size="sm" className="h-8 px-2 text-xs" type="button"
+                              onClick={() => { if (esperaMistoValor.trim()) { setEsperaMistoSplits(p => [...p, { forma: esperaMistoForma, valor: esperaMistoValor.trim() }]); setEsperaMistoValor(""); } }}>
+                              +
+                            </Button>
+                          </div>
+                          <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white text-xs"
+                            disabled={esperaPagarMutation.isPending || esperaMistoSplits.length === 0}
+                            onClick={() => esperaPagarMutation.mutate({ id: item.id, splits: esperaMistoSplits })}>
+                            Confirmar misto
+                          </Button>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
       </DialogContent>
     </Dialog>
   );
@@ -941,7 +1101,7 @@ interface CatalogoModalProps {
 export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas">(initialTab ?? "pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera">(initialTab ?? "pecas");
   useEffect(() => { if (open && initialTab) setAba(initialTab); }, [open, initialTab]);
   useEffect(() => {
     if (!open) {
@@ -1374,6 +1534,58 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao registrar venda", variant: "destructive" }),
   });
 
+  // ── Modo Espera ───────────────────────────────────────────────────────────
+  interface PecaEspera {
+    id: number; pecaId: number; modelo: string; qualidade: string;
+    valor: string; setor: string; status: string; observacao: string; createdAt: string;
+  }
+  const { data: esperaItems = [], refetch: refetchEspera } = useQuery<PecaEspera[]>({
+    queryKey: ["pecas-espera"],
+    queryFn: () => apiFetch("/api/espera"),
+    enabled: open,
+    refetchInterval: open ? 30000 : false,
+  });
+  const [esperaPagandoId, setEsperaPagandoId] = useState<number | null>(null);
+  const [esperaFiadoStep, setEsperaFiadoStep] = useState<"choose" | "avista" | "cartao" | "credito" | "misto">("choose");
+  const [esperaMistoSplits, setEsperaMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
+  const [esperaMistoForma, setEsperaMistoForma] = useState<string>("dinheiro");
+  const [esperaMistoValor, setEsperaMistoValor] = useState<string>("");
+  const esperaMutation = useMutation({
+    mutationFn: (args: { pecaId: number; observacao?: string }) =>
+      apiFetch("/api/espera", { method: "POST", body: JSON.stringify({ pecaId: args.pecaId, observacao: args.observacao ?? "" }) }),
+    onSuccess: () => {
+      invalidatePecas();
+      qc.invalidateQueries({ queryKey: ["pecas-espera"] });
+      setVenderDialogPeca(null);
+      setFiadoStep("choose");
+      toast({ title: "⏳ Reservado! Aguardando pagamento." });
+    },
+    onError: () => toast({ title: "Erro ao reservar", variant: "destructive" }),
+  });
+  const esperaPagarMutation = useMutation({
+    mutationFn: (args: { id: number; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }> }) =>
+      apiFetch(`/api/espera/${args.id}/pagar`, { method: "POST", body: JSON.stringify({ formaPagamento: args.formaPagamento, splits: args.splits }) }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["pecas-espera"] });
+      invalidateCaixa();
+      invalidateVendas();
+      setEsperaPagandoId(null);
+      setEsperaFiadoStep("choose");
+      setEsperaMistoSplits([]);
+      toast({ title: "✅ Pagamento registrado!" });
+    },
+    onError: () => toast({ title: "Erro ao registrar pagamento", variant: "destructive" }),
+  });
+  const esperaCancelarMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/espera/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      invalidatePecas();
+      qc.invalidateQueries({ queryKey: ["pecas-espera"] });
+      toast({ title: "Reserva cancelada — estoque restaurado" });
+    },
+    onError: () => toast({ title: "Erro ao cancelar", variant: "destructive" }),
+  });
+
   // ── Contas a Receber ──────────────────────────────────────────────────────────
   interface ContaResumo {
     conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
@@ -1614,6 +1826,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "encomendas" ? "bg-white shadow text-blue-600" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Truck className="w-3.5 h-3.5" /> A Caminho
+            </button>
+            <button
+              onClick={() => setAba("espera")}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "espera" ? "bg-white shadow text-amber-600" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Timer className="w-3.5 h-3.5" />
+              Espera
+              {esperaItems.filter(e => e.status === "aguardando").length > 0 && (
+                <span className="bg-amber-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {esperaItems.filter(e => e.status === "aguardando").length}
+                </span>
+              )}
             </button>
           </div>
           )}
@@ -2490,6 +2714,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   >
                     <Shuffle className="w-5 h-5" />
                     <span className="font-bold text-xs">MISTO</span>
+                  </Button>
+                  <Button
+                    className="col-span-2 h-12 flex items-center justify-center bg-amber-500 hover:bg-amber-600 text-white gap-2"
+                    disabled={venderMutation.isPending || esperaMutation.isPending}
+                    onClick={() => esperaMutation.mutate({ pecaId: venderDialogPeca!.id })}
+                  >
+                    <Timer className="w-5 h-5" />
+                    <span className="font-bold text-sm">MODO ESPERA — receber depois</span>
                   </Button>
                 </div>
               )}
