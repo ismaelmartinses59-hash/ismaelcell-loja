@@ -203,6 +203,21 @@ export default function Orders() {
             <Button
               size="sm"
               variant="outline"
+              className={`relative flex items-center gap-1 ${esperaAguardando.length > 0 ? "text-amber-700 border-amber-400 bg-amber-50 hover:bg-amber-100" : "text-amber-600 border-amber-200 hover:bg-amber-50"}`}
+              onClick={() => { setCatalogoTab("espera"); setShowCatalogo(true); }}
+              title="Modo Espera"
+            >
+              <Timer className="h-4 w-4" />
+              <span className="hidden sm:inline">Espera</span>
+              {esperaAguardando.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {esperaAguardando.length}
+                </span>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
               className="flex items-center gap-1 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
               onClick={() => setShowCaixa(true)}
               title="Caixa"
