@@ -2554,9 +2554,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                               onClick={() => setEsperaFiadoStep("cartao")}>
                               <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CARTÃO</span>
                             </Button>
-                            <Button className="col-span-2 h-11 flex items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
+                            <Button className="h-11 flex items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
                               onClick={() => { setEsperaMistoSplits([]); setEsperaMistoForma("dinheiro"); setEsperaMistoValor(""); setEsperaFiadoStep("misto"); }}>
                               <Shuffle className="w-4 h-4" /><span className="font-bold text-xs">MISTO</span>
+                            </Button>
+                            <Button className="h-11 flex items-center justify-center bg-orange-500 hover:bg-orange-600 text-white gap-1.5"
+                              onClick={() => setEsperaFiadoStep("fiado")}>
+                              <BookOpen className="w-4 h-4" /><span className="font-bold text-xs">FIADO</span>
                             </Button>
                           </div>
                           <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaPagandoId(null)}>Cancelar</Button>
@@ -2613,15 +2617,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                   </Button>
                                 );
                               })}
-                              <Button
-                                className="h-auto py-2 px-3 flex items-center justify-between bg-orange-500 hover:bg-orange-600 text-white rounded-lg"
-                                onClick={() => setEsperaFiadoStep("fiado")}>
-                                <div className="flex items-center gap-2">
-                                  <BookOpen className="w-4 h-4 shrink-0" />
-                                  <span className="font-bold text-xs">Fiado</span>
-                                </div>
-                                <span className="text-[10px] opacity-80">registrar como dívida</span>
-                              </Button>
                             </div>
                             <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
                           </div>
