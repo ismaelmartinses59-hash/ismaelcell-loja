@@ -652,165 +652,6 @@ function PreviewLojistaDialog({ open, data, onConfirm, onCancel, onVoltar, loadi
             </div>
           </div>
         </div>
-        {/* ── ABA ESPERA ──────────────────────────────────────────────────────── */}
-        {aba === "espera" && (
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
-            <div className="text-xs text-muted-foreground leading-tight">
-              Itens separados para o cliente — sem pagamento ainda. Quando ele pagar, toque aqui para registrar.
-            </div>
-
-            {esperaItems.filter(e => e.status === "aguardando").length === 0 && (
-              <div className="text-center py-12 text-muted-foreground text-sm">
-                <Timer className="w-8 h-8 mx-auto mb-3 opacity-30" />
-                <p className="font-medium">Nenhum item em espera</p>
-                <p className="text-xs mt-1 opacity-70">Use "Modo Espera" ao vender uma peça.</p>
-              </div>
-            )}
-
-            {esperaItems.filter(e => e.status === "aguardando").map((item) => {
-              const isPagando = esperaPagandoId === item.id;
-              return (
-                <div key={item.id} className="rounded-xl border bg-amber-50 border-amber-200 overflow-hidden">
-                  {/* Header do item */}
-                  <div className="flex items-start justify-between gap-2 px-3 py-2.5">
-                    <div>
-                      <div className="font-bold text-sm text-slate-800">{item.modelo}</div>
-                      <div className="text-xs text-muted-foreground">{item.qualidade} · {formatMoney(item.valor)}</div>
-                      {item.observacao && (
-                        <div className="text-xs text-amber-700 mt-0.5">📝 {item.observacao}</div>
-                      )}
-                      <div className="text-[10px] text-slate-400 mt-0.5">
-                        {new Date(item.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </div>
-                    <div className="flex gap-1.5 shrink-0">
-                      {!isPagando && (
-                        <>
-                          <Button
-                            size="sm"
-                            onClick={() => { setEsperaPagandoId(item.id); setEsperaFiadoStep("choose"); }}
-                            className="h-8 bg-green-600 hover:bg-green-700 text-white text-xs px-3"
-                          >
-                            Receber
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
-                            disabled={esperaCancelarMutation.isPending}
-                            onClick={() => esperaCancelarMutation.mutate(item.id)}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Painel de pagamento inline */}
-                  {isPagando && (
-                    <div className="border-t border-amber-200 bg-white px-3 py-3 space-y-2.5">
-                      {esperaFiadoStep === "choose" && (
-                        <div className="space-y-2">
-                          <div className="text-xs font-semibold text-muted-foreground">Recebeu como?</div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button className="h-14 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
-                              onClick={() => setEsperaFiadoStep("avista")}>
-                              <DollarSign className="w-4 h-4" /><span className="font-bold text-xs">À VISTA</span>
-                            </Button>
-                            <Button className="h-14 flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-700 text-white gap-0.5"
-                              onClick={() => setEsperaFiadoStep("cartao")}>
-                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CARTÃO</span>
-                            </Button>
-                            <Button className="col-span-2 h-11 flex items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
-                              onClick={() => { setEsperaMistoSplits([]); setEsperaMistoForma("dinheiro"); setEsperaMistoValor(""); setEsperaFiadoStep("misto"); }}>
-                              <Shuffle className="w-4 h-4" /><span className="font-bold text-xs">MISTO</span>
-                            </Button>
-                          </div>
-                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaPagandoId(null)}>Cancelar</Button>
-                        </div>
-                      )}
-
-                      {esperaFiadoStep === "avista" && (
-                        <div className="space-y-2">
-                          <div className="text-xs font-semibold text-muted-foreground">Recebeu em?</div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button className="h-12 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
-                              disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "dinheiro" })}>
-                              <DollarSign className="w-4 h-4" /><span className="font-bold text-xs">DINHEIRO</span>
-                            </Button>
-                            <Button className="h-12 flex flex-col items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white gap-0.5"
-                              disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "pix" })}>
-                              <Wallet className="w-4 h-4" /><span className="font-bold text-xs">PIX</span>
-                            </Button>
-                          </div>
-                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
-                        </div>
-                      )}
-
-                      {esperaFiadoStep === "cartao" && (
-                        <div className="space-y-2">
-                          <div className="text-xs font-semibold text-muted-foreground">Cartão</div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button className="h-12 flex flex-col items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white gap-0.5"
-                              disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "debito" })}>
-                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">DÉBITO</span>
-                            </Button>
-                            <Button className="h-12 flex flex-col items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white gap-0.5"
-                              disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "credito_1x" })}>
-                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CRÉDITO</span>
-                            </Button>
-                          </div>
-                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
-                        </div>
-                      )}
-
-                      {esperaFiadoStep === "misto" && (
-                        <div className="space-y-2">
-                          <div className="text-xs font-semibold text-muted-foreground">Pagamento misto</div>
-                          {esperaMistoSplits.map((s, i) => (
-                            <div key={i} className="flex gap-1.5 text-xs items-center">
-                              <span className="text-slate-500 w-16 shrink-0">{LABELS_FORMA[s.forma as FormaPagamento] ?? s.forma}</span>
-                              <span className="font-semibold">{formatMoney(s.valor)}</span>
-                              <button type="button" className="ml-auto text-red-400" onClick={() => setEsperaMistoSplits(p => p.filter((_, j) => j !== i))}>
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          ))}
-                          <div className="flex gap-1.5">
-                            <select value={esperaMistoForma} onChange={e => setEsperaMistoForma(e.target.value)}
-                              className="h-8 flex-1 rounded border border-slate-200 text-xs px-1">
-                              {["dinheiro","pix","debito","credito_1x","credito_2x","credito_3x"].map(f => (
-                                <option key={f} value={f}>{LABELS_FORMA[f as FormaPagamento] ?? f}</option>
-                              ))}
-                            </select>
-                            <Input inputMode="decimal" placeholder="R$" value={esperaMistoValor}
-                              onChange={e => setEsperaMistoValor(e.target.value)}
-                              className="h-8 w-24 text-xs" />
-                            <Button size="sm" className="h-8 px-2 text-xs" type="button"
-                              onClick={() => { if (esperaMistoValor.trim()) { setEsperaMistoSplits(p => [...p, { forma: esperaMistoForma, valor: esperaMistoValor.trim() }]); setEsperaMistoValor(""); } }}>
-                              +
-                            </Button>
-                          </div>
-                          <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white text-xs"
-                            disabled={esperaPagarMutation.isPending || esperaMistoSplits.length === 0}
-                            onClick={() => esperaPagarMutation.mutate({ id: item.id, splits: esperaMistoSplits })}>
-                            Confirmar misto
-                          </Button>
-                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
 
       </DialogContent>
     </Dialog>
@@ -2621,6 +2462,166 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {/* ── ABA A CAMINHO (ENCOMENDAS) ─────────────────────────────── */}
         {aba === "encomendas" && (
           <EncomendasTab open={open} />
+        )}
+
+        {/* ── ABA ESPERA ──────────────────────────────────────────────────────── */}
+        {aba === "espera" && (
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
+            <div className="text-xs text-muted-foreground leading-tight">
+              Itens separados para o cliente — sem pagamento ainda. Quando ele pagar, toque aqui para registrar.
+            </div>
+
+            {esperaItems.filter(e => e.status === "aguardando").length === 0 && (
+              <div className="text-center py-12 text-muted-foreground text-sm">
+                <Timer className="w-8 h-8 mx-auto mb-3 opacity-30" />
+                <p className="font-medium">Nenhum item em espera</p>
+                <p className="text-xs mt-1 opacity-70">Use "Modo Espera" ao vender uma peça.</p>
+              </div>
+            )}
+
+            {esperaItems.filter(e => e.status === "aguardando").map((item) => {
+              const isPagando = esperaPagandoId === item.id;
+              return (
+                <div key={item.id} className="rounded-xl border bg-amber-50 border-amber-200 overflow-hidden">
+                  {/* Header do item */}
+                  <div className="flex items-start justify-between gap-2 px-3 py-2.5">
+                    <div>
+                      <div className="font-bold text-sm text-slate-800">{item.modelo}</div>
+                      <div className="text-xs text-muted-foreground">{item.qualidade} · {formatMoney(item.valor)}</div>
+                      {item.observacao && (
+                        <div className="text-xs text-amber-700 mt-0.5">📝 {item.observacao}</div>
+                      )}
+                      <div className="text-[10px] text-slate-400 mt-0.5">
+                        {new Date(item.createdAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                      </div>
+                    </div>
+                    <div className="flex gap-1.5 shrink-0">
+                      {!isPagando && (
+                        <>
+                          <Button
+                            size="sm"
+                            onClick={() => { setEsperaPagandoId(item.id); setEsperaFiadoStep("choose"); }}
+                            className="h-8 bg-green-600 hover:bg-green-700 text-white text-xs px-3"
+                          >
+                            Receber
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 w-8 p-0 text-red-400 hover:text-red-600 hover:bg-red-50"
+                            disabled={esperaCancelarMutation.isPending}
+                            onClick={() => esperaCancelarMutation.mutate(item.id)}
+                          >
+                            <X className="w-4 h-4" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Painel de pagamento inline */}
+                  {isPagando && (
+                    <div className="border-t border-amber-200 bg-white px-3 py-3 space-y-2.5">
+                      {esperaFiadoStep === "choose" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Recebeu como?</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button className="h-14 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
+                              onClick={() => setEsperaFiadoStep("avista")}>
+                              <DollarSign className="w-4 h-4" /><span className="font-bold text-xs">À VISTA</span>
+                            </Button>
+                            <Button className="h-14 flex flex-col items-center justify-center bg-blue-600 hover:bg-blue-700 text-white gap-0.5"
+                              onClick={() => setEsperaFiadoStep("cartao")}>
+                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CARTÃO</span>
+                            </Button>
+                            <Button className="col-span-2 h-11 flex items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-1.5"
+                              onClick={() => { setEsperaMistoSplits([]); setEsperaMistoForma("dinheiro"); setEsperaMistoValor(""); setEsperaFiadoStep("misto"); }}>
+                              <Shuffle className="w-4 h-4" /><span className="font-bold text-xs">MISTO</span>
+                            </Button>
+                          </div>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaPagandoId(null)}>Cancelar</Button>
+                        </div>
+                      )}
+
+                      {esperaFiadoStep === "avista" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Recebeu em?</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button className="h-12 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "dinheiro" })}>
+                              <DollarSign className="w-4 h-4" /><span className="font-bold text-xs">DINHEIRO</span>
+                            </Button>
+                            <Button className="h-12 flex flex-col items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "pix" })}>
+                              <Wallet className="w-4 h-4" /><span className="font-bold text-xs">PIX</span>
+                            </Button>
+                          </div>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
+                        </div>
+                      )}
+
+                      {esperaFiadoStep === "cartao" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Cartão</div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button className="h-12 flex flex-col items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "debito" })}>
+                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">DÉBITO</span>
+                            </Button>
+                            <Button className="h-12 flex flex-col items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white gap-0.5"
+                              disabled={esperaPagarMutation.isPending}
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "credito_1x" })}>
+                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CRÉDITO</span>
+                            </Button>
+                          </div>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
+                        </div>
+                      )}
+
+                      {esperaFiadoStep === "misto" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Pagamento misto</div>
+                          {esperaMistoSplits.map((s, i) => (
+                            <div key={i} className="flex gap-1.5 text-xs items-center">
+                              <span className="text-slate-500 w-16 shrink-0">{LABELS_FORMA[s.forma as FormaPagamento] ?? s.forma}</span>
+                              <span className="font-semibold">{formatMoney(s.valor)}</span>
+                              <button type="button" className="ml-auto text-red-400" onClick={() => setEsperaMistoSplits(p => p.filter((_, j) => j !== i))}>
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                          <div className="flex gap-1.5">
+                            <select value={esperaMistoForma} onChange={e => setEsperaMistoForma(e.target.value)}
+                              className="h-8 flex-1 rounded border border-slate-200 text-xs px-1">
+                              {["dinheiro","pix","debito","credito_1x","credito_2x","credito_3x"].map(f => (
+                                <option key={f} value={f}>{LABELS_FORMA[f as FormaPagamento] ?? f}</option>
+                              ))}
+                            </select>
+                            <Input inputMode="decimal" placeholder="R$" value={esperaMistoValor}
+                              onChange={e => setEsperaMistoValor(e.target.value)}
+                              className="h-8 w-24 text-xs" />
+                            <Button size="sm" className="h-8 px-2 text-xs" type="button"
+                              onClick={() => { if (esperaMistoValor.trim()) { setEsperaMistoSplits(p => [...p, { forma: esperaMistoForma, valor: esperaMistoValor.trim() }]); setEsperaMistoValor(""); } }}>
+                              +
+                            </Button>
+                          </div>
+                          <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white text-xs"
+                            disabled={esperaPagarMutation.isPending || esperaMistoSplits.length === 0}
+                            onClick={() => esperaPagarMutation.mutate({ id: item.id, splits: esperaMistoSplits })}>
+                            Confirmar misto
+                          </Button>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
 
         {/* ── Diálogo Devolução ao Fornecedor ─────────────────────────── */}
