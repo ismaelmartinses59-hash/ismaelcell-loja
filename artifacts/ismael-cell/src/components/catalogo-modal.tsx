@@ -987,12 +987,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [itemDescricao, setItemDescricao] = useState("");
   const [itemValor, setItemValor] = useState("");
   const [itemForma, setItemForma] = useState<string>("fiado");
+  const [itemData, setItemData] = useState("");
   // Novo serviço fiado (cria/reusa conta)
   const [showNovoServico, setShowNovoServico] = useState(false);
   const [servNome, setServNome] = useState("");
   const [servTipo, setServTipo] = useState<"cliente" | "lojista">("cliente");
   const [servDescricao, setServDescricao] = useState("");
   const [servValor, setServValor] = useState("");
+  const [servData, setServData] = useState("");
     // Peça do estoque vinculada ao novo serviço fiado (dá baixa ao lançar)
     const [servPecaSel, setServPecaSel] = useState<Peca | null>(null);
 
@@ -1393,6 +1395,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [esperaMistoValor, setEsperaMistoValor] = useState<string>("");
   const [esperaFiadoNome, setEsperaFiadoNome] = useState("");
   const [esperaFiadoTipo, setEsperaFiadoTipo] = useState<"cliente" | "lojista">("cliente");
+  const [esperaFiadoData, setEsperaFiadoData] = useState("");
   const esperaMutation = useMutation({
     mutationFn: (args: { pecaId: number; observacao?: string }) =>
       apiFetch("/api/espera", { method: "POST", body: JSON.stringify({ pecaId: args.pecaId, observacao: args.observacao ?? "" }) }),
@@ -1406,8 +1409,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao reservar", variant: "destructive" }),
   });
   const esperaPagarMutation = useMutation({
-    mutationFn: (args: { id: number; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string }) =>
-      apiFetch(`/api/espera/${args.id}/pagar`, { method: "POST", body: JSON.stringify({ formaPagamento: args.formaPagamento, splits: args.splits, fiado: args.fiado, nomeDevedor: args.nomeDevedor, tipoDevedor: args.tipoDevedor }) }),
+    mutationFn: (args: { id: number; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; dataRecebimento?: string }) =>
+      apiFetch(`/api/espera/${args.id}/pagar`, { method: "POST", body: JSON.stringify({ formaPagamento: args.formaPagamento, splits: args.splits, fiado: args.fiado, nomeDevedor: args.nomeDevedor, tipoDevedor: args.tipoDevedor, dataRecebimento: args.dataRecebimento || null }) }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["pecas-espera"] });
       invalidateCaixa();
@@ -1416,6 +1419,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setEsperaPagandoId(null);
       setEsperaFiadoStep("choose");
       setEsperaFiadoNome("");
+      setEsperaFiadoData("");
       setEsperaMistoSplits([]);
       toast({ title: "✅ Pagamento registrado!" });
     },
@@ -1434,7 +1438,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   // ── Contas a Receber ──────────────────────────────────────────────────────────
   interface ContaResumo {
     conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
-    itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; createdAt: string }>;
+    itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; dataRecebimento: string | null; createdAt: string }>;
     pagamentos: Array<{ id: number; valor: string; formaPagamento: string | null; createdAt: string }>;
     totalItens: number;
     totalPago: number;
@@ -1467,15 +1471,15 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
   const addItemMutation = useMutation({
-    mutationFn: ({ contaId, descricao, valor, formaPagamento }: { contaId: number; descricao: string; valor: string; formaPagamento: string }) =>
-      apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor, formaPagamento }) }),
-    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); toast({ title: "📒 Serviço adicionado à conta!" }); },
+    mutationFn: ({ contaId, descricao, valor, formaPagamento, dataRecebimento }: { contaId: number; descricao: string; valor: string; formaPagamento: string; dataRecebimento?: string }) =>
+      apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor, formaPagamento, dataRecebimento: dataRecebimento || null }) }),
+    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); setItemData(""); toast({ title: "📒 Serviço adicionado à conta!" }); },
     onError: () => toast({ title: "Erro ao adicionar serviço", variant: "destructive" }),
   });
   const novoServicoMutation = useMutation({
-    mutationFn: (data: { nome: string; tipo: string; descricao: string; valor: string }) =>
+    mutationFn: (data: { nome: string; tipo: string; descricao: string; valor: string; dataRecebimento?: string }) =>
       apiFetch("/api/contas-receber/novo-servico", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => { invalidateContas(); setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServPecaSel(null); toast({ title: "📒 Serviço fiado registrado!" }); },
+    onSuccess: () => { invalidateContas(); setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServData(""); setServPecaSel(null); toast({ title: "📒 Serviço fiado registrado!" }); },
     onError: () => toast({ title: "Erro ao registrar serviço", variant: "destructive" }),
   });
   const totalAReceber = contas.reduce((a, c) => a + (c.saldo > 0 ? c.saldo : 0), 0);
@@ -2134,6 +2138,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     onChange={(e) => setServValor(e.target.value)}
                     className="h-9 text-sm"
                   />
+                  <div>
+                    <label className="text-[10px] text-muted-foreground font-medium">Previsão de recebimento (opcional)</label>
+                    <Input type="date" value={servData} onChange={(e) => setServData(e.target.value)} className="h-9 text-sm mt-0.5" />
+                  </div>
                   <Button
                     size="sm"
                     className="w-full h-9 bg-orange-600 hover:bg-orange-700 text-white text-xs font-semibold"
@@ -2142,10 +2150,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         if (servPecaSel) {
                           venderMutation.mutate(
                             { id: servPecaSel.id, fiado: true, nomeDevedor: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipoDevedor: servTipo },
-                            { onSuccess: () => { setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServPecaSel(null); } },
+                            { onSuccess: () => { setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServData(""); setServPecaSel(null); } },
                           );
                         } else {
-                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim() });
+                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim(), dataRecebimento: servData || undefined });
                         }
                       }}
                   >
@@ -2257,12 +2265,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 onChange={(e) => setItemValor(e.target.value)}
                                 className="h-9 text-sm"
                               />
-                              <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim(), formaPagamento: itemForma })}>
+                              <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim(), formaPagamento: itemForma, dataRecebimento: itemData || undefined })}>
                                 <Check className="w-4 h-4" />
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); }}>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); setItemData(""); }}>
                                 <X className="w-4 h-4" />
                               </Button>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-muted-foreground font-medium">Previsão de recebimento (opcional)</label>
+                              <Input type="date" value={itemData} onChange={e => setItemData(e.target.value)} className="h-8 text-xs mt-0.5" />
                             </div>
                           </div>
                           );
@@ -2386,6 +2398,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                   : item.formaPagamento === "credito_3x" ? "Créd 3x"
                                   : item.formaPagamento
                                   : null;
+                                const prevReceb = item.dataRecebimento
+                                  ? new Date(item.dataRecebimento).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "America/Sao_Paulo" })
+                                  : null;
                                 const isDel = deletingItemId === item.id;
                                 return (
                                   <div key={item.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : "bg-white"}`}>
@@ -2393,6 +2408,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                       <div className="font-semibold truncate">{item.modelo}</div>
                                       <div className="text-[10px] text-muted-foreground">
                                         {item.qualidade} · {dia} às {hora}{formaLabel ? <span className="font-semibold text-orange-600"> · {formaLabel}</span> : ""}
+                                        {prevReceb && <span className="text-amber-600 font-semibold"> · Receber: {prevReceb}</span>}
                                       </div>
                                     </div>
                                     <div className="font-bold text-orange-700">{formatMoney(item.valor)}</div>
@@ -2628,10 +2644,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <Button size="sm" variant={esperaFiadoTipo === "lojista" ? "default" : "outline"} className="flex-1 text-xs h-8"
                               onClick={() => setEsperaFiadoTipo("lojista")}>Lojista</Button>
                           </div>
+                          <div>
+                            <label className="text-[10px] text-muted-foreground font-medium">Previsão de recebimento (opcional)</label>
+                            <Input type="date" value={esperaFiadoData} onChange={e => setEsperaFiadoData(e.target.value)} className="h-9 text-sm mt-0.5" />
+                          </div>
                           <Button
                             className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs"
                             disabled={esperaPagarMutation.isPending || esperaFiadoNome.trim().length < 2}
-                            onClick={() => esperaPagarMutation.mutate({ id: item.id, fiado: true, nomeDevedor: esperaFiadoNome.trim(), tipoDevedor: esperaFiadoTipo })}>
+                            onClick={() => esperaPagarMutation.mutate({ id: item.id, fiado: true, nomeDevedor: esperaFiadoNome.trim(), tipoDevedor: esperaFiadoTipo, dataRecebimento: esperaFiadoData || undefined })}>
                             📒 Registrar fiado
                           </Button>
                           <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("cartao")}>Voltar</Button>

@@ -186,6 +186,8 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
   const descricao = String(req.body?.descricao ?? "").trim();
   const valor = String(req.body?.valor ?? "").trim();
   const formaPagamento = req.body?.formaPagamento ? String(req.body.formaPagamento) : null;
+  const dataRecebimentoRaw = req.body?.dataRecebimento ? String(req.body.dataRecebimento) : null;
+  const dataRecebimento = dataRecebimentoRaw ? new Date(dataRecebimentoRaw) : null;
   if (!descricao) {
     res.status(400).json({ error: "Descrição obrigatória" });
     return;
@@ -208,6 +210,7 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
     qualidade: "Serviço",
     valor,
     formaPagamento,
+    dataRecebimento,
   });
   // Adicionar dívida reabre a conta caso estivesse quitada
   await db
@@ -223,6 +226,8 @@ router.post("/contas-receber/novo-servico", async (req, res): Promise<void> => {
   const tipo = req.body?.tipo === "lojista" ? "lojista" : "cliente";
   const descricao = String(req.body?.descricao ?? "").trim();
   const valor = String(req.body?.valor ?? "").trim();
+  const dataRecebimentoRaw = req.body?.dataRecebimento ? String(req.body.dataRecebimento) : null;
+  const dataRecebimento = dataRecebimentoRaw ? new Date(dataRecebimentoRaw) : null;
   if (!nome) {
     res.status(400).json({ error: "Nome obrigatório" });
     return;
@@ -241,6 +246,7 @@ router.post("/contas-receber/novo-servico", async (req, res): Promise<void> => {
     modelo: descricao,
     qualidade: "Serviço",
     valor,
+    dataRecebimento,
   });
   res.json(await getContaResumo(contaId));
 });
