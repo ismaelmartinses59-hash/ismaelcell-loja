@@ -108,12 +108,15 @@ router.post("/espera/:id/pagar", async (req, res): Promise<void> => {
     // Fiado: cria item na conta a receber em vez de entrada no caixa
     if (fiado) {
       const contaId = await findOrCreateConta(nomeDevedor, tipoDevedor, tx);
+      const dataRecebimentoRaw = req.body?.dataRecebimento ? String(req.body.dataRecebimento) : null;
+      const dataRecebimento = dataRecebimentoRaw ? new Date(dataRecebimentoRaw) : null;
       await tx.insert(contasReceberItensTable).values({
         contaId,
         vendaId: venda.id,
         modelo: espera.modelo,
         qualidade: espera.qualidade,
         valor: espera.valor,
+        dataRecebimento,
       });
     }
 
