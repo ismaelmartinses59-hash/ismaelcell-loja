@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer, BookOpen } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -1387,10 +1387,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     refetchInterval: open ? 30000 : false,
   });
   const [esperaPagandoId, setEsperaPagandoId] = useState<number | null>(null);
-  const [esperaFiadoStep, setEsperaFiadoStep] = useState<"choose" | "avista" | "cartao" | "credito" | "misto">("choose");
+  const [esperaFiadoStep, setEsperaFiadoStep] = useState<"choose" | "avista" | "cartao" | "misto" | "fiado">("choose");
   const [esperaMistoSplits, setEsperaMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
   const [esperaMistoForma, setEsperaMistoForma] = useState<string>("dinheiro");
   const [esperaMistoValor, setEsperaMistoValor] = useState<string>("");
+  const [esperaFiadoNome, setEsperaFiadoNome] = useState("");
+  const [esperaFiadoTipo, setEsperaFiadoTipo] = useState<"cliente" | "lojista">("cliente");
   const esperaMutation = useMutation({
     mutationFn: (args: { pecaId: number; observacao?: string }) =>
       apiFetch("/api/espera", { method: "POST", body: JSON.stringify({ pecaId: args.pecaId, observacao: args.observacao ?? "" }) }),
@@ -1404,14 +1406,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao reservar", variant: "destructive" }),
   });
   const esperaPagarMutation = useMutation({
-    mutationFn: (args: { id: number; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }> }) =>
-      apiFetch(`/api/espera/${args.id}/pagar`, { method: "POST", body: JSON.stringify({ formaPagamento: args.formaPagamento, splits: args.splits }) }),
-    onSuccess: () => {
+    mutationFn: (args: { id: number; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string }) =>
+      apiFetch(`/api/espera/${args.id}/pagar`, { method: "POST", body: JSON.stringify({ formaPagamento: args.formaPagamento, splits: args.splits, fiado: args.fiado, nomeDevedor: args.nomeDevedor, tipoDevedor: args.tipoDevedor }) }),
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["pecas-espera"] });
       invalidateCaixa();
       invalidateVendas();
+      if (vars.fiado) invalidateContas();
       setEsperaPagandoId(null);
       setEsperaFiadoStep("choose");
+      setEsperaFiadoNome("");
       setEsperaMistoSplits([]);
       toast({ title: "✅ Pagamento registrado!" });
     },
@@ -2562,22 +2566,75 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         </div>
                       )}
 
-                      {esperaFiadoStep === "cartao" && (
-                        <div className="space-y-2">
-                          <div className="text-xs font-semibold text-muted-foreground">Cartão</div>
-                          <div className="grid grid-cols-2 gap-2">
-                            <Button className="h-12 flex flex-col items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white gap-0.5"
-                              disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "debito" })}>
-                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">DÉBITO</span>
-                            </Button>
-                            <Button className="h-12 flex flex-col items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white gap-0.5"
-                              disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "credito_1x" })}>
-                              <CreditCard className="w-4 h-4" /><span className="font-bold text-xs">CRÉDITO</span>
-                            </Button>
+                      {esperaFiadoStep === "cartao" && (() => {
+                        const bruto = parsePtBR(item.valor);
+                        const opcoes: Array<{ forma: "debito"|"credito_1x"|"credito_2x"|"credito_3x"; label: string }> = [
+                          { forma: "debito",      label: "Débito" },
+                          { forma: "credito_1x",  label: "Crédito 1x" },
+                          { forma: "credito_2x",  label: "Crédito 2x" },
+                          { forma: "credito_3x",  label: "Crédito 3x" },
+                        ];
+                        return (
+                          <div className="space-y-2">
+                            <div className="text-xs font-semibold text-muted-foreground">Cartão — escolha o tipo</div>
+                            <div className="flex flex-col gap-1.5">
+                              {opcoes.map(({ forma, label }) => {
+                                const taxa = TAXAS_CARTAO[forma];
+                                const liquido = liquidoCartao(bruto, forma);
+                                return (
+                                  <Button key={forma}
+                                    className="h-auto py-2 px-3 flex items-center justify-between bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
+                                    disabled={esperaPagarMutation.isPending}
+                                    onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: forma })}>
+                                    <div className="flex items-center gap-2">
+                                      <CreditCard className="w-4 h-4 shrink-0" />
+                                      <span className="font-bold text-xs">{label}</span>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-[10px] opacity-80">taxa {taxa.toLocaleString("pt-BR")}%</div>
+                                      <div className="text-xs font-semibold">→ {fmtBRL(liquido)}</div>
+                                    </div>
+                                  </Button>
+                                );
+                              })}
+                              <Button
+                                className="h-auto py-2 px-3 flex items-center justify-between bg-orange-500 hover:bg-orange-600 text-white rounded-lg"
+                                onClick={() => setEsperaFiadoStep("fiado")}>
+                                <div className="flex items-center gap-2">
+                                  <BookOpen className="w-4 h-4 shrink-0" />
+                                  <span className="font-bold text-xs">Fiado</span>
+                                </div>
+                                <span className="text-[10px] opacity-80">registrar como dívida</span>
+                              </Button>
+                            </div>
+                            <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
                           </div>
-                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
+                        );
+                      })()}
+
+                      {esperaFiadoStep === "fiado" && (
+                        <div className="space-y-2">
+                          <div className="text-xs font-semibold text-muted-foreground">Fiado — nome do cliente</div>
+                          <Input
+                            placeholder="Nome do cliente..."
+                            value={esperaFiadoNome}
+                            onChange={e => setEsperaFiadoNome(e.target.value)}
+                            className="h-9 text-sm"
+                            autoFocus
+                          />
+                          <div className="flex gap-2">
+                            <Button size="sm" variant={esperaFiadoTipo === "cliente" ? "default" : "outline"} className="flex-1 text-xs h-8"
+                              onClick={() => setEsperaFiadoTipo("cliente")}>Cliente</Button>
+                            <Button size="sm" variant={esperaFiadoTipo === "lojista" ? "default" : "outline"} className="flex-1 text-xs h-8"
+                              onClick={() => setEsperaFiadoTipo("lojista")}>Lojista</Button>
+                          </div>
+                          <Button
+                            className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                            disabled={esperaPagarMutation.isPending || esperaFiadoNome.trim().length < 2}
+                            onClick={() => esperaPagarMutation.mutate({ id: item.id, fiado: true, nomeDevedor: esperaFiadoNome.trim(), tipoDevedor: esperaFiadoTipo })}>
+                            📒 Registrar fiado
+                          </Button>
+                          <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("cartao")}>Voltar</Button>
                         </div>
                       )}
 
