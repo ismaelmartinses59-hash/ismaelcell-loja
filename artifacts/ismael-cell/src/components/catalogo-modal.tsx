@@ -2465,7 +2465,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         )}
 
         {/* ── ABA ESPERA ──────────────────────────────────────────────────────── */}
-        {aba === "espera" && (
+        {(aba === "espera" || (soloTab && initialTab === "espera")) && (
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
             <div className="text-xs text-muted-foreground leading-tight">
               Itens separados para o cliente — sem pagamento ainda. Quando ele pagar, toque aqui para registrar.
