@@ -1094,7 +1094,7 @@ interface CatalogoModalProps {
   open: boolean;
   onClose: () => void;
   setor: "cliente" | "lojista";
-  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas";
+  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera";
   soloTab?: boolean;
 }
 
