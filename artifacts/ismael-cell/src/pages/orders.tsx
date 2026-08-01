@@ -17,7 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, TrendingUp, Shield, Package, HandCoins, Wallet, Settings, Truck } from "lucide-react";
+import { Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X, Store, User, TrendingUp, Shield, Package, HandCoins, Wallet, Settings, Truck, Timer } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 
@@ -33,7 +33,7 @@ export default function Orders() {
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCaixa, setShowCaixa] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas">("pecas");
+  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
   const { data: contasReceber = [] } = useQuery<ContaResumo[]>({
@@ -67,6 +67,15 @@ export default function Orders() {
       (c) => c.conta.closedAt === null && c.saldo > 0,
     );
   const totalAReceber = contasAbertas.reduce((a, c) => a + c.saldo, 0);
+
+  interface PecaEspera { id: number; valor: string; status: string }
+  const { data: esperaItems = [] } = useQuery<PecaEspera[]>({
+    queryKey: ["pecas-espera"],
+    queryFn: () => fetch(`${BASE_URL}/api/espera`).then((r) => r.ok ? r.json() : []),
+    refetchInterval: 30000,
+  });
+  const esperaAguardando = esperaItems.filter((e) => e.status === "aguardando");
+  const totalEspera = esperaAguardando.reduce((a, e) => a + parseFloat(e.valor || "0"), 0);
 
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
@@ -333,6 +342,31 @@ export default function Orders() {
                   {totalValorEncomendas.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                 </div>
                 <div className="text-[10px] text-blue-600/70 mt-0.5">tocar para ver</div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {esperaAguardando.length > 0 && (
+          <Card
+            className="border-amber-300 bg-amber-50 shadow-sm cursor-pointer hover:bg-amber-100/70 transition-colors"
+            onClick={() => { setCatalogoTab("espera"); setShowCatalogo(true); }}
+          >
+            <CardContent className="flex items-center gap-3 px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <Timer className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Modo Espera</div>
+                <div className="text-[11px] text-amber-600/80">
+                  {esperaAguardando.length} {esperaAguardando.length === 1 ? "peça aguardando" : "peças aguardando"} pagamento
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-lg font-extrabold text-amber-700 leading-none">
+                  {totalEspera.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
+                </div>
+                <div className="text-[10px] text-amber-600/70 mt-0.5">tocar para ver</div>
               </div>
             </CardContent>
           </Card>

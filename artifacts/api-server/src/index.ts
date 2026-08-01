@@ -197,6 +197,19 @@ async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     )
   `));
+  await runStatement("pecas_espera", db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pecas_espera (
+      id serial PRIMARY KEY,
+      peca_id integer NOT NULL,
+      modelo text NOT NULL,
+      qualidade text NOT NULL,
+      valor text NOT NULL,
+      setor text NOT NULL DEFAULT 'cliente',
+      status text NOT NULL DEFAULT 'aguardando',
+      observacao text NOT NULL DEFAULT '',
+      created_at timestamp NOT NULL DEFAULT now()
+    )
+  `));
   logger.info("Schema check ok");
 }
 
