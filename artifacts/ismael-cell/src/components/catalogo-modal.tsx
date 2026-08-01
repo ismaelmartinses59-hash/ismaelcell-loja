@@ -1790,8 +1790,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {/* Header */}
         <DialogHeader className="px-4 pt-4 pb-0 shrink-0">
           <DialogTitle className="flex items-center gap-2 mb-3">
-            <Package className="w-5 h-5 text-primary" />
-            Catálogo de Peças
+            {soloTab && aba === "espera"
+              ? <><Timer className="w-5 h-5 text-amber-500" /> Modo Espera</>
+              : <><Package className="w-5 h-5 text-primary" /> Catálogo de Peças</>
+            }
           </DialogTitle>
 
           {/* Tabs */}

@@ -146,7 +146,7 @@ export default function Orders() {
       <CaixaSessaoGuard />
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} initialCodigo={garantiaCodigo} onClose={() => { setShowGarantia(false); setGarantiaCodigo(undefined); }} />
-      <CatalogoModal open={showCatalogo} onClose={() => setShowCatalogo(false)} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber"} />
+      <CatalogoModal open={showCatalogo} onClose={() => { setShowCatalogo(false); setCatalogoTab("pecas"); }} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber" || catalogoTab === "espera"} />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
       <ConfiguracoesModal open={showConfig} onClose={() => setShowConfig(false)} />
       {/* Header */}
