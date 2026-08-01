@@ -347,32 +347,30 @@ export default function Orders() {
           </Card>
         )}
 
-        <Card
-          className={`shadow-sm cursor-pointer transition-colors ${esperaAguardando.length > 0 ? "border-amber-300 bg-amber-50 hover:bg-amber-100/70" : "border-slate-200 bg-slate-50/50 hover:bg-slate-100/60"}`}
-          onClick={() => { setCatalogoTab("espera"); setShowCatalogo(true); }}
-        >
-          <CardContent className="flex items-center gap-3 px-4 py-3">
-            <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${esperaAguardando.length > 0 ? "bg-amber-100" : "bg-slate-100"}`}>
-              <Timer className={`w-4 h-4 ${esperaAguardando.length > 0 ? "text-amber-600" : "text-slate-400"}`} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className={`text-xs font-semibold uppercase tracking-wide ${esperaAguardando.length > 0 ? "text-amber-700" : "text-slate-500"}`}>Modo Espera</div>
-              <div className={`text-[11px] ${esperaAguardando.length > 0 ? "text-amber-600/80" : "text-slate-400"}`}>
-                {esperaAguardando.length === 0
-                  ? "Nenhuma peça aguardando pagamento"
-                  : `${esperaAguardando.length} ${esperaAguardando.length === 1 ? "peça aguardando" : "peças aguardando"} pagamento`}
+        {esperaAguardando.length > 0 && (
+          <Card
+            className="border-amber-300 bg-amber-50 shadow-sm cursor-pointer hover:bg-amber-100/70 transition-colors"
+            onClick={() => { setCatalogoTab("espera"); setShowCatalogo(true); }}
+          >
+            <CardContent className="flex items-center gap-3 px-4 py-3">
+              <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                <Timer className="w-4 h-4 text-amber-600" />
               </div>
-            </div>
-            {esperaAguardando.length > 0 && (
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-semibold text-amber-700 uppercase tracking-wide">Modo Espera</div>
+                <div className="text-[11px] text-amber-600/80">
+                  {esperaAguardando.length} {esperaAguardando.length === 1 ? "peça aguardando" : "peças aguardando"} pagamento
+                </div>
+              </div>
               <div className="text-right shrink-0">
                 <div className="text-lg font-extrabold text-amber-700 leading-none">
                   {totalEspera.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}
                 </div>
                 <div className="text-[10px] text-amber-600/70 mt-0.5">tocar para ver</div>
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Mobile: collapsible form */}
         {showForm && (
