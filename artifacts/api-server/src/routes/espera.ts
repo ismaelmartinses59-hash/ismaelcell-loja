@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
 import { and, eq, sql } from "drizzle-orm";
-import { db, pecasTable, pecasEsperaTable, caixaTable, vendasTable } from "@workspace/db";
+import { db, pecasTable, pecasEsperaTable, caixaTable, vendasTable, contasReceberItensTable } from "@workspace/db";
 import { LABELS, normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
+import { findOrCreateConta } from "./contas-receber.js";
 
 const router: IRouter = Router();
 
@@ -85,11 +86,15 @@ router.post("/espera/:id/pagar", async (req, res): Promise<void> => {
   if (!espera) { res.status(404).json({ error: "Item não encontrado" }); return; }
   if (espera.status !== "aguardando") { res.status(400).json({ error: "Item já processado" }); return; }
 
+  const fiado = req.body?.fiado === true;
+  const nomeDevedor = String(req.body?.nomeDevedor ?? "").trim();
+  const tipoDevedor = req.body?.tipoDevedor === "lojista" ? "lojista" : "cliente";
   const rawSplits = req.body?.splits;
   const splits: Array<{ forma: string; valor: string }> | null =
     Array.isArray(rawSplits) && rawSplits.length > 0 ? rawSplits : null;
-  const forma = splits ? null : normalizeForma(req.body?.formaPagamento);
-  if (!splits && !forma) { res.status(400).json({ error: "formaPagamento obrigatório" }); return; }
+  const forma = (fiado || splits) ? null : normalizeForma(req.body?.formaPagamento);
+  if (!fiado && !splits && !forma) { res.status(400).json({ error: "formaPagamento obrigatório" }); return; }
+  if (fiado && !nomeDevedor) { res.status(400).json({ error: "Nome do devedor obrigatório" }); return; }
 
   await db.transaction(async (tx) => {
     // Cria venda
@@ -100,8 +105,20 @@ router.post("/espera/:id/pagar", async (req, res): Promise<void> => {
       valor: espera.valor,
     }).returning();
 
+    // Fiado: cria item na conta a receber em vez de entrada no caixa
+    if (fiado) {
+      const contaId = await findOrCreateConta(nomeDevedor, tipoDevedor, tx);
+      await tx.insert(contasReceberItensTable).values({
+        contaId,
+        vendaId: venda.id,
+        modelo: espera.modelo,
+        qualidade: espera.qualidade,
+        valor: espera.valor,
+      });
+    }
+
     // Cria entrada(s) no caixa
-    if (splits && splits.length > 0) {
+    if (!fiado && splits && splits.length > 0) {
       for (const split of splits) {
         const splitForma = normalizeForma(split.forma);
         if (splitForma) {
