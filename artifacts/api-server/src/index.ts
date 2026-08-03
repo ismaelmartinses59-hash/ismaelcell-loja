@@ -67,6 +67,12 @@ async function ensureSchema(): Promise<void> {
       created_at timestamp NOT NULL DEFAULT now()
     )
   `));
+  await runStatement("garantias_peca.peca_id", db.execute(sql`
+    ALTER TABLE garantias_peca ADD COLUMN IF NOT EXISTS peca_id integer
+  `));
+  await runStatement("garantias_peca.valor", db.execute(sql`
+    ALTER TABLE garantias_peca ADD COLUMN IF NOT EXISTS valor text
+  `));
   await runStatement("pecas.valor_custo", db.execute(
     sql`ALTER TABLE pecas ADD COLUMN IF NOT EXISTS valor_custo text NOT NULL DEFAULT ''`,
   ));
