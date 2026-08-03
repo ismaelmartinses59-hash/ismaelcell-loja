@@ -77,6 +77,14 @@ export default function Orders() {
   const esperaAguardando = esperaItems.filter((e) => e.status === "aguardando");
   const totalEspera = esperaAguardando.reduce((a, e) => a + parseFloat(e.valor || "0"), 0);
 
+  interface GarantiaPecaResumo { id: number; status: string }
+  const { data: garantiaItems = [] } = useQuery<GarantiaPecaResumo[]>({
+    queryKey: ["garantias-peca"],
+    queryFn: () => fetch(`${BASE_URL}/api/garantias-peca`).then((r) => r.ok ? r.json() : []),
+    refetchInterval: 60000,
+  });
+  const garantiasPendentes = garantiaItems.filter((g) => g.status === "pendente");
+
   useEffect(() => {
     if (localStorage.getItem("isLoggedIn") !== "true") {
       setLocation("/");
@@ -146,7 +154,7 @@ export default function Orders() {
       <CaixaSessaoGuard />
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} initialCodigo={garantiaCodigo} onClose={() => { setShowGarantia(false); setGarantiaCodigo(undefined); }} />
-      <CatalogoModal open={showCatalogo} onClose={() => { setShowCatalogo(false); setCatalogoTab("pecas"); }} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber" || catalogoTab === "espera"} />
+      <CatalogoModal open={showCatalogo} onClose={() => { setShowCatalogo(false); setCatalogoTab("pecas"); }} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber" || catalogoTab === "espera" || catalogoTab === "garantias"} />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
       <ConfiguracoesModal open={showConfig} onClose={() => setShowConfig(false)} />
       {/* Header */}
@@ -212,6 +220,21 @@ export default function Orders() {
               {esperaAguardando.length > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                   {esperaAguardando.length}
+                </span>
+              )}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className={`relative flex items-center gap-1 ${garantiasPendentes.length > 0 ? "text-orange-700 border-orange-400 bg-orange-50 hover:bg-orange-100" : "text-orange-600 border-orange-200 hover:bg-orange-50"}`}
+              onClick={() => { setCatalogoTab("garantias"); setShowCatalogo(true); }}
+              title="Peças em Garantia"
+            >
+              <Shield className="h-4 w-4" />
+              <span className="hidden sm:inline">Garantia</span>
+              {garantiasPendentes.length > 0 && (
+                <span className="absolute -top-1.5 -right-1.5 bg-orange-500 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+                  {garantiasPendentes.length}
                 </span>
               )}
             </Button>
