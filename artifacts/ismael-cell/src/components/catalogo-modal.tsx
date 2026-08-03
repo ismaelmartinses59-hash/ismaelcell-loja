@@ -937,14 +937,14 @@ interface CatalogoModalProps {
   open: boolean;
   onClose: () => void;
   setor: "cliente" | "lojista";
-  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera";
+  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes";
   soloTab?: boolean;
 }
 
 export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera">(initialTab ?? "pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes">(initialTab ?? "pecas");
   useEffect(() => { if (open && initialTab) setAba(initialTab); }, [open, initialTab]);
   useEffect(() => {
     if (!open) {
@@ -1106,6 +1106,19 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     queryKey: ["garantias-peca"],
     queryFn: () => apiFetch("/api/garantias-peca"),
     enabled: open,
+  });
+
+  interface Devolucao { id: number; pecaId: number | null; modelo: string; qualidade: string; valor: string | null; valorCusto: string | null; fornecedor: string; createdAt: string; }
+  const { data: devolucoes = [], isLoading: devolucoesLoading } = useQuery<Devolucao[]>({
+    queryKey: ["devolucoes"],
+    queryFn: () => apiFetch("/api/devolucoes"),
+    enabled: open,
+  });
+  const [deletingDevolucaoId, setDeletingDevolucaoId] = useState<number | null>(null);
+  const deleteDevolucaoMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/devolucoes/${id}`, { method: "DELETE" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["devolucoes"] }); setDeletingDevolucaoId(null); toast({ title: "Registro removido" }); },
+    onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
 
   const { data: vendasData, isLoading: vendasLoading } = useQuery<VendasResumo>({
@@ -1333,12 +1346,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     qc.invalidateQueries({ queryKey: ["caixa-sessoes"] });
   };
   const [devolverDialogPeca, setDevolverDialogPeca] = useState<Peca | null>(null);
+  const [devolverFornecedor, setDevolverFornecedor] = useState("");
   const devolverMutation = useMutation({
-    mutationFn: (id: number) => apiFetch(`/api/pecas/${id}/devolver`, { method: "POST" }),
+    mutationFn: ({ id, fornecedor }: { id: number; fornecedor: string }) =>
+      apiFetch(`/api/pecas/${id}/devolver`, { method: "POST", body: JSON.stringify({ fornecedor }) }),
     onSuccess: (peca: Peca) => {
       invalidatePecas();
-      toast({ title: "Devolvida ao fornecedor", description: `${peca.modelo} — Restam ${peca.quantidade} un.` });
+      qc.invalidateQueries({ queryKey: ["devolucoes"] });
+      toast({ title: "✅ Devolvida ao fornecedor", description: `${peca.modelo} — Restam ${peca.quantidade} un.` });
       setDevolverDialogPeca(null);
+      setDevolverFornecedor("");
     },
     onError: () => toast({ title: "Erro ao devolver", variant: "destructive" }),
   });
@@ -1647,6 +1664,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           <DialogTitle className="flex items-center gap-2 mb-3">
             {soloTab && aba === "espera"
               ? <><Timer className="w-5 h-5 text-amber-500" /> Modo Espera</>
+              : soloTab && aba === "devolucoes"
+              ? <><Undo2 className="w-5 h-5 text-orange-500" /> Devoluções ao Fornecedor</>
               : <><Package className="w-5 h-5 text-primary" /> Catálogo de Peças</>
             }
           </DialogTitle>
@@ -1694,6 +1713,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 <span className="bg-amber-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
                   {esperaItems.filter(e => e.status === "aguardando").length}
                 </span>
+              )}
+            </button>
+            <button
+              onClick={() => setAba("devolucoes")}
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "devolucoes" ? "bg-white shadow text-orange-600" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <Undo2 className="w-3.5 h-3.5" />
+              Devol.
+              {devolucoes.length > 0 && (
+                <span className="bg-orange-500 text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">{devolucoes.length}</span>
               )}
             </button>
           </div>
@@ -1984,6 +2013,69 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                           </div>
                         )}
                       </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {/* ── ABA DEVOLUÇÕES ─────────────────────────────────────────────── */}
+        {aba === "devolucoes" && (
+          <>
+            <div className="px-4 pt-3 pb-2 shrink-0">
+              <p className="text-xs text-muted-foreground">
+                {devolucoes.length === 0 ? "Nenhuma devolução registrada" : `${devolucoes.length} peça${devolucoes.length > 1 ? "s" : ""} devolvida${devolucoes.length > 1 ? "s" : ""} ao fornecedor`}
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-2">
+              {devolucoesLoading && <div className="text-center py-8 text-muted-foreground text-sm">Carregando...</div>}
+              {!devolucoesLoading && devolucoes.length === 0 && (
+                <div className="text-center py-10 text-muted-foreground text-sm">
+                  <Undo2 className="w-8 h-8 mx-auto mb-2 text-orange-300" />
+                  Nenhuma devolução ainda.<br />
+                  <span className="text-xs">Quando devolver uma peça ao fornecedor,<br />ela aparece aqui.</span>
+                </div>
+              )}
+              {devolucoes.map((d) => (
+                <div key={d.id}>
+                  {deletingDevolucaoId === d.id ? (
+                    <div className="border border-red-200 bg-red-50 rounded-xl p-3 flex items-center justify-between gap-3">
+                      <span className="text-sm text-red-700">Remover este registro?</span>
+                      <div className="flex gap-2 shrink-0">
+                        <Button size="sm" variant="ghost" onClick={() => setDeletingDevolucaoId(null)}>Não</Button>
+                        <Button size="sm" variant="destructive" onClick={() => deleteDevolucaoMutation.mutate(d.id)} disabled={deleteDevolucaoMutation.isPending}>
+                          {deleteDevolucaoMutation.isPending ? "..." : "Sim"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="border rounded-xl p-3 bg-white space-y-1.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-semibold text-sm truncate">{d.modelo}</div>
+                          <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{d.qualidade}</span>
+                            {d.valor && <span className="text-xs font-bold text-slate-700">{formatMoney(d.valor)}</span>}
+                          </div>
+                        </div>
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => setDeletingDevolucaoId(d.id)}>
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                          <Undo2 className="w-3 h-3 text-orange-500" />
+                          <span>Fornecedor: <strong className="text-orange-700">{d.fornecedor}</strong></span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">{formatDate(d.createdAt)}</span>
+                      </div>
+                      {d.valorCusto && (
+                        <div className="text-xs text-muted-foreground">
+                          Custo: {formatMoney(d.valorCusto)}
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2816,26 +2908,38 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 </button>
               </div>
 
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-900 space-y-1.5">
-                <p className="font-medium">Confirmar devolução de 1 unidade?</p>
-                <ul className="text-xs space-y-1 text-orange-800/90 pl-4 list-disc">
-                  <li>Estoque vai diminuir 1 unidade</li>
-                  <li>Sai do <strong>Custo Total</strong> ({devolverDialogPeca.valorCusto ? formatMoney(devolverDialogPeca.valorCusto) : "—"})</li>
-                  <li>Sai do <strong>Venda Total</strong> ({formatMoney(devolverDialogPeca.valor)})</li>
-                </ul>
+              <div className="space-y-3">
+                <div>
+                  <label className="text-xs font-medium text-muted-foreground block mb-1">Nome do Fornecedor</label>
+                  <Input
+                    placeholder="Ex: Aliexpress, Fornecedor SP, João..."
+                    value={devolverFornecedor}
+                    onChange={e => setDevolverFornecedor(e.target.value)}
+                    className="h-9 text-sm"
+                    autoFocus
+                  />
+                </div>
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs text-orange-900 space-y-1">
+                  <p className="font-medium">Ao confirmar:</p>
+                  <ul className="space-y-0.5 pl-3 list-disc text-orange-800/90">
+                    <li>Estoque diminui 1 unidade</li>
+                    <li>Peça fica registrada em <strong>Devoluções</strong></li>
+                    <li>Custo: {devolverDialogPeca.valorCusto ? formatMoney(devolverDialogPeca.valorCusto) : "—"} · Venda: {formatMoney(devolverDialogPeca.valor)}</li>
+                  </ul>
+                </div>
               </div>
 
               <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={() => setDevolverDialogPeca(null)} disabled={devolverMutation.isPending}>
+                <Button variant="outline" className="flex-1" onClick={() => { setDevolverDialogPeca(null); setDevolverFornecedor(""); }} disabled={devolverMutation.isPending}>
                   Cancelar
                 </Button>
                 <Button
                   className="flex-1 bg-orange-600 hover:bg-orange-700 text-white"
-                  onClick={() => devolverMutation.mutate(devolverDialogPeca.id)}
-                  disabled={devolverMutation.isPending}
+                  onClick={() => devolverMutation.mutate({ id: devolverDialogPeca.id, fornecedor: devolverFornecedor })}
+                  disabled={devolverMutation.isPending || !devolverFornecedor.trim()}
                 >
                   <Undo2 className="w-4 h-4 mr-1.5" />
-                  {devolverMutation.isPending ? "Devolvendo..." : "Confirmar"}
+                  {devolverMutation.isPending ? "Devolvendo..." : "Confirmar devolução"}
                 </Button>
               </div>
             </div>
