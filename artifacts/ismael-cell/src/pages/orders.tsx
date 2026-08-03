@@ -33,7 +33,7 @@ export default function Orders() {
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCaixa, setShowCaixa] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
-  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera">("pecas");
+  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
   const { data: contasReceber = [] } = useQuery<ContaResumo[]>({
@@ -154,7 +154,7 @@ export default function Orders() {
       <CaixaSessaoGuard />
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} initialCodigo={garantiaCodigo} onClose={() => { setShowGarantia(false); setGarantiaCodigo(undefined); }} />
-      <CatalogoModal open={showCatalogo} onClose={() => { setShowCatalogo(false); setCatalogoTab("pecas"); }} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber" || catalogoTab === "espera" || catalogoTab === "garantias"} />
+      <CatalogoModal open={showCatalogo} onClose={() => { setShowCatalogo(false); setCatalogoTab("pecas"); }} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber" || catalogoTab === "espera" || catalogoTab === "garantias" || catalogoTab === "devolucoes"} />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
       <ConfiguracoesModal open={showConfig} onClose={() => setShowConfig(false)} />
       {/* Header */}

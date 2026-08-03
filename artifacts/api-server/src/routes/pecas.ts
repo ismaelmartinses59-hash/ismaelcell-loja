@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
-import { db, pecasTable, vendasTable, contasReceberItensTable, caixaTable } from "@workspace/db";
+import { db, pecasTable, vendasTable, contasReceberItensTable, caixaTable, devolucoesTable } from "@workspace/db";
 import { findOrCreateConta } from "./contas-receber";
 import { LABELS, normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -526,35 +526,56 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
 router.post("/pecas/:id/devolver", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const { fornecedor } = req.body;
+  if (!fornecedor || !String(fornecedor).trim()) {
+    res.status(400).json({ error: "Nome do fornecedor é obrigatório" }); return;
+  }
   const [atual] = await db.select().from(pecasTable).where(eq(pecasTable.id, id));
   if (!atual) { res.status(404).json({ error: "Peça não encontrada" }); return; }
   if (atual.quantidade <= 0) { res.status(400).json({ error: "Sem estoque para devolver" }); return; }
-  const [peca] = await db
-    .update(pecasTable)
-    .set({ quantidade: atual.quantidade - 1 })
-    .where(eq(pecasTable.id, id))
-    .returning();
-  // Estoque compartilhado: decrementa também a gêmea no outro setor
-  const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
-  const gemeas = await db
-    .select()
-    .from(pecasTable)
-    .where(
-      and(
-        eq(pecasTable.setor, outroSetor),
-        sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
-        sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
-      ),
-    );
-  for (const g of gemeas) {
-    if (g.quantidade > 0) {
-      await db
-        .update(pecasTable)
-        .set({ quantidade: g.quantidade - 1 })
-        .where(eq(pecasTable.id, g.id));
+
+  const result = await db.transaction(async (tx) => {
+    const [peca] = await tx
+      .update(pecasTable)
+      .set({ quantidade: atual.quantidade - 1 })
+      .where(eq(pecasTable.id, id))
+      .returning();
+
+    // Estoque compartilhado: decrementa também a gêmea no outro setor
+    const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
+    const gemeas = await tx
+      .select()
+      .from(pecasTable)
+      .where(
+        and(
+          eq(pecasTable.setor, outroSetor),
+          sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
+          sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
+        ),
+      );
+    for (const g of gemeas) {
+      if (g.quantidade > 0) {
+        await tx
+          .update(pecasTable)
+          .set({ quantidade: g.quantidade - 1 })
+          .where(eq(pecasTable.id, g.id));
+      }
     }
-  }
-  res.json(peca);
+
+    // Registra a devolução no histórico
+    await tx.insert(devolucoesTable).values({
+      pecaId: id,
+      modelo: atual.modelo,
+      qualidade: atual.qualidade,
+      valor: atual.valor || null,
+      valorCusto: atual.valorCusto || null,
+      fornecedor: String(fornecedor).trim(),
+    });
+
+    return peca;
+  });
+
+  res.json(result);
 });
 
 router.delete("/pecas/:id", async (req, res): Promise<void> => {
