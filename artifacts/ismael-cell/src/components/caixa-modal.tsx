@@ -599,12 +599,12 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               <div className="grid grid-cols-2 gap-2 px-3 pb-3">
                 <div className="bg-white rounded-xl p-2.5 border border-gray-100">
                   <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center mb-1.5">
-                    {/* PIX logo — 4 losangos (rect rotacionado 45°) */}
-                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
-                      <rect x="10" y="3.5" width="4" height="4" rx="0.5" transform="rotate(45 12 5.5)" fill="#2563eb"/>
-                      <rect x="10" y="16.5" width="4" height="4" rx="0.5" transform="rotate(45 12 18.5)" fill="#2563eb"/>
-                      <rect x="3.5" y="10" width="4" height="4" rx="0.5" transform="rotate(45 5.5 12)" fill="#2563eb"/>
-                      <rect x="16.5" y="10" width="4" height="4" rx="0.5" transform="rotate(45 18.5 12)" fill="#2563eb"/>
+                    {/* PIX logo — 4 losangos em cruz */}
+                    <svg viewBox="0 0 64 64" className="w-4 h-4" fill="none">
+                      <path d="M32 8 L40 16 L32 24 L24 16 Z" fill="#2563eb"/>
+                      <path d="M8 32 L16 24 L24 32 L16 40 Z" fill="#2563eb"/>
+                      <path d="M32 40 L40 48 L32 56 L24 48 Z" fill="#2563eb"/>
+                      <path d="M40 32 L48 24 L56 32 L48 40 Z" fill="#2563eb"/>
                     </svg>
                   </div>
                   <div className="text-sm font-bold text-blue-700 leading-tight">{formatMoney(hoje.entradasPix ?? 0)}</div>
