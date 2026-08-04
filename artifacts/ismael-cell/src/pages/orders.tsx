@@ -150,33 +150,46 @@ export default function Orders() {
 
       {/* ── Header ─────────────────────────────────────────────────────────── */}
       <header className="bg-white px-4 pt-[env(safe-area-inset-top)] pb-3 flex items-center justify-between border-b border-gray-100 shadow-sm">
+        {/* Logo + wordmark */}
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-sm">
-            <Smartphone className="w-5 h-5 text-white" />
-          </div>
+          <img
+            src="/pwa-192x192.png"
+            alt="Ismael Cell"
+            className="w-11 h-11 rounded-xl object-cover"
+          />
           <div className="leading-tight">
-            <div className="font-extrabold text-blue-600 text-sm tracking-wide">ISMAEL CELL</div>
-            <div className="text-[10px] text-gray-400 tracking-wide">Gestão de Serviços</div>
+            <div className="text-base font-extrabold tracking-tight">
+              <span className="text-gray-900">ISMAEL</span>
+              <span className="text-blue-600">CELL</span>
+            </div>
+            <div className="text-[9px] font-semibold text-gray-400 tracking-[0.18em] uppercase mt-0.5">
+              Gestão de Serviços
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Actions */}
+        <div className="flex items-center gap-3">
+          {/* Bell */}
           <button
-            className="relative w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center"
+            className="relative p-1"
             onClick={() => setShowConfig(true)}
           >
-            <Bell className="w-4 h-4 text-gray-600" />
+            <Bell className="w-6 h-6 text-gray-500 stroke-[1.5]" />
             {garantiasPendentes.length > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 bg-blue-600 text-white text-[9px] font-bold w-4 h-4 rounded-full flex items-center justify-center">
+              <span className="absolute -top-0.5 -right-0.5 bg-blue-600 text-white text-[9px] font-bold min-w-[16px] h-4 px-0.5 rounded-full flex items-center justify-center">
                 {garantiasPendentes.length}
               </span>
             )}
           </button>
+
+          {/* Avatar */}
           <button
-            className="w-9 h-9 bg-blue-600 rounded-full flex items-center justify-center shadow-sm"
             onClick={handleLogout}
             title="Sair"
+            className="w-9 h-9 rounded-full overflow-hidden border-2 border-gray-200 shadow-sm bg-gradient-to-br from-blue-400 to-blue-700 flex items-center justify-center shrink-0"
           >
-            <User className="w-4 h-4 text-white" />
+            <User className="w-5 h-5 text-white" />
           </button>
         </div>
       </header>
