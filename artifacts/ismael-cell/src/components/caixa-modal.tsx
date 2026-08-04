@@ -36,6 +36,7 @@ import {
   CreditCard,
   Banknote,
   QrCode,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -513,7 +514,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         }
       }}
     >
-      <DialogContent className="max-w-lg w-full p-0 gap-0 max-h-[95vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-lg w-full p-0 gap-0 max-h-[95vh] flex flex-col overflow-hidden [&>button:last-child]:hidden">
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2">
@@ -522,23 +523,32 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             </div>
             <span className="text-xl font-bold text-gray-800">Caixa</span>
           </div>
-          {hoje?.sessao && hoje.sessao.status !== "fechado" && !fecharAberto && (
+          <div className="flex items-center gap-2">
+            {hoje?.sessao && hoje.sessao.status !== "fechado" && !fecharAberto && (
+              <button
+                onClick={() => {
+                  const ini = hoje.sessao ? parseMoney(hoje.sessao.valorInicial) : 0;
+                  setContadoValor(
+                    (ini + (hoje.entradasDinheiro ?? hoje.totalEntradas) - (hoje.saidasDinheiro ?? hoje.totalSaidas))
+                      .toFixed(2).replace(".", ","),
+                  );
+                  setFecharAberto(true);
+                }}
+                disabled={sessaoBusy}
+                className="flex items-center gap-1.5 border border-blue-500 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                <Moon className="w-3.5 h-3.5" />
+                Fechar caixa
+              </button>
+            )}
             <button
-              onClick={() => {
-                const ini = hoje.sessao ? parseMoney(hoje.sessao.valorInicial) : 0;
-                setContadoValor(
-                  (ini + (hoje.entradasDinheiro ?? hoje.totalEntradas) - (hoje.saidasDinheiro ?? hoje.totalSaidas))
-                    .toFixed(2).replace(".", ","),
-                );
-                setFecharAberto(true);
-              }}
-              disabled={sessaoBusy}
-              className="flex items-center gap-1.5 border border-blue-500 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-gray-100 transition-colors"
+              aria-label="Fechar"
             >
-              <Moon className="w-3.5 h-3.5" />
-              Fechar caixa
+              <X className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────── */}
@@ -599,12 +609,12 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               <div className="grid grid-cols-2 gap-2 px-3 pb-3">
                 <div className="bg-white rounded-xl p-2.5 border border-gray-100">
                   <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center mb-1.5">
-                    {/* PIX logo — 4 losangos (rect rotacionado 45°) */}
-                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
-                      <rect x="10" y="3.5" width="4" height="4" rx="0.5" transform="rotate(45 12 5.5)" fill="#2563eb"/>
-                      <rect x="10" y="16.5" width="4" height="4" rx="0.5" transform="rotate(45 12 18.5)" fill="#2563eb"/>
-                      <rect x="3.5" y="10" width="4" height="4" rx="0.5" transform="rotate(45 5.5 12)" fill="#2563eb"/>
-                      <rect x="16.5" y="10" width="4" height="4" rx="0.5" transform="rotate(45 18.5 12)" fill="#2563eb"/>
+                    {/* PIX logo — 4 losangos em cruz */}
+                    <svg viewBox="0 0 64 64" className="w-4 h-4" fill="none">
+                      <path d="M32 8 L40 16 L32 24 L24 16 Z" fill="#2563eb"/>
+                      <path d="M8 32 L16 24 L24 32 L16 40 Z" fill="#2563eb"/>
+                      <path d="M32 40 L40 48 L32 56 L24 48 Z" fill="#2563eb"/>
+                      <path d="M40 32 L48 24 L56 32 L48 40 Z" fill="#2563eb"/>
                     </svg>
                   </div>
                   <div className="text-sm font-bold text-blue-700 leading-tight">{formatMoney(hoje.entradasPix ?? 0)}</div>
