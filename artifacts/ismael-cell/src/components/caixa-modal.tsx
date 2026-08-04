@@ -533,7 +533,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 setFecharAberto(true);
               }}
               disabled={sessaoBusy}
-              className="flex items-center gap-1.5 border border-emerald-500 text-emerald-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-emerald-50 transition-colors"
+              className="flex items-center gap-1.5 border border-blue-500 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
             >
               <Moon className="w-3.5 h-3.5" />
               Fechar caixa
@@ -707,7 +707,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         setFecharAberto(true);
                       }}
                       disabled={sessaoBusy}
-                      className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 rounded-xl text-sm font-semibold"
+                      className="w-full h-11 bg-blue-600 hover:bg-blue-700 rounded-xl text-sm font-semibold"
                     >
                       <Moon className="mr-2 h-4 w-4" />
                       Fechar caixa agora
@@ -741,8 +741,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   onClick={() => setPeriodo(p.key)}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors border ${
                     periodo === p.key
-                      ? "bg-emerald-600 text-white border-emerald-600"
-                      : "bg-white text-slate-500 border-slate-200 hover:border-emerald-300"
+                      ? "bg-blue-600 text-white border-blue-600"
+                      : "bg-white text-slate-500 border-slate-200 hover:border-blue-300"
                   }`}
                 >
                   {p.label}
@@ -913,7 +913,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               )}
 
               {/* Submit */}
-              <Button className={`w-full h-11 rounded-xl text-sm font-semibold ${tipo === "entrada" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`} onClick={onSubmit} disabled={createCaixa.isPending}>
+              <Button className={`w-full h-11 rounded-xl text-sm font-semibold ${tipo === "entrada" ? "bg-blue-600 hover:bg-blue-700" : "bg-red-600 hover:bg-red-700"}`} onClick={onSubmit} disabled={createCaixa.isPending}>
                 {createCaixa.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : tipo === "entrada" ? <Check className="mr-2 h-4 w-4" /> : <ArrowUpCircle className="mr-2 h-4 w-4" />}
                 Registrar {tipo === "entrada" ? "entrada" : "saída"}
               </Button>
