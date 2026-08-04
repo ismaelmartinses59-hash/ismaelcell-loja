@@ -543,10 +543,10 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             )}
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-gray-100 transition-colors"
+              className="w-11 h-11 flex items-center justify-center rounded-xl text-slate-500 hover:text-slate-800 hover:bg-gray-100 active:bg-gray-200 transition-colors"
               aria-label="Fechar"
             >
-              <X className="w-4 h-4" />
+              <X className="w-5 h-5" />
             </button>
           </div>
         </div>
