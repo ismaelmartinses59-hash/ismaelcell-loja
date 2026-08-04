@@ -566,8 +566,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               <div className="grid grid-cols-3 gap-2 px-3 pb-2">
                 {[
                   {
-                    icon: <Wallet className="w-3.5 h-3.5 text-slate-500" />,
-                    bg: "bg-slate-100",
+                    icon: <Banknote className="w-3.5 h-3.5 text-emerald-600" />,
+                    bg: "bg-emerald-100",
                     label: "Troco inicial",
                     value: formatMoney(parseMoney(hoje.sessao.valorInicial)),
                     color: "text-slate-700",
@@ -598,10 +598,16 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               {/* Stats grid — row 2: 2 cols */}
               <div className="grid grid-cols-2 gap-2 px-3 pb-3">
                 <div className="bg-white rounded-xl p-2.5 border border-gray-100">
-                  <div className="w-7 h-7 rounded-full bg-cyan-100 flex items-center justify-center mb-1.5">
-                    <QrCode className="w-3.5 h-3.5 text-cyan-600" />
+                  <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center mb-1.5">
+                    {/* PIX logo — 4 losangos em cruz */}
+                    <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none">
+                      <path d="M12 2L14.5 4.5L12 7L9.5 4.5Z" fill="#2563eb"/>
+                      <path d="M2 12L4.5 9.5L7 12L4.5 14.5Z" fill="#2563eb"/>
+                      <path d="M12 17L14.5 19.5L12 22L9.5 19.5Z" fill="#2563eb"/>
+                      <path d="M17 12L19.5 9.5L22 12L19.5 14.5Z" fill="#2563eb"/>
+                    </svg>
                   </div>
-                  <div className="text-sm font-bold text-cyan-700 leading-tight">{formatMoney(hoje.entradasPix ?? 0)}</div>
+                  <div className="text-sm font-bold text-blue-700 leading-tight">{formatMoney(hoje.entradasPix ?? 0)}</div>
                   <div className="text-[9px] text-slate-400 mt-0.5">PIX hoje</div>
                 </div>
                 <div className="bg-white rounded-xl p-2.5 border border-gray-100">
