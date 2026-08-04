@@ -36,6 +36,7 @@ import {
   CreditCard,
   Banknote,
   QrCode,
+  X,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -513,7 +514,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         }
       }}
     >
-      <DialogContent className="max-w-lg w-full p-0 gap-0 max-h-[95vh] flex flex-col overflow-hidden">
+      <DialogContent className="max-w-lg w-full p-0 gap-0 max-h-[95vh] flex flex-col overflow-hidden [&>button:last-child]:hidden">
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2">
@@ -522,23 +523,32 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             </div>
             <span className="text-xl font-bold text-gray-800">Caixa</span>
           </div>
-          {hoje?.sessao && hoje.sessao.status !== "fechado" && !fecharAberto && (
+          <div className="flex items-center gap-2">
+            {hoje?.sessao && hoje.sessao.status !== "fechado" && !fecharAberto && (
+              <button
+                onClick={() => {
+                  const ini = hoje.sessao ? parseMoney(hoje.sessao.valorInicial) : 0;
+                  setContadoValor(
+                    (ini + (hoje.entradasDinheiro ?? hoje.totalEntradas) - (hoje.saidasDinheiro ?? hoje.totalSaidas))
+                      .toFixed(2).replace(".", ","),
+                  );
+                  setFecharAberto(true);
+                }}
+                disabled={sessaoBusy}
+                className="flex items-center gap-1.5 border border-blue-500 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+              >
+                <Moon className="w-3.5 h-3.5" />
+                Fechar caixa
+              </button>
+            )}
             <button
-              onClick={() => {
-                const ini = hoje.sessao ? parseMoney(hoje.sessao.valorInicial) : 0;
-                setContadoValor(
-                  (ini + (hoje.entradasDinheiro ?? hoje.totalEntradas) - (hoje.saidasDinheiro ?? hoje.totalSaidas))
-                    .toFixed(2).replace(".", ","),
-                );
-                setFecharAberto(true);
-              }}
-              disabled={sessaoBusy}
-              className="flex items-center gap-1.5 border border-blue-500 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+              onClick={onClose}
+              className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-gray-100 transition-colors"
+              aria-label="Fechar"
             >
-              <Moon className="w-3.5 h-3.5" />
-              Fechar caixa
+              <X className="w-4 h-4" />
             </button>
-          )}
+          </div>
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────── */}
