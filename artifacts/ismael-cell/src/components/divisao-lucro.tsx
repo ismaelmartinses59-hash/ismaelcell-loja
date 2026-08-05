@@ -37,6 +37,7 @@ interface ContaExtra {
   valor: string;
   pagoEm: string | null;
   diasContados?: number;
+  diaVencimento: number | null;
 }
 
 interface Divisao {
@@ -166,12 +167,17 @@ interface ConfigFin {
   custoEnergia: string;
   custoInternet: string;
   custoAgua: string;
+  diaAluguel: string;
+  diaEnergia: string;
+  diaInternet: string;
+  diaAgua: string;
 }
 
 type ContaFixa = "aluguel" | "energia" | "internet" | "agua";
 interface ContaStatus {
   pagoEm: string | null;
   diasContados: number;
+  diaVencimento: number;
 }
 
 type ConfigFinResp = ConfigFin & {
@@ -184,6 +190,14 @@ const CONTA_DE: Partial<Record<keyof ConfigFin, ContaFixa>> = {
   custoEnergia: "energia",
   custoInternet: "internet",
   custoAgua: "agua",
+};
+
+/** Mapeia o campo custo → campo dia correspondente. */
+const DIA_DE: Partial<Record<keyof ConfigFin, keyof ConfigFin>> = {
+  custoAluguel: "diaAluguel",
+  custoEnergia: "diaEnergia",
+  custoInternet: "diaInternet",
+  custoAgua: "diaAgua",
 };
 
 function fmtDia(d: string): string {
@@ -275,12 +289,17 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
   // ── Gerenciar extras ──────────────────────────────────────────────────────
   const addExtra = () => {
     extrasEditados.current = true;
-    setExtras((prev) => [...prev, { id: nanoid(), nome: "", valor: "", pagoEm: null }]);
+    setExtras((prev) => [...prev, { id: nanoid(), nome: "", valor: "", pagoEm: null, diaVencimento: null }]);
   };
 
   const updateExtra = (id: string, field: "nome" | "valor", value: string) => {
     extrasEditados.current = true;
     setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, [field]: value } : e)));
+  };
+
+  const updateExtraDia = (id: string, dia: number | null) => {
+    extrasEditados.current = true;
+    setExtras((prev) => prev.map((e) => (e.id === id ? { ...e, diaVencimento: dia } : e)));
   };
 
   const removeExtra = (id: string) => {
@@ -342,15 +361,30 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
                 const porDia = valorMes / divisorDias;
                 const acum = Math.min(valorMes, porDia * diasContados);
                 const pagoEm = status?.pagoEm ?? null;
+                const diaCampo = conta ? DIA_DE[campo] : undefined;
                 return (
                   <div key={campo} className="space-y-0.5">
                     <label className="text-[11px] font-medium text-slate-600">{label}</label>
-                    <Input
-                      inputMode="decimal"
-                      value={form[campo]}
-                      onChange={(e) => setForm((f) => f ? { ...f, [campo]: e.target.value } : f)}
-                      className="h-9 text-sm"
-                    />
+                    <div className="flex gap-1.5">
+                      <Input
+                        inputMode="decimal"
+                        value={form[campo]}
+                        onChange={(e) => setForm((f) => f ? { ...f, [campo]: e.target.value } : f)}
+                        className="h-9 text-sm flex-1"
+                      />
+                      {diaCampo && (
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] text-slate-400 whitespace-nowrap">Vence dia</span>
+                          <Input
+                            inputMode="numeric"
+                            placeholder="7"
+                            value={form[diaCampo]}
+                            onChange={(e) => setForm((f) => f ? { ...f, [diaCampo]: e.target.value } : f)}
+                            className="h-9 w-12 text-sm text-center px-1"
+                          />
+                        </div>
+                      )}
+                    </div>
                     {contaKey && (
                       <div className="flex items-start justify-between gap-2 pt-0.5">
                         <div className="min-w-0 space-y-0.5">
@@ -437,12 +471,27 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
                             <Trash2 className="h-3 w-3" />
                           </button>
                         </div>
-                        <Input
-                          inputMode="decimal"
-                          value={e.valor}
-                          onChange={(ev) => updateExtra(e.id, "valor", ev.target.value)}
-                          className="h-9 text-sm"
-                        />
+                        <div className="flex gap-1.5">
+                          <Input
+                            inputMode="decimal"
+                            value={e.valor}
+                            onChange={(ev) => updateExtra(e.id, "valor", ev.target.value)}
+                            className="h-9 text-sm flex-1"
+                          />
+                          <div className="flex items-center gap-1 shrink-0">
+                            <span className="text-[10px] text-slate-400 whitespace-nowrap">Vence dia</span>
+                            <Input
+                              inputMode="numeric"
+                              placeholder="7"
+                              value={e.diaVencimento ?? ""}
+                              onChange={(ev) => {
+                                const v = parseInt(ev.target.value, 10);
+                                updateExtraDia(e.id, isNaN(v) ? null : Math.min(28, Math.max(1, v)));
+                              }}
+                              className="h-9 w-12 text-sm text-center px-1"
+                            />
+                          </div>
+                        </div>
                         <div className="flex items-start justify-between gap-2 pt-0.5">
                           <div className="min-w-0 space-y-0.5">
                             {valorMes > 0 && (
@@ -494,7 +543,7 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
                           placeholder="R$ valor"
                           value={e.valor}
                           onChange={(ev) => updateExtra(e.id, "valor", ev.target.value)}
-                          className="h-8 w-24 text-sm"
+                          className="h-8 w-20 text-sm"
                         />
                         <button
                           type="button"
@@ -503,6 +552,20 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] text-slate-400">Vence dia</span>
+                        <Input
+                          inputMode="numeric"
+                          placeholder="ex: 5"
+                          value={e.diaVencimento ?? ""}
+                          onChange={(ev) => {
+                            const v = parseInt(ev.target.value, 10);
+                            updateExtraDia(e.id, isNaN(v) ? null : Math.min(28, Math.max(1, v)));
+                          }}
+                          className="h-7 w-16 text-sm text-center px-1"
+                        />
+                        <span className="text-[10px] text-slate-400">do mês</span>
                       </div>
                       <p className="text-[10px] text-slate-400">Preencha e clique em Salvar valores.</p>
                     </div>
