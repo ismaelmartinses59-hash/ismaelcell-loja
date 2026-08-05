@@ -189,7 +189,8 @@ const CONTA_LABEL: Record<Conta, string> = {
 };
 
 /** Marca (ou desmarca) uma conta fixa como paga hoje.
- *  Ao marcar: reinicia o acúmulo E lança uma saída no caixa com o valor configurado. */
+ *  Ao marcar: reinicia o acúmulo E lança uma saída no caixa com o valor configurado.
+ *  Bloqueia duplicata: se já estiver paga, retorna 409. */
 router.post("/financeiro/pagar", async (req, res): Promise<void> => {
   const conta = String(req.body?.conta ?? "") as Conta;
   if (!CONTAS.includes(conta)) {
@@ -197,6 +198,18 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
     return;
   }
   const marcandoPago = req.body?.pago !== false;
+
+  // Guarda anti-duplicata: se já está marcada como paga, rejeita nova marcação
+  if (marcandoPago) {
+    const pagos = await lerPagos();
+    if (pagos[conta]) {
+      res.status(409).json({
+        error: "Esta conta já foi registrada como paga e a saída financeira já foi lançada.",
+      });
+      return;
+    }
+  }
+
   const value = marcandoPago ? hojeSP() : "";
 
   await db.transaction(async (tx) => {
@@ -227,7 +240,8 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
 });
 
 /** Marca (ou desmarca) uma conta EXTRA como paga hoje.
- *  Ao marcar: lança saída automática no caixa com o valor da conta. */
+ *  Ao marcar: lança saída automática no caixa com o valor da conta.
+ *  Bloqueia duplicata: se já estiver paga, retorna 409. */
 router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
   const id = String(req.body?.id ?? "");
   const pago: boolean = req.body?.pago !== false;
@@ -235,6 +249,14 @@ router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
   const extras = await lerExtras();
   const idx = extras.findIndex((e) => e.id === id);
   if (idx === -1) { res.status(404).json({ error: "conta não encontrada" }); return; }
+
+  // Guarda anti-duplicata
+  if (pago && extras[idx].pagoEm) {
+    res.status(409).json({
+      error: "Esta conta já foi registrada como paga e a saída financeira já foi lançada.",
+    });
+    return;
+  }
 
   await db.transaction(async (tx) => {
     extras[idx] = { ...extras[idx], pagoEm: pago ? hojeSP() : null };
