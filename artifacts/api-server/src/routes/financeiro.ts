@@ -40,14 +40,20 @@ const CHAVES = {
   custoEnergia: { key: "fin_custo_energia", def: "50" },
   custoInternet: { key: "fin_custo_internet", def: "85" },
   custoAgua: { key: "fin_custo_agua", def: "0" },
+  // Dia do mês em que cada conta vence (1-28)
+  diaAluguel: { key: "fin_dia_aluguel", def: "7" },
+  diaEnergia: { key: "fin_dia_energia", def: "7" },
+  diaInternet: { key: "fin_dia_internet", def: "7" },
+  diaAgua: { key: "fin_dia_agua", def: "7" },
 } as const;
 
 /** Conta personalizada criada pelo usuário (além das 4 fixas). */
 export interface ContaExtra {
   id: string;
   nome: string;
-  valor: string;   // texto pt-BR, ex: "1.133,33"
+  valor: string;        // texto pt-BR, ex: "1.133,33"
   pagoEm: string | null; // "YYYY-MM-DD" ou null
+  diaVencimento: number | null; // dia do mês (1-28) em que a conta vence
 }
 
 const EXTRAS_KEY = "fin_contas_extras";
@@ -89,8 +95,7 @@ const PAGO_KEYS: Record<Conta, string> = {
   agua: "fin_pago_agua",
 };
 
-/** Dia do mês em que o ciclo de contas começa quando ainda não houve
- *  pagamento (dia do aluguel). O dono paga a partir do dia 7. */
+/** Dia do mês padrão para o ciclo de contas (quando o usuário não configurou). */
 const DIA_CICLO = 7;
 
 /** Lê a data do último pagamento de cada conta (ou null se nunca pago). */
@@ -108,24 +113,25 @@ async function lerPagos(): Promise<Record<Conta, string | null>> {
 /**
  * Data-âncora a partir da qual contamos os dias trabalhados de uma conta:
  *  - Já paga → conta os dias trabalhados DEPOIS do pagamento (reinicia do zero).
- *  - Nunca paga → conta a partir do dia 7 do ciclo atual (dia do aluguel).
+ *  - Nunca paga → conta a partir do dia de vencimento configurado (padrão: dia 7).
  */
-function ancoraDaConta(pagoEm: string | null): {
+function ancoraDaConta(pagoEm: string | null, diaCiclo: number = DIA_CICLO): {
   anchor: string;
   exclusive: boolean;
 } {
   if (pagoEm && DATA_RE.test(pagoEm)) return { anchor: pagoEm, exclusive: true };
+  const dia = Math.min(28, Math.max(1, Math.round(diaCiclo)));
   const [y, m, d] = hojeSP().split("-").map(Number);
   let ay = y;
   let am = m;
-  if (d < DIA_CICLO) {
+  if (d < dia) {
     am -= 1;
     if (am === 0) {
       am = 12;
       ay -= 1;
     }
   }
-  const anchor = `${ay}-${String(am).padStart(2, "0")}-${String(DIA_CICLO).padStart(2, "0")}`;
+  const anchor = `${ay}-${String(am).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
   return { anchor, exclusive: false };
 }
 
@@ -144,20 +150,30 @@ async function contarDiasDesde(
   return row?.n ?? 0;
 }
 
+/** Mapa: conta fixa → campo de dia configurado. */
+const DIA_KEY: Record<Conta, keyof typeof CHAVES> = {
+  aluguel: "diaAluguel",
+  energia: "diaEnergia",
+  internet: "diaInternet",
+  agua: "diaAgua",
+};
+
 /** Lê os valores editáveis + o status/acúmulo de cada conta fixa. */
 router.get("/financeiro/config", async (_req, res): Promise<void> => {
   const cfg = await lerConfig();
   const pagos = await lerPagos();
-  const contas = {} as Record<Conta, { pagoEm: string | null; diasContados: number }>;
+  const contas = {} as Record<Conta, { pagoEm: string | null; diasContados: number; diaVencimento: number }>;
   for (const c of CONTAS) {
-    const { anchor, exclusive } = ancoraDaConta(pagos[c]);
-    contas[c] = { pagoEm: pagos[c], diasContados: await contarDiasDesde(anchor, exclusive) };
+    const diaVencimento = Math.min(28, Math.max(1, parseInt(cfg[DIA_KEY[c]] as string, 10) || DIA_CICLO));
+    const { anchor, exclusive } = ancoraDaConta(pagos[c], diaVencimento);
+    contas[c] = { pagoEm: pagos[c], diasContados: await contarDiasDesde(anchor, exclusive), diaVencimento };
   }
-  // Contas extras: enriquecer com diasContados (mesmo cálculo)
+  // Contas extras: enriquecer com diasContados (mesmo cálculo usando diaVencimento)
   const extras = await lerExtras();
   const extrasComDias = await Promise.all(
     extras.map(async (e) => {
-      const { anchor, exclusive } = ancoraDaConta(e.pagoEm);
+      const dia = e.diaVencimento ?? DIA_CICLO;
+      const { anchor, exclusive } = ancoraDaConta(e.pagoEm, dia);
       return { ...e, diasContados: await contarDiasDesde(anchor, exclusive) };
     }),
   );
@@ -215,6 +231,7 @@ router.put("/financeiro/config", async (req, res): Promise<void> => {
         nome: String(e.nome ?? "").trim(),
         valor: String(e.valor ?? "").trim(),
         pagoEm: e.pagoEm && DATA_RE.test(e.pagoEm) ? e.pagoEm : null,
+        diaVencimento: e.diaVencimento != null ? Math.min(28, Math.max(1, Math.round(Number(e.diaVencimento)))) : null,
       })).filter((e) => e.id && e.nome);
       await salvarExtras(tx, extras);
     }
