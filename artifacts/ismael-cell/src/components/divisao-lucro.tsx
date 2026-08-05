@@ -255,9 +255,17 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ conta, pago }),
       });
+      if (r.status === 409) {
+        const body = await r.json();
+        toast({ title: body.error ?? "Conta já registrada como paga.", variant: "destructive" });
+        return;
+      }
       if (!r.ok) throw new Error("erro");
       await qc.invalidateQueries({ queryKey: ["financeiro-config"] });
-      toast({ title: pago ? "Marcado como pago!" : "Desmarcado" });
+      toast({
+        title: pago ? "✅ Pago! Saída lançada no Caixa." : "Desmarcado",
+        description: pago ? "A despesa foi registrada automaticamente." : undefined,
+      });
     } catch {
       toast({ title: "Não deu pra salvar", variant: "destructive" });
     } finally {
@@ -274,11 +282,18 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, pago }),
       });
+      if (r.status === 409) {
+        const body = await r.json();
+        toast({ title: body.error ?? "Conta já registrada como paga.", variant: "destructive" });
+        return;
+      }
       if (!r.ok) throw new Error("erro");
       await qc.invalidateQueries({ queryKey: ["financeiro-config"] });
-      // reset form so it reloads fresh data
       setForm(null);
-      toast({ title: pago ? "Marcado como pago!" : "Desmarcado" });
+      toast({
+        title: pago ? "✅ Pago! Saída lançada no Caixa." : "Desmarcado",
+        description: pago ? "A despesa foi registrada automaticamente." : undefined,
+      });
     } catch {
       toast({ title: "Não deu pra salvar", variant: "destructive" });
     } finally {
