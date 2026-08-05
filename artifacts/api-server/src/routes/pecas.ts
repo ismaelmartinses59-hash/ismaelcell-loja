@@ -113,6 +113,83 @@ router.post("/pecas/importar-nota", async (req, res): Promise<void> => {
   }
 });
 
+/**
+ * Normaliza o nome de uma peça usando IA e sugere modelos compatíveis.
+ * Também encontra a peça existente mais similar no estoque.
+ */
+router.post("/pecas/normalizar-modelo", async (req, res): Promise<void> => {
+  const modeloRaw = String(req.body?.modelo ?? "").trim();
+  if (!modeloRaw) {
+    res.status(400).json({ error: "modelo é obrigatório" });
+    return;
+  }
+  const existentesRaw = Array.isArray(req.body?.existentes) ? req.body.existentes : [];
+  const existentes = existentesRaw
+    .map((e: unknown) => {
+      const o = (e ?? {}) as Record<string, unknown>;
+      return { id: Number(o.id), modelo: String(o.modelo ?? "").trim() };
+    })
+    .filter((e) => e.id && e.modelo);
+
+  const prompt = [
+    "Você é especialista em peças de celular (Samsung, Motorola, Xiaomi, iPhone etc.).",
+    "",
+    "TAREFA: O lojista digitou o nome de uma peça que veio do seu fornecedor.",
+    "Normalize esse nome e identifique TODOS os modelos compatíveis com essa peça.",
+    "",
+    "Regras de normalização:",
+    "1. Comece SEMPRE com o tipo de peça em maiúsculas (TELA, BATERIA, CÂMERA, etc.)",
+    "2. Depois coloque a marca (Samsung, Motorola, etc.) se conhecida",
+    "3. Liste TODOS os modelos compatíveis separados por espaço, usando nomenclatura oficial",
+    "   (ex: A02S A03S A04I A03 — use S/I/E maiúsculo conforme o modelo oficial)",
+    "4. Exemplo bom: 'Tela Samsung A02S A03S A04I A03'",
+    "",
+    `INPUT DO LOJISTA: "${modeloRaw}"`,
+    "",
+    "PEÇAS JÁ CADASTRADAS NO SISTEMA (use para encontrar a mais similar e os modelos que faltam):",
+    JSON.stringify(existentes.map((e) => ({ id: e.id, modelo: e.modelo }))),
+    "",
+    "RETORNE APENAS JSON válido (sem markdown, sem explicações):",
+    "{",
+    '  "normalizado": "nome completo normalizado (ex: Tela Samsung A02S A03S A04I A03)",',
+    '  "modelosCompativeis": ["A02S", "A03S", "A04I", "A03"],',
+    '  "matchId": <número do id da peça existente mais similar, ou null se nenhuma for similar>,',
+    '  "modelosFaltando": ["modelos", "que", "estão", "no", "normalizado", "mas", "faltam", "na", "peça", "existente"]',
+    "}",
+    "Se não encontrar nenhuma peça existente suficientemente similar, matchId deve ser null e modelosFaltando deve ser [].",
+  ].join("\n");
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      config: { responseMimeType: "application/json", maxOutputTokens: 1024 },
+    });
+    const raw = response.text ?? "";
+    let parsed: {
+      normalizado: string;
+      modelosCompativeis: string[];
+      matchId: number | null;
+      modelosFaltando: string[];
+    };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      res.status(502).json({ error: "IA retornou resposta inválida. Tente novamente." });
+      return;
+    }
+    res.json({
+      normalizado: String(parsed.normalizado ?? "").trim(),
+      modelosCompativeis: Array.isArray(parsed.modelosCompativeis) ? parsed.modelosCompativeis : [],
+      matchId: typeof parsed.matchId === "number" ? parsed.matchId : null,
+      modelosFaltando: Array.isArray(parsed.modelosFaltando) ? parsed.modelosFaltando : [],
+    });
+  } catch (err) {
+    req.log.error({ err }, "normalizar-modelo falhou");
+    res.status(500).json({ error: "Falha ao consultar a IA. Tente novamente." });
+  }
+});
+
 // Cadastra em lote os itens confirmados na prévia. Cada item vira um par de
 // peças (cliente + lojista), tudo numa única transação (ou salva tudo ou nada).
 router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {

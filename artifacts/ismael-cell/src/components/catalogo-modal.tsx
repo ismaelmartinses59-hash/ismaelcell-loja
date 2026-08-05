@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer, BookOpen } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer, BookOpen, Wand2, Sparkles } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
@@ -235,6 +235,68 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
   const [fornecedor, setFornecedor] = useState("");
   const [valorLojista, setValorLojista] = useState("");
 
+  // ── IA: normalizar modelo ─────────────────────────────────────────────────
+  const [normalizando, setNormalizando] = useState(false);
+  const [normAI, setNormAI] = useState<{
+    normalizado: string;
+    modelosCompativeis: string[];
+    matchId: number | null;
+    matchModelo: string | null;
+    modelosFaltando: string[];
+  } | null>(null);
+
+  const normalizarComIA = async () => {
+    if (!modelo.trim() || normalizando) return;
+    setNormalizando(true);
+    setNormAI(null);
+    try {
+      const r = await fetch(`${BASE}/api/pecas/normalizar-modelo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelo: modelo.trim(),
+          existentes: existentes.map((p) => ({ id: p.id, modelo: p.modelo })),
+        }),
+      });
+      if (!r.ok) { const e = await r.json(); throw new Error(e.error ?? "erro"); }
+      const data = await r.json();
+      const matchPeca = data.matchId ? existentes.find((p) => p.id === data.matchId) : null;
+      setNormAI({
+        normalizado: data.normalizado,
+        modelosCompativeis: data.modelosCompativeis,
+        matchId: data.matchId ?? null,
+        matchModelo: matchPeca?.modelo ?? null,
+        modelosFaltando: data.modelosFaltando ?? [],
+      });
+    } catch (e: unknown) {
+      alert((e as Error).message ?? "Erro ao consultar a IA");
+    } finally {
+      setNormalizando(false);
+    }
+  };
+
+  const aplicarNomeIA = () => {
+    if (!normAI) return;
+    setModelo(normAI.normalizado);
+    setNormAI(null);
+  };
+
+  const atualizarPecaExistente = async () => {
+    if (!normAI?.matchId || !normAI.normalizado) return;
+    try {
+      const r = await fetch(`${BASE}/api/pecas/${normAI.matchId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelo: normAI.normalizado }),
+      });
+      if (!r.ok) throw new Error("erro ao atualizar");
+      setNormAI(null);
+      alert(`✅ Peça atualizada para: ${normAI.normalizado}`);
+    } catch {
+      alert("Não foi possível atualizar a peça existente.");
+    }
+  };
+
   const calcularSugestao = (custoStr: string) => {
     const c = parseFloat(custoStr.replace(",", "."));
     if (isNaN(c) || c <= 0) { setPrecoSugerido(null); return; }
@@ -310,28 +372,98 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
       <div className="grid grid-cols-2 gap-3">
         <div className="col-span-2">
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Modelo / Peça</label>
-          <div className="relative">
-            <Input
-              placeholder="Ex: Tela A03 Core, Bateria S21..."
-              value={modelo}
-              onChange={(e) => { setModelo(e.target.value); setQualidade(""); }}
-            />
-            {modeloSugestoes.length > 0 && (
-              <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
-                {modeloSugestoes.map((p) => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => { setModelo(p.modelo); setQualidade(p.qualidade); }}
-                    className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2"
-                  >
-                    <span className="text-xs font-medium">{p.modelo}</span>
-                    <span className="text-[11px] text-muted-foreground shrink-0">{p.qualidade} · {p.quantidade} un.</span>
-                  </button>
-                ))}
-              </div>
-            )}
+          <div className="flex gap-1.5">
+            <div className="relative flex-1">
+              <Input
+                placeholder="Ex: Tela A03 Core, Bateria S21..."
+                value={modelo}
+                onChange={(e) => { setModelo(e.target.value); setQualidade(""); setNormAI(null); }}
+              />
+              {modeloSugestoes.length > 0 && (
+                <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                  {modeloSugestoes.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => { setModelo(p.modelo); setQualidade(p.qualidade); }}
+                      className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2"
+                    >
+                      <span className="text-xs font-medium">{p.modelo}</span>
+                      <span className="text-[11px] text-muted-foreground shrink-0">{p.qualidade} · {p.quantidade} un.</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={normalizarComIA}
+              disabled={!modelo.trim() || normalizando}
+              title="Normalizar nome com IA e encontrar modelos compatíveis"
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-violet-300 bg-violet-50 text-violet-700 text-xs font-semibold hover:bg-violet-100 disabled:opacity-40 transition-colors"
+            >
+              {normalizando
+                ? <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                : <Wand2 className="w-3.5 h-3.5" />}
+              {normalizando ? "IA..." : "IA"}
+            </button>
           </div>
+
+          {/* ── Card resultado IA ────────────────────────────────────────── */}
+          {normAI && (
+            <div className="mt-2 rounded-xl border border-violet-200 bg-violet-50 p-3 space-y-2">
+              <div className="flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-violet-600 shrink-0" />
+                <span className="text-xs font-bold text-violet-800">Sugestão da IA</span>
+                <button type="button" onClick={() => setNormAI(null)} className="ml-auto text-violet-400 hover:text-violet-700">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              {/* Nome normalizado */}
+              <div className="rounded-lg bg-white border border-violet-200 px-3 py-2 flex items-center justify-between gap-2">
+                <span className="text-xs font-semibold text-gray-800 leading-snug">{normAI.normalizado}</span>
+                <button
+                  type="button"
+                  onClick={aplicarNomeIA}
+                  className="shrink-0 text-[10px] font-bold bg-violet-600 text-white px-2.5 py-1 rounded-lg hover:bg-violet-700 transition-colors"
+                >
+                  Usar este nome
+                </button>
+              </div>
+
+              {/* Match com peça existente */}
+              {normAI.matchId && normAI.matchModelo && (
+                <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 space-y-1.5">
+                  <p className="text-[11px] text-amber-800 font-semibold">
+                    🔍 Peça similar já existe no estoque:
+                  </p>
+                  <p className="text-[11px] text-amber-700 font-medium">"{normAI.matchModelo}"</p>
+                  {normAI.modelosFaltando.length > 0 && (
+                    <p className="text-[10px] text-amber-600">
+                      Modelos faltando: <b>{normAI.modelosFaltando.join(", ")}</b>
+                    </p>
+                  )}
+                  <button
+                    type="button"
+                    onClick={atualizarPecaExistente}
+                    className="w-full text-[11px] font-bold bg-amber-500 text-white py-1.5 rounded-lg hover:bg-amber-600 transition-colors"
+                  >
+                    ✏️ Atualizar nome da peça existente
+                  </button>
+                </div>
+              )}
+
+              {/* Modelos compatíveis */}
+              {normAI.modelosCompativeis.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {normAI.modelosCompativeis.map((m) => (
+                    <span key={m} className="text-[10px] bg-violet-100 text-violet-700 px-1.5 py-0.5 rounded font-medium">{m}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {duplicada && (
             <div className="mt-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2.5 space-y-2">
               <div className="flex items-center gap-1.5">
