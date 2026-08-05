@@ -180,22 +180,54 @@ router.get("/financeiro/config", async (_req, res): Promise<void> => {
   res.json({ ...cfg, contas, contasExtras: extrasComDias });
 });
 
-/** Marca (ou desmarca) uma conta fixa como paga hoje; ao marcar, o acúmulo reinicia. */
+/** Nomes legíveis das contas fixas para o motivo da saída no caixa. */
+const CONTA_LABEL: Record<Conta, string> = {
+  aluguel: "Aluguel",
+  energia: "Energia",
+  internet: "Internet",
+  agua: "Água",
+};
+
+/** Marca (ou desmarca) uma conta fixa como paga hoje.
+ *  Ao marcar: reinicia o acúmulo E lança uma saída no caixa com o valor configurado. */
 router.post("/financeiro/pagar", async (req, res): Promise<void> => {
   const conta = String(req.body?.conta ?? "") as Conta;
   if (!CONTAS.includes(conta)) {
     res.status(400).json({ error: "conta inválida" });
     return;
   }
-  const value = req.body?.pago === false ? "" : hojeSP();
-  await db
-    .insert(appConfigTable)
-    .values({ key: PAGO_KEYS[conta], value })
-    .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+  const marcandoPago = req.body?.pago !== false;
+  const value = marcandoPago ? hojeSP() : "";
+
+  await db.transaction(async (tx) => {
+    // 1) Atualiza a data de pagamento
+    await tx
+      .insert(appConfigTable)
+      .values({ key: PAGO_KEYS[conta], value })
+      .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+
+    // 2) Ao marcar como pago: lança saída automática no caixa
+    if (marcandoPago) {
+      const cfg = await lerConfig();
+      const chaveValor = `custo${conta.charAt(0).toUpperCase()}${conta.slice(1)}` as ConfigCampo;
+      const valorNum = parseValor(cfg[chaveValor] ?? "0");
+      if (valorNum > 0) {
+        const valorFmt = valorNum.toFixed(2).replace(".", ",");
+        await tx.insert(caixaTable).values({
+          tipo: "saida",
+          valor: valorFmt,
+          motivo: CONTA_LABEL[conta],
+          formaPagamento: "dinheiro",
+        });
+      }
+    }
+  });
+
   res.json({ ok: true });
 });
 
-/** Marca (ou desmarca) uma conta EXTRA como paga hoje. */
+/** Marca (ou desmarca) uma conta EXTRA como paga hoje.
+ *  Ao marcar: lança saída automática no caixa com o valor da conta. */
 router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
   const id = String(req.body?.id ?? "");
   const pago: boolean = req.body?.pago !== false;
@@ -203,8 +235,27 @@ router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
   const extras = await lerExtras();
   const idx = extras.findIndex((e) => e.id === id);
   if (idx === -1) { res.status(404).json({ error: "conta não encontrada" }); return; }
-  extras[idx] = { ...extras[idx], pagoEm: pago ? hojeSP() : null };
-  await salvarExtras(db, extras);
+
+  await db.transaction(async (tx) => {
+    extras[idx] = { ...extras[idx], pagoEm: pago ? hojeSP() : null };
+    await salvarExtras(tx, extras);
+
+    // Ao marcar como pago: lança saída automática no caixa
+    if (pago) {
+      const extra = extras[idx];
+      const valorNum = parseValor(extra.valor ?? "0");
+      if (valorNum > 0) {
+        const valorFmt = valorNum.toFixed(2).replace(".", ",");
+        await tx.insert(caixaTable).values({
+          tipo: "saida",
+          valor: valorFmt,
+          motivo: extra.nome,
+          formaPagamento: "dinheiro",
+        });
+      }
+    }
+  });
+
   res.json({ ok: true });
 });
 
