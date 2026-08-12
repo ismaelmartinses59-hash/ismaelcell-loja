@@ -121,6 +121,13 @@ export function CaixaSessaoGuard() {
   const [vBusca, setVBusca] = useState("");
   const [vPecaSel, setVPecaSel] = useState<Peca | null>(null);
   const [vSubmitting, setVSubmitting] = useState(false);
+
+  // Saída de última hora (despesa esquecida na hora de fechar)
+  const [showSaida, setShowSaida] = useState(false);
+  const [sValor, setSValor] = useState("");
+  const [sMotivo, setSMotivo] = useState("");
+  const [sForma, setSForma] = useState<FormaPagamento>("dinheiro");
+  const [sSubmitting, setSSubmitting] = useState(false);
     // Fiado: anota a venda na conta de um devedor em vez de entrar no caixa
     const [vFiado, setVFiado] = useState(false);
     const [vAV, setVAV] = useState(false);
@@ -415,6 +422,55 @@ export function CaixaSessaoGuard() {
         setAvSubmitting(false);
       }
     };
+
+  const resetSaida = () => {
+    setSValor("");
+    setSMotivo("");
+    setSForma("dinheiro");
+    setShowSaida(false);
+  };
+
+  const registrarSaida = async () => {
+    if (!sValor.trim()) {
+      toast({ title: "Informe o valor da saída", variant: "destructive" });
+      return;
+    }
+    if (!sMotivo.trim()) {
+      toast({ title: "Diga o motivo da saída", variant: "destructive" });
+      return;
+    }
+    setSSubmitting(true);
+    try {
+      const r = await fetch(`${BASE}/api/caixa`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "saida",
+          valor: sValor.trim(),
+          motivo: sMotivo.trim(),
+          formaPagamento: sForma,
+        }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "Erro ao registrar");
+      }
+      toast({ title: "Saída registrada! ✅" });
+      resetSaida();
+      setContadoTouched(false);
+      await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
+      await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+      await refetch();
+    } catch (e) {
+      toast({
+        title: "Erro ao registrar a saída",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setSSubmitting(false);
+    }
+  };
 
     const abrir = async () => {
     if (!valorInicial.trim()) {
@@ -958,6 +1014,92 @@ export function CaixaSessaoGuard() {
                   </Button>
                 </div>
               )}
+              {/* Saída de última hora */}
+              {!showSaida ? (
+                <button
+                  type="button"
+                  onClick={() => { setShowSaida(true); setShowVenda(false); resetVenda(); }}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-red-300 bg-red-50 py-3 text-sm font-bold text-red-700 transition-colors hover:bg-red-100"
+                >
+                  <ArrowUpCircle className="h-4 w-4" /> Teve uma saída de última hora?
+                </button>
+              ) : (
+                <div className="rounded-2xl border border-red-200 bg-red-50/60 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2 text-sm font-bold text-red-800">
+                      <ArrowUpCircle className="h-4 w-4" /> Saída de última hora
+                    </span>
+                    <button
+                      type="button"
+                      onClick={resetSaida}
+                      className="rounded-full p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-600"
+                      aria-label="Fechar"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Valor (R$)</label>
+                    <Input
+                      inputMode="decimal"
+                      placeholder="Ex: 50,00"
+                      value={sValor}
+                      onChange={(e) => setSValor(e.target.value)}
+                      className="mt-1 h-11"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Forma de pagamento</label>
+                    <div className="mt-1 grid grid-cols-2 gap-1.5">
+                      {(["dinheiro", "pix"] as FormaPagamento[]).map((f) => {
+                        const ativo = sForma === f;
+                        return (
+                          <button
+                            key={f}
+                            type="button"
+                            onClick={() => setSForma(f)}
+                            className={`flex items-center justify-center gap-1.5 rounded-lg border py-2 text-xs font-semibold transition-colors ${
+                              ativo
+                                ? "bg-red-600 text-white border-red-600"
+                                : "bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
+                            }`}
+                          >
+                            {f === "dinheiro" ? <Banknote className="h-3.5 w-3.5" /> : <QrCode className="h-3.5 w-3.5" />}
+                            {f === "dinheiro" ? "Dinheiro" : "PIX"}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {sForma === "pix" && (
+                      <p className="mt-1 text-[11px] text-cyan-700">
+                        PIX — sai direto da conta, NÃO da gaveta.
+                      </p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-medium text-slate-600">Motivo</label>
+                    <Input
+                      placeholder="Ex: compra de material, pagamento..."
+                      value={sMotivo}
+                      onChange={(e) => setSMotivo(e.target.value)}
+                      className="mt-1 h-11"
+                    />
+                  </div>
+
+                  <Button
+                    className="h-11 w-full font-bold bg-red-600 hover:bg-red-700"
+                    onClick={registrarSaida}
+                    disabled={sSubmitting}
+                  >
+                    {sSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                    Registrar saída
+                  </Button>
+                </div>
+              )}
+
               <div>
                 <label className="text-sm font-semibold text-slate-700">
                   Quanto tem na gaveta agora? (R$)
