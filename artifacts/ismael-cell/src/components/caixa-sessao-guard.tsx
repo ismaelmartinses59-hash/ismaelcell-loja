@@ -74,6 +74,8 @@ interface StatusResp {
   saldo: number;
   entradasDinheiro?: number;
   entradasPix?: number;
+  saidasDinheiro?: number;
+  saidasPix?: number;
   cartao?: CartaoItem[];
   totalCartao?: number;
   totalCartaoLiquido?: number;
@@ -169,10 +171,14 @@ export function CaixaSessaoGuard() {
 
   const valIni = status?.sessao ? parseValor(status.sessao.valorInicial) : 0;
   const entradas = status?.entradasDinheiro ?? status?.totalEntradas ?? 0;
-  const saidas = status?.totalSaidas ?? 0;
+  // Só saídas em DINHEIRO saem da gaveta; saídas via PIX NÃO afetam a gaveta.
+  const saidas = status?.saidasDinheiro ?? status?.totalSaidas ?? 0;
   const valFinal = valIni + entradas - saidas;
-  const pix = status?.entradasPix ?? 0;
-  const totalGeral = valFinal + pix;
+  // PIX líquido: o que entrou via PIX menos o que saiu via PIX (pode ser negativo).
+  const pixEntradas = status?.entradasPix ?? 0;
+  const pixSaidas = status?.saidasPix ?? 0;
+  const pixLiquido = pixEntradas - pixSaidas;
+  const totalGeral = valFinal + pixLiquido;
   const cartao = status?.cartao ?? [];
   const totalCartaoLiquido = status?.totalCartaoLiquido ?? 0;
 
@@ -554,7 +560,7 @@ export function CaixaSessaoGuard() {
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="flex items-center gap-2 text-red-600">
-                    <ArrowDownCircle className="h-4 w-4" /> Saídas
+                    <ArrowDownCircle className="h-4 w-4" /> Saídas (dinheiro)
                   </span>
                   <span className="font-semibold text-red-700">
                     −{formatMoney(saidas)}
@@ -564,16 +570,22 @@ export function CaixaSessaoGuard() {
                   <span className="flex items-center gap-2 text-sm font-bold text-slate-700">
                     <Wallet className="h-4 w-4" /> Na gaveta (dinheiro)
                   </span>
-                  <span className="text-lg font-extrabold text-emerald-600">
+                  <span className={`text-lg font-extrabold ${valFinal >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                     {formatMoney(valFinal)}
                   </span>
                 </div>
+                {/* PIX líquido: entradas PIX − saídas PIX (pode ser negativo) */}
                 <div className="flex items-center justify-between">
                   <span className="flex items-center gap-2 text-sm font-bold text-cyan-700">
                     <QrCode className="h-4 w-4" /> No PIX
+                    {pixSaidas > 0 && (
+                      <span className="text-[10px] font-normal text-slate-400">
+                        (+{formatMoney(pixEntradas)} −{formatMoney(pixSaidas)})
+                      </span>
+                    )}
                   </span>
-                  <span className="text-lg font-extrabold text-cyan-700">
-                    {formatMoney(pix)}
+                  <span className={`text-lg font-extrabold ${pixLiquido >= 0 ? "text-cyan-700" : "text-red-600"}`}>
+                    {formatMoney(pixLiquido)}
                   </span>
                 </div>
                 <div className="border-t border-slate-300 pt-2.5 flex items-center justify-between">
