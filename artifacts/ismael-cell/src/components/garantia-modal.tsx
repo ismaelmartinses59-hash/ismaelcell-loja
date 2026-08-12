@@ -1,16 +1,36 @@
-import { useState, useMemo, useEffect } from "react";
-import { useListOrders, useEditOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey, OrderLinha } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useListOrders, useEditOrder, getListOrdersQueryKey, getGetOrderStatsQueryKey, OrderLinha, OrderTipo } from "@workspace/api-client-react";
+import { useQueryClient, useQuery } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Shield, Search, CheckCircle2, Loader2, Smartphone, Calendar, Wrench, AlertTriangle, Pencil, Trash2, X, Share2, Printer } from "lucide-react";
+import { Shield, Search, CheckCircle2, Loader2, Smartphone, Calendar, Wrench, AlertTriangle, Pencil, Trash2, X, Share2, Printer, ChevronDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, addDays, isBefore, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { Order } from "@workspace/api-client-react";
 import { sendGarantiaWhatsApp, printGarantia } from "../lib/garantia-doc";
+import { SERVICES_BY_LINE_CLIENTE } from "@/lib/constants";
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+const LINHAS: { value: OrderLinha; label: string }[] = [
+  { value: OrderLinha.samsung,  label: "Samsung" },
+  { value: OrderLinha.xiaomi,   label: "Xiaomi" },
+  { value: OrderLinha.motorola, label: "Motorola" },
+  { value: OrderLinha.ios,      label: "iPhone" },
+  { value: OrderLinha.realme,   label: "Realme" },
+];
+
+function detectarLinha(modelo: string): OrderLinha {
+  const m = modelo.toLowerCase();
+  if (m.includes("redmi") || m.includes("poco") || m.includes("xiaomi")) return OrderLinha.xiaomi;
+  if (m.includes("iphone") || m.includes("ios")) return OrderLinha.ios;
+  if (m.includes("moto") || m.includes("motorola")) return OrderLinha.motorola;
+  if (m.includes("realme")) return OrderLinha.realme;
+  return OrderLinha.samsung;
+}
 
 const GARANTIA_OPTIONS = ["7 dias", "30 dias", "90 dias", "6 meses", "1 ano"];
 const GARANTIA_OPTIONS_EDIT = ["0 dias", ...GARANTIA_OPTIONS];
@@ -54,12 +74,23 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
 
   const [tab, setTab] = useState<Tab>("registrar");
 
-  // Aba Registrar
+  // Aba Registrar — busca OS (opcional)
   const [busca, setBusca] = useState("");
   const [buscaAtiva, setBuscaAtiva] = useState("");
+  const [showOSBusca, setShowOSBusca] = useState(false);
   const [garantiaSelecionada, setGarantiaSelecionada] = useState("");
-    const [nomeRegistrar, setNomeRegistrar] = useState("");
-    const [dataRegistrar, setDataRegistrar] = useState("");
+  const [nomeRegistrar, setNomeRegistrar] = useState("");
+  const [dataRegistrar, setDataRegistrar] = useState(format(new Date(), "yyyy-MM-dd"));
+
+  // Aba Registrar — formulário manual (quando não há OS)
+  const [manAparelho, setManAparelho] = useState("");
+  const [manLinha, setManLinha] = useState<OrderLinha>(OrderLinha.samsung);
+  const [manServico, setManServico] = useState("");
+  const [pecaBusca, setPecaBusca] = useState("");
+  const [showPecasSug, setShowPecasSug] = useState(false);
+  const [criandoOS, setCriandoOS] = useState(false);
+  const [ordemCriada, setOrdemCriada] = useState<Order | null>(null);
+  const aparelhoRef = useRef<HTMLDivElement>(null);
 
   // Aba Consultar
   const [consultaBusca, setConsultaBusca] = useState("");
@@ -123,8 +154,35 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
         setTab("registrar");
         setBusca(initialCodigo);
         setBuscaAtiva(initialCodigo);
+        setShowOSBusca(true);
       }
     }, [open, initialCodigo]);
+
+    // Detecta a linha automaticamente a partir do modelo digitado
+    useEffect(() => {
+      if (!orderRegistrar) setManLinha(detectarLinha(manAparelho));
+    }, [manAparelho, orderRegistrar]);
+
+    // Peças do estoque para autocomplete do aparelho
+    const { data: pecasLista = [] } = useQuery<{ id: number; modelo: string; qualidade: string }[]>({
+      queryKey: ["pecas-ac", pecaBusca],
+      queryFn: () =>
+        fetch(`${BASE}/api/pecas?setor=cliente&search=${encodeURIComponent(pecaBusca)}`)
+          .then((r) => r.json())
+          .then((d) => (Array.isArray(d) ? d : d.pecas ?? [])),
+      enabled: pecaBusca.length >= 2,
+      staleTime: 10_000,
+    });
+
+    const pecasSugestoes = useMemo(() => {
+      if (pecaBusca.length < 2) return [];
+      const norm = pecaBusca.toLowerCase();
+      return [...new Map(
+        pecasLista
+          .filter((p) => p.modelo.toLowerCase().includes(norm))
+          .map((p) => [p.modelo, p])
+      ).values()].slice(0, 6);
+    }, [pecasLista, pecaBusca]);
 
     const ordersComGarantia = useMemo(() => {
     return todasOrders
@@ -201,16 +259,50 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
   };
 
   const handleSalvarRegistrar = () => {
-      if (!orderRegistrar || !garantiaSelecionada) return;
-      saveGarantia(
-        orderRegistrar,
-        garantiaSelecionada,
-        () => {
-          toast({ title: "Garantia registrada!", description: `${orderRegistrar.codigo} - ${garantiaSelecionada}` });
-        },
-        { nomeCliente: nomeRegistrar.trim() || undefined, dataServico: dataRegistrar || undefined },
-      );
-    };
+    if (!orderRegistrar || !garantiaSelecionada) return;
+    saveGarantia(
+      orderRegistrar,
+      garantiaSelecionada,
+      () => {
+        toast({ title: "Garantia registrada!", description: `${orderRegistrar.codigo} - ${garantiaSelecionada}` });
+      },
+      { nomeCliente: nomeRegistrar.trim() || undefined, dataServico: dataRegistrar || undefined },
+    );
+  };
+
+  // ── Salvar garantia SEM OS (cria OS mínima no background) ────────────────
+  const handleSalvarManual = async () => {
+    const aparelho = manAparelho.trim();
+    if (!aparelho || !manServico || !garantiaSelecionada || !dataRegistrar) return;
+    setCriandoOS(true);
+    try {
+      const r = await fetch(`${BASE}/api/orders`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modelo: aparelho,
+          linha: manLinha,
+          servico: manServico,
+          valor: "0",
+          tempo: "—",
+          tipo: OrderTipo.cliente,
+          nomeCliente: nomeRegistrar.trim() || undefined,
+          garantia: garantiaSelecionada,
+          dataServico: dataRegistrar,
+        }),
+      });
+      if (!r.ok) throw new Error("Erro ao criar OS");
+      const ordem: Order = await r.json();
+      setOrdemCriada(ordem);
+      queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
+      toast({ title: "✅ Garantia criada!", description: `${ordem.codigo} — ${garantiaSelecionada}` });
+    } catch {
+      toast({ title: "Erro ao criar garantia", variant: "destructive" });
+    } finally {
+      setCriandoOS(false);
+    }
+  };
 
   // ── Consultar / Edit handlers ────────────────────────
   const handleStartEdit = (order: Order) => {
@@ -247,16 +339,13 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
 
   // ── Close ────────────────────────────────────────────
   const handleClose = () => {
-    setBusca("");
-    setBuscaAtiva("");
-    setGarantiaSelecionada("");
-    setConsultaBusca("");
-    setEditingId(null);
-    setEditValue("");
-    setConfirmDeleteOrder(null);
-    setNomeRegistrar("");
-      setDataRegistrar("");
-      setTab("registrar");
+    setBusca(""); setBuscaAtiva(""); setShowOSBusca(false);
+    setGarantiaSelecionada(""); setNomeRegistrar("");
+    setDataRegistrar(format(new Date(), "yyyy-MM-dd"));
+    setManAparelho(""); setManServico(""); setManLinha(OrderLinha.samsung);
+    setPecaBusca(""); setShowPecasSug(false); setOrdemCriada(null);
+    setConsultaBusca(""); setEditingId(null); setEditValue("");
+    setConfirmDeleteOrder(null); setTab("registrar");
     onClose();
   };
 
@@ -293,132 +382,162 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
           {/* ── ABA REGISTRAR ─────────────────────────────── */}
           {tab === "registrar" && (
             <div className="space-y-3">
-              <p className="text-sm text-muted-foreground">Digite o número da OS para registrar a garantia</p>
-              <div className="flex gap-2">
-                <Input
-                  placeholder="Ex: 1234567890"
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleBuscar()}
-                  className="flex-1"
-                />
-                <Button size="sm" onClick={handleBuscar} disabled={!busca.trim()}>
-                  <Search className="w-4 h-4" />
+
+              {/* Formulário — sempre cria uma OS nova */}
+              <div className="rounded-xl border bg-muted/40 p-4 space-y-3">
+
+                {/* Nome */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Nome do cliente <span className="text-muted-foreground font-normal">(opcional)</span></label>
+                  <Input
+                    placeholder="Ex: João Silva"
+                    value={nomeRegistrar}
+                    onChange={(e) => setNomeRegistrar(e.target.value)}
+                  />
+                </div>
+
+                {/* Aparelho */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Aparelho *</label>
+                  <div className="relative" ref={aparelhoRef}>
+                    <div className="flex items-center gap-1.5 rounded-md border bg-white px-3 py-2">
+                      <Smartphone className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <input
+                        className="flex-1 text-sm outline-none bg-transparent placeholder:text-muted-foreground"
+                        placeholder="Ex: Redmi Note 12, Galaxy A32..."
+                        value={manAparelho}
+                        onChange={(e) => {
+                          setManAparelho(e.target.value);
+                          setPecaBusca(e.target.value);
+                          setShowPecasSug(true);
+                          setOrdemCriada(null);
+                        }}
+                        onFocus={() => setShowPecasSug(true)}
+                        onBlur={() => setTimeout(() => setShowPecasSug(false), 150)}
+                      />
+                    </div>
+                    {showPecasSug && pecasSugestoes.length > 0 && (
+                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                        {pecasSugestoes.map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => {
+                              setManAparelho(p.modelo);
+                              setPecaBusca(p.modelo);
+                              setShowPecasSug(false);
+                            }}
+                            className="w-full text-left px-3 py-2 hover:bg-muted flex items-center gap-2"
+                          >
+                            <Smartphone className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            <span className="text-xs font-medium">{p.modelo}</span>
+                            <span className="text-[10px] text-muted-foreground ml-auto shrink-0">{p.qualidade}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Marca */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Marca</label>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {LINHAS.map(({ value, label }) => (
+                      <button
+                        key={value}
+                        type="button"
+                        onClick={() => setManLinha(value)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-semibold border transition-colors ${manLinha === value ? "bg-primary text-white border-primary" : "bg-white text-muted-foreground border-muted-foreground/30 hover:border-primary/50"}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Serviço */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Serviço *</label>
+                  <Select value={manServico} onValueChange={setManServico}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o serviço..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(SERVICES_BY_LINE_CLIENTE[manLinha] ?? []).map((s) => (
+                        <SelectItem key={s} value={s}>{s}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Data */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Data do serviço *</label>
+                  <Input
+                    type="date"
+                    value={dataRegistrar}
+                    onChange={(e) => setDataRegistrar(e.target.value)}
+                  />
+                </div>
+
+                {/* Garantia */}
+                <div className="space-y-1">
+                  <label className="text-xs font-semibold text-muted-foreground">Garantia *</label>
+                  <Select value={garantiaSelecionada} onValueChange={setGarantiaSelecionada}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione o período..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GARANTIA_OPTIONS.map((g) => (
+                        <SelectItem key={g} value={g}>{g}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Válida até */}
+                <div className="flex items-center justify-between rounded-md border border-dashed bg-muted/30 px-3 py-2">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+                    <Calendar className="w-3.5 h-3.5" /> Válida até
+                  </span>
+                  <span className={`text-sm font-bold ${validadeRegistrar ? "text-green-600" : "text-muted-foreground"}`}>
+                    {validadeRegistrar ? format(validadeRegistrar, "dd/MM/yyyy", { locale: ptBR }) : "—"}
+                  </span>
+                </div>
+
+                {/* Botão salvar */}
+                <Button
+                  className="w-full"
+                  onClick={handleSalvarManual}
+                  disabled={!manAparelho.trim() || !manServico || !garantiaSelecionada || !dataRegistrar || criandoOS || !!ordemCriada}
+                >
+                  {criandoOS ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                  {ordemCriada ? "✅ Garantia Criada!" : "Salvar Garantia"}
                 </Button>
-              </div>
 
-              {loadingRegistrar && buscaAtiva && (
-                <div className="flex items-center gap-2 text-sm text-muted-foreground py-3 justify-center">
-                  <Loader2 className="w-4 h-4 animate-spin" /> Buscando...
-                </div>
-              )}
-
-              {buscaAtiva && !loadingRegistrar && !orderRegistrar && (
-                <div className="text-center py-4 text-sm text-muted-foreground rounded-lg border border-dashed">
-                  Nenhuma OS encontrada para <strong>{buscaAtiva}</strong>
-                </div>
-              )}
-
-              {orderRegistrar && (
-                  <div className="rounded-xl border bg-muted/40 p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ordem de Serviço</span>
-                      <span className="font-mono text-xs text-foreground bg-muted px-2 py-0.5 rounded">#{orderRegistrar.codigo}</span>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Nome</label>
-                      <Input
-                        placeholder="Nome do cliente"
-                        value={nomeRegistrar}
-                        onChange={(e) => setNomeRegistrar(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Aparelho</label>
-                      <div className="flex items-center gap-2 text-sm rounded-md border bg-muted/60 px-3 py-2">
-                        <Smartphone className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <span className="font-medium">{orderRegistrar.modelo}</span>
-                        <span className="text-muted-foreground text-xs capitalize">({orderRegistrar.linha})</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Serviço</label>
-                      <div className="flex items-center gap-2 text-sm rounded-md border bg-muted/60 px-3 py-2">
-                        <Wrench className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                        <span>{orderRegistrar.servico}</span>
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Data do serviço</label>
-                      <Input
-                        type="date"
-                        value={dataRegistrar}
-                        onChange={(e) => setDataRegistrar(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-semibold text-muted-foreground">Garantia</label>
-                      <Select value={garantiaSelecionada} onValueChange={setGarantiaSelecionada}>
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecione o período..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {GARANTIA_OPTIONS.map((g) => (
-                            <SelectItem key={g} value={g}>{g}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="flex items-center justify-between rounded-md border border-dashed bg-muted/30 px-3 py-2">
-                      <span className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
-                        <Calendar className="w-3.5 h-3.5" /> Válida até
-                      </span>
-                      <span className={`text-sm font-bold ${validadeRegistrar ? "text-green-600" : "text-muted-foreground"}`}>
-                        {validadeRegistrar ? format(validadeRegistrar, "dd/MM/yyyy", { locale: ptBR }) : "—"}
-                      </span>
-                    </div>
-
-                    <Button className="w-full" onClick={handleSalvarRegistrar} disabled={!garantiaSelecionada || editOrder.isPending}>
-                      {editOrder.isPending
-                        ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        : <CheckCircle2 className="w-4 h-4 mr-2" />
-                      }
-                      Salvar Garantia
+                {/* WhatsApp / Imprimir — aparece após salvar */}
+                {ordemCriada && (
+                  <div className="grid grid-cols-2 gap-2 pt-2 border-t">
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => handleEnviarWhats(ordemCriada)}
+                      disabled={enviandoId === ordemCriada.id}
+                    >
+                      {enviandoId === ordemCriada.id
+                        ? <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        : <Share2 className="w-4 h-4 mr-1" />}
+                      WhatsApp
                     </Button>
-
-                    {garantiaSelecionada && (
-                        <div className="grid grid-cols-2 gap-2 pt-2 border-t">
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => handleEnviarWhats(orderRegistrarEfetivo!)}
-                            disabled={enviandoId === orderRegistrar!.id}
-                          >
-                            {enviandoId === orderRegistrar!.id ? (
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            ) : (
-                              <Share2 className="w-4 h-4 mr-2" />
-                            )}
-                            WhatsApp
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="w-full"
-                            onClick={() => printGarantia(orderRegistrarEfetivo!)}
-                          >
-                            <Printer className="w-4 h-4 mr-2" />
-                            Imprimir
-                          </Button>
-                        </div>
-                      )}
+                    <Button variant="outline" className="w-full" onClick={() => printGarantia(ordemCriada)}>
+                      <Printer className="w-4 h-4 mr-1" />
+                      Imprimir
+                    </Button>
                   </div>
                 )}
+              </div>
             </div>
           )}
 

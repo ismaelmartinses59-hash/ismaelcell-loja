@@ -508,6 +508,9 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   const rawSplits = req.body?.splits;
   const splits: Array<{ forma: string; valor: string }> | null =
     Array.isArray(rawSplits) && rawSplits.length > 0 ? rawSplits : null;
+  // Preço negociado (desconto/acréscimo) — usa o valor da peça se não informado.
+  const valorCustomRaw = String(req.body?.valorCustom ?? "").trim();
+  const valorVenda = valorCustomRaw || atual.valor;
   if (fiado && !nomeDevedor) {
     res.status(400).json({ error: "Nome do devedor obrigatório no fiado" });
     return;
@@ -527,7 +530,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
         pecaId: id,
         modelo: atual.modelo,
         qualidade: atual.qualidade,
-        valor: atual.valor,
+        valor: valorVenda,
       })
       .returning();
     if (fiado) {
@@ -537,7 +540,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
         vendaId: venda.id,
         modelo: atual.modelo,
         qualidade: atual.qualidade,
-        valor: atual.valor,
+        valor: valorVenda,
       });
     }
     // Estoque compartilhado: decrementa também a peça gêmea no outro setor
@@ -585,7 +588,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
       } else if (forma) {
         await tx.insert(caixaTable).values({
           tipo: "entrada",
-          valor: atual.valor,
+          valor: valorVenda,
           motivo: `Venda ${atual.modelo} (${LABELS[forma]})`,
           pecaId: id,
           vendaId: venda.id,
