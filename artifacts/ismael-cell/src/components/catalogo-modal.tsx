@@ -1102,8 +1102,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     }
   }, [open]);
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
-  const [valorVendaCustom, setValorVendaCustom] = useState(""); // preço negociado (desconto)
-  const [editandoPreco, setEditandoPreco] = useState(false);
+  const [temDesconto, setTemDesconto] = useState(false);
+  const [valorDesconto, setValorDesconto] = useState("");
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
   const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista" | "misto">("choose");
@@ -2018,7 +2018,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <Button
                               size="sm"
                               disabled={peca.quantidade === 0 || venderMutation.isPending}
-                              onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); setValorVendaCustom(""); setEditandoPreco(false); }}
+                              onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); setTemDesconto(false); setValorDesconto(""); }}
                               className="flex-1 h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
                             >
                               <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
@@ -3085,60 +3085,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {venderDialogPeca && (
           <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
             <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-              {(() => {
-                const valorBase = venderDialogPeca.valor;
-                const valorEfetivo = valorVendaCustom.trim() || valorBase;
-                const isDesconto = valorVendaCustom.trim() && valorVendaCustom.trim() !== valorBase;
-                return (
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs text-muted-foreground">Vendendo</div>
-                      <div className="font-bold text-base truncate">{venderDialogPeca.modelo}</div>
-                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                        <span className="text-xs text-muted-foreground">{venderDialogPeca.qualidade}</span>
-                        {editandoPreco ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-xs text-muted-foreground">R$</span>
-                            <input
-                              autoFocus
-                              className="w-20 text-sm font-bold border-b-2 border-primary outline-none bg-transparent text-primary"
-                              inputMode="decimal"
-                              placeholder={valorBase.replace(",", ".")}
-                              value={valorVendaCustom}
-                              onChange={(e) => setValorVendaCustom(e.target.value)}
-                              onBlur={() => setEditandoPreco(false)}
-                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") setEditandoPreco(false); }}
-                            />
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setEditandoPreco(true)}
-                            className="flex items-center gap-1 group"
-                            title="Clique para dar desconto ou alterar o valor"
-                          >
-                            <span className={`text-sm font-bold ${isDesconto ? "text-amber-600 line-through opacity-60 text-xs" : "text-foreground"}`}>
-                              {formatMoney(valorBase)}
-                            </span>
-                            {isDesconto && (
-                              <span className="text-sm font-bold text-green-600">{formatMoney(valorVendaCustom)}</span>
-                            )}
-                            <Pencil className="w-3 h-3 text-muted-foreground group-hover:text-primary ml-0.5 transition-colors" />
-                          </button>
-                        )}
-                      </div>
-                      {isDesconto && (
-                        <div className="text-[10px] text-amber-600 font-medium mt-0.5">
-                          Desconto de {formatMoney(String(parsePtBR(valorBase) - parsePtBR(valorVendaCustom)))}
-                        </div>
-                      )}
-                    </div>
-                    <button type="button" className="text-muted-foreground hover:text-foreground p-1 shrink-0" onClick={() => setVenderDialogPeca(null)} disabled={venderMutation.isPending}>
-                      <X className="w-5 h-5" />
-                    </button>
+              {/* Cabeçalho — preço limpo, sem edição inline */}
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-muted-foreground">Vendendo</div>
+                  <div className="font-bold text-base truncate">{venderDialogPeca.modelo}</div>
+                  <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                    <span className="text-xs text-muted-foreground">{venderDialogPeca.qualidade}</span>
+                    <span className="text-sm font-bold">{formatMoney(venderDialogPeca.valor)}</span>
                   </div>
-                );
-              })()}
+                </div>
+                <button type="button" className="text-muted-foreground hover:text-foreground p-1 shrink-0" onClick={() => setVenderDialogPeca(null)} disabled={venderMutation.isPending}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
               {fiadoStep === "choose" && (
                 <div className="grid grid-cols-2 gap-2 pt-1">
@@ -3186,8 +3146,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               )}
 
               {fiadoStep === "avista" && (() => {
-                const valorEf = valorVendaCustom.trim() || venderDialogPeca.valor;
-                const vc = valorVendaCustom.trim() || undefined;
+                const valorBase = venderDialogPeca.valor;
+                const descNum = temDesconto ? parsePtBR(valorDesconto) : 0;
+                const validDesc = descNum > 0 && descNum < parsePtBR(valorBase);
+                const valorEfNum = validDesc ? parsePtBR(valorBase) - descNum : parsePtBR(valorBase);
+                const valorEf = validDesc ? String(valorEfNum.toFixed(2).replace(".", ",")) : valorBase;
+                const vc = validDesc ? valorEf : undefined;
                 return (
                 <div className="space-y-2.5 pt-1">
                   <div className="text-xs font-semibold text-muted-foreground">Recebeu como?</div>
@@ -3209,6 +3173,39 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       <span className="font-bold text-sm">PIX</span>
                     </Button>
                   </div>
+                  {/* Desconto opcional */}
+                  <div className="space-y-1.5 border-t border-slate-100 pt-2">
+                    <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={temDesconto}
+                        onChange={(e) => { setTemDesconto(e.target.checked); if (!e.target.checked) setValorDesconto(""); }}
+                        className="h-4 w-4 accent-amber-600"
+                      />
+                      Tem desconto?
+                    </label>
+                    {temDesconto && (
+                      <div className="space-y-1.5">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          placeholder="Valor do desconto (R$)"
+                          value={valorDesconto}
+                          onChange={(e) => setValorDesconto(e.target.value)}
+                          autoFocus
+                          className="w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                        {validDesc && (
+                          <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm flex items-center gap-1.5 flex-wrap">
+                            <span className="line-through text-slate-400 text-xs">{formatMoney(valorBase)}</span>
+                            <span className="text-amber-600">−{formatMoney(valorDesconto)}</span>
+                            <span className="text-slate-500">=</span>
+                            <span className="font-bold text-green-700">{formatMoney(valorEf)}</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-2 text-[11px] text-emerald-900">
                     Dinheiro e PIX entram na gaveta — sem taxa. Você recebe os <b>{formatMoney(valorEf)}</b> cheios.
                   </div>
@@ -3218,8 +3215,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })()}
 
               {fiadoStep === "cartao" && (() => {
-                const valorEf = valorVendaCustom.trim() || venderDialogPeca.valor;
-                const vc = valorVendaCustom.trim() || undefined;
+                const _vb = venderDialogPeca.valor;
+                const _dn = temDesconto ? parsePtBR(valorDesconto) : 0;
+                const _vd = _dn > 0 && _dn < parsePtBR(_vb);
+                const valorEf = _vd ? String((parsePtBR(_vb) - _dn).toFixed(2).replace(".", ",")) : _vb;
+                const vc = _vd ? valorEf : undefined;
                 return (
                 <div className="space-y-2.5 pt-1">
                   <div className="text-xs font-semibold text-muted-foreground">Pagamento no cartão</div>
@@ -3252,8 +3252,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })()}
 
               {fiadoStep === "credito" && (() => {
-                const valorEf = valorVendaCustom.trim() || venderDialogPeca.valor;
-                const vc = valorVendaCustom.trim() || undefined;
+                const _vb2 = venderDialogPeca.valor;
+                const _dn2 = temDesconto ? parsePtBR(valorDesconto) : 0;
+                const _vd2 = _dn2 > 0 && _dn2 < parsePtBR(_vb2);
+                const valorEf = _vd2 ? String((parsePtBR(_vb2) - _dn2).toFixed(2).replace(".", ",")) : _vb2;
+                const vc = _vd2 ? valorEf : undefined;
                 return (
                 <div className="space-y-2.5 pt-1">
                   <div className="text-xs font-semibold text-muted-foreground">Crédito — em quantas vezes?</div>
@@ -3282,7 +3285,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })()}
 
               {fiadoStep === "misto" && (() => {
-                const pecaValorNum = parsePtBR(valorVendaCustom.trim() || venderDialogPeca.valor);
+                const _vbM = venderDialogPeca.valor;
+                const _dnM = temDesconto ? parsePtBR(valorDesconto) : 0;
+                const _vdM = _dnM > 0 && _dnM < parsePtBR(_vbM);
+                const pecaValorNum = _vdM ? parsePtBR(_vbM) - _dnM : parsePtBR(_vbM);
                 const splitTotal = mistoSplits.reduce((s, sp) => s + parsePtBR(sp.valor), 0);
                 const restante = pecaValorNum - splitTotal;
                 const pronto = Math.abs(restante) < 0.01 && mistoSplits.length > 0;
@@ -3418,7 +3424,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <Button
                       className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                       disabled={!fiadoNome.trim() || venderMutation.isPending}
-                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: contaExataFiado ? contaExataFiado.conta.nome : fiadoNome.trim(), tipoDevedor: fiadoTipo, valorCustom: valorVendaCustom.trim() || undefined })}
+                      onClick={() => {
+                        const _vbF = venderDialogPeca.valor;
+                        const _dnF = temDesconto ? parsePtBR(valorDesconto) : 0;
+                        const _vcF = (_dnF > 0 && _dnF < parsePtBR(_vbF)) ? String((parsePtBR(_vbF) - _dnF).toFixed(2).replace(".", ",")) : undefined;
+                        venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: contaExataFiado ? contaExataFiado.conta.nome : fiadoNome.trim(), tipoDevedor: fiadoTipo, valorCustom: _vcF });
+                      }}
                     >
                       {venderMutation.isPending ? "..." : "Confirmar"}
                     </Button>
