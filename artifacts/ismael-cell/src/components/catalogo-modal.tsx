@@ -1102,6 +1102,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     }
   }, [open]);
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
+  const [valorVendaCustom, setValorVendaCustom] = useState(""); // preço negociado (desconto)
+  const [editandoPreco, setEditandoPreco] = useState(false);
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
   const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista" | "misto">("choose");
@@ -1492,7 +1494,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao devolver", variant: "destructive" }),
   });
   const venderMutation = useMutation({
-    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }> }) =>
+    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; valorCustom?: string }) =>
       apiFetch(`/api/pecas/${args.id}/vender`, {
         method: "POST",
         body: JSON.stringify({
@@ -1501,6 +1503,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           tipoDevedor: args.tipoDevedor ?? "cliente",
           formaPagamento: args.formaPagamento ?? "dinheiro",
           splits: args.splits ?? null,
+          valorCustom: args.valorCustom ?? null,
         }),
       }),
     onSuccess: (peca: Peca, vars) => {
@@ -2015,7 +2018,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <Button
                               size="sm"
                               disabled={peca.quantidade === 0 || venderMutation.isPending}
-                              onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); }}
+                              onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); setValorVendaCustom(""); setEditandoPreco(false); }}
                               className="flex-1 h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
                             >
                               <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
@@ -3082,16 +3085,60 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {venderDialogPeca && (
           <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
             <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <div className="text-xs text-muted-foreground">Vendendo</div>
-                  <div className="font-bold text-base">{venderDialogPeca.modelo}</div>
-                  <div className="text-xs text-muted-foreground">{venderDialogPeca.qualidade} · {formatMoney(venderDialogPeca.valor)}</div>
-                </div>
-                <button type="button" className="text-muted-foreground hover:text-foreground p-1" onClick={() => setVenderDialogPeca(null)} disabled={venderMutation.isPending}>
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+              {(() => {
+                const valorBase = venderDialogPeca.valor;
+                const valorEfetivo = valorVendaCustom.trim() || valorBase;
+                const isDesconto = valorVendaCustom.trim() && valorVendaCustom.trim() !== valorBase;
+                return (
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-muted-foreground">Vendendo</div>
+                      <div className="font-bold text-base truncate">{venderDialogPeca.modelo}</div>
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                        <span className="text-xs text-muted-foreground">{venderDialogPeca.qualidade}</span>
+                        {editandoPreco ? (
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-muted-foreground">R$</span>
+                            <input
+                              autoFocus
+                              className="w-20 text-sm font-bold border-b-2 border-primary outline-none bg-transparent text-primary"
+                              inputMode="decimal"
+                              placeholder={valorBase.replace(",", ".")}
+                              value={valorVendaCustom}
+                              onChange={(e) => setValorVendaCustom(e.target.value)}
+                              onBlur={() => setEditandoPreco(false)}
+                              onKeyDown={(e) => { if (e.key === "Enter" || e.key === "Escape") setEditandoPreco(false); }}
+                            />
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setEditandoPreco(true)}
+                            className="flex items-center gap-1 group"
+                            title="Clique para dar desconto ou alterar o valor"
+                          >
+                            <span className={`text-sm font-bold ${isDesconto ? "text-amber-600 line-through opacity-60 text-xs" : "text-foreground"}`}>
+                              {formatMoney(valorBase)}
+                            </span>
+                            {isDesconto && (
+                              <span className="text-sm font-bold text-green-600">{formatMoney(valorVendaCustom)}</span>
+                            )}
+                            <Pencil className="w-3 h-3 text-muted-foreground group-hover:text-primary ml-0.5 transition-colors" />
+                          </button>
+                        )}
+                      </div>
+                      {isDesconto && (
+                        <div className="text-[10px] text-amber-600 font-medium mt-0.5">
+                          Desconto de {formatMoney(String(parsePtBR(valorBase) - parsePtBR(valorVendaCustom)))}
+                        </div>
+                      )}
+                    </div>
+                    <button type="button" className="text-muted-foreground hover:text-foreground p-1 shrink-0" onClick={() => setVenderDialogPeca(null)} disabled={venderMutation.isPending}>
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                );
+              })()}
 
               {fiadoStep === "choose" && (
                 <div className="grid grid-cols-2 gap-2 pt-1">
@@ -3138,14 +3185,17 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 </div>
               )}
 
-              {fiadoStep === "avista" && (
+              {fiadoStep === "avista" && (() => {
+                const valorEf = valorVendaCustom.trim() || venderDialogPeca.valor;
+                const vc = valorVendaCustom.trim() || undefined;
+                return (
                 <div className="space-y-2.5 pt-1">
                   <div className="text-xs font-semibold text-muted-foreground">Recebeu como?</div>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       className="h-16 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
                       disabled={venderMutation.isPending}
-                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "dinheiro" })}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "dinheiro", valorCustom: vc })}
                     >
                       <DollarSign className="w-5 h-5" />
                       <span className="font-bold text-sm">DINHEIRO</span>
@@ -3153,27 +3203,31 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <Button
                       className="h-16 flex flex-col items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white gap-0.5"
                       disabled={venderMutation.isPending}
-                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "pix" })}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "pix", valorCustom: vc })}
                     >
                       <Wallet className="w-5 h-5" />
                       <span className="font-bold text-sm">PIX</span>
                     </Button>
                   </div>
                   <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-2 text-[11px] text-emerald-900">
-                    Dinheiro e PIX entram na gaveta — sem taxa. Você recebe os <b>{formatMoney(venderDialogPeca.valor)}</b> cheios.
+                    Dinheiro e PIX entram na gaveta — sem taxa. Você recebe os <b>{formatMoney(valorEf)}</b> cheios.
                   </div>
                   <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
                 </div>
-              )}
+                );
+              })()}
 
-              {fiadoStep === "cartao" && (
+              {fiadoStep === "cartao" && (() => {
+                const valorEf = valorVendaCustom.trim() || venderDialogPeca.valor;
+                const vc = valorVendaCustom.trim() || undefined;
+                return (
                 <div className="space-y-2.5 pt-1">
                   <div className="text-xs font-semibold text-muted-foreground">Pagamento no cartão</div>
                   <div className="grid grid-cols-2 gap-2">
                     <Button
                       className="h-16 flex flex-col items-center justify-center bg-cyan-600 hover:bg-cyan-700 text-white gap-0.5"
                       disabled={venderMutation.isPending}
-                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "debito" })}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: "debito", valorCustom: vc })}
                     >
                       <CreditCard className="w-5 h-5" />
                       <span className="font-bold text-sm">DÉBITO</span>
@@ -3190,25 +3244,29 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     </Button>
                   </div>
                   <div className="rounded-lg bg-cyan-50 border border-cyan-200 px-2.5 py-2 text-[11px] text-cyan-900">
-                    No débito você recebe <b>{formatMoney(String(liquidoCartao(parsePtBR(venderDialogPeca.valor), "debito")))}</b> (a maquininha desconta {TAXAS_CARTAO.debito.toLocaleString("pt-BR")}%).
+                    No débito você recebe <b>{formatMoney(String(liquidoCartao(parsePtBR(valorEf), "debito")))}</b> (a maquininha desconta {TAXAS_CARTAO.debito.toLocaleString("pt-BR")}%).
                   </div>
                   <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
                 </div>
-              )}
+                );
+              })()}
 
-              {fiadoStep === "credito" && (
+              {fiadoStep === "credito" && (() => {
+                const valorEf = valorVendaCustom.trim() || venderDialogPeca.valor;
+                const vc = valorVendaCustom.trim() || undefined;
+                return (
                 <div className="space-y-2.5 pt-1">
                   <div className="text-xs font-semibold text-muted-foreground">Crédito — em quantas vezes?</div>
                   <div className="grid grid-cols-3 gap-2">
                     {(["credito_1x", "credito_2x", "credito_3x"] as FormaCartao[]).map((f) => {
-                      const valorNum = parsePtBR(venderDialogPeca.valor);
+                      const valorNum = parsePtBR(valorEf);
                       const vezes = f === "credito_1x" ? "1x" : f === "credito_2x" ? "2x" : "3x";
                       return (
                         <Button
                           key={f}
                           className="h-20 flex flex-col items-center justify-center bg-indigo-600 hover:bg-indigo-700 text-white gap-0.5"
                           disabled={venderMutation.isPending}
-                          onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: f })}
+                          onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: false, formaPagamento: f, valorCustom: vc })}
                         >
                           <span className="font-bold text-base">{vezes}</span>
                           <span className="text-[10px] opacity-90">taxa {TAXAS_CARTAO[f].toLocaleString("pt-BR")}%</span>
@@ -3217,13 +3275,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       );
                     })}
                   </div>
-                  <div className="text-[11px] text-muted-foreground text-center">Cliente paga {formatMoney(venderDialogPeca.valor)} · a maquininha desconta a taxa.</div>
+                  <div className="text-[11px] text-muted-foreground text-center">Cliente paga {formatMoney(valorEf)} · a maquininha desconta a taxa.</div>
                   <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("cartao")} disabled={venderMutation.isPending}>Voltar</Button>
                 </div>
-              )}
+                );
+              })()}
 
               {fiadoStep === "misto" && (() => {
-                const pecaValorNum = parsePtBR(venderDialogPeca.valor);
+                const pecaValorNum = parsePtBR(valorVendaCustom.trim() || venderDialogPeca.valor);
                 const splitTotal = mistoSplits.reduce((s, sp) => s + parsePtBR(sp.valor), 0);
                 const restante = pecaValorNum - splitTotal;
                 const pronto = Math.abs(restante) < 0.01 && mistoSplits.length > 0;
@@ -3240,7 +3299,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 <div className="space-y-2.5 pt-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-muted-foreground">Pagamento misto</span>
-                    <span className="font-bold">{formatMoney(venderDialogPeca.valor)}</span>
+                    <span className="font-bold">{formatMoney(valorVendaCustom.trim() || venderDialogPeca.valor)}</span>
                   </div>
 
                   {/* Splits adicionados */}
@@ -3359,7 +3418,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <Button
                       className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                       disabled={!fiadoNome.trim() || venderMutation.isPending}
-                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: contaExataFiado ? contaExataFiado.conta.nome : fiadoNome.trim(), tipoDevedor: fiadoTipo })}
+                      onClick={() => venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: contaExataFiado ? contaExataFiado.conta.nome : fiadoNome.trim(), tipoDevedor: fiadoTipo, valorCustom: valorVendaCustom.trim() || undefined })}
                     >
                       {venderMutation.isPending ? "..." : "Confirmar"}
                     </Button>
