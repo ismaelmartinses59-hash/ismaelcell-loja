@@ -1171,6 +1171,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [garantiaDialogPeca, setGarantiaDialogPeca] = useState<Peca | null>(null);
   const [garantiaMotivo, setGarantiaMotivo] = useState("");
   const [garantiaLojista, setGarantiaLojista] = useState("");
+  const [garantiaOutros, setGarantiaOutros] = useState(false);
   const [garantiaTrocadoId, setGarantiaTrocadoId] = useState<number | null>(null);
 
   // ── Queries ──────────────────────────────────────────────────────────────────
@@ -1712,7 +1713,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const addGarantiaMutation = useMutation({
     mutationFn: (data: { modelo: string; qualidade: string; lojista: string; motivo: string; pecaId?: number; valor?: string }) =>
       apiFetch("/api/garantias-peca", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => { invalidateGarantias(); invalidatePecas(); setShowGarantiaForm(false); setGarantiaDialogPeca(null); setGarantiaMotivo(""); setGarantiaLojista(""); toast({ title: "✅ Registrado em garantia! Peça removida do estoque." }); },
+    onSuccess: () => { invalidateGarantias(); invalidatePecas(); setShowGarantiaForm(false); setGarantiaDialogPeca(null); setGarantiaMotivo(""); setGarantiaLojista(""); setGarantiaOutros(false); toast({ title: "✅ Registrado em garantia! Peça removida do estoque." }); },
     onError: (e: Error) => toast({ title: e.message || "Erro ao registrar", variant: "destructive" }),
   });
   const updateStatusMutation = useMutation({
@@ -2040,7 +2041,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             size="sm"
                             variant="outline"
                             disabled={peca.quantidade === 0 || addGarantiaMutation.isPending}
-                            onClick={(e) => { e.stopPropagation(); setGarantiaDialogPeca(peca); setGarantiaMotivo(""); setGarantiaLojista(""); }}
+                            onClick={(e) => { e.stopPropagation(); setGarantiaDialogPeca(peca); setGarantiaMotivo(""); setGarantiaLojista(""); setGarantiaOutros(false); }}
                             className="w-full h-8 text-xs font-semibold border-amber-400 text-amber-700 hover:bg-amber-50 disabled:opacity-40"
                           >
                             <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />
@@ -2987,8 +2988,43 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               </div>
               <div className="space-y-3">
                 <div>
-                  <label className="text-xs font-medium text-muted-foreground block mb-1">Nome do Lojista / Fornecedor</label>
-                  <Input placeholder="Ex: Aliexpress, Fornecedor SP..." value={garantiaLojista} onChange={e => setGarantiaLojista(e.target.value)} className="h-9 text-sm" autoFocus />
+                  <label className="text-xs font-medium text-muted-foreground block mb-1">Fornecedor</label>
+                  <div className="flex flex-wrap gap-2">
+                    {FORNECEDORES.filter((f) => f !== "OUTROS").map((f) => (
+                      <button
+                        key={f}
+                        type="button"
+                        onClick={() => { setGarantiaLojista(f); setGarantiaOutros(false); }}
+                        className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                          garantiaLojista === f && !garantiaOutros
+                            ? "bg-amber-600 text-white border-amber-600"
+                            : "bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:text-amber-700"
+                        }`}
+                      >
+                        {f}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => { setGarantiaOutros(true); setGarantiaLojista(""); }}
+                      className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors ${
+                        garantiaOutros
+                          ? "bg-amber-600 text-white border-amber-600"
+                          : "bg-white text-slate-700 border-slate-300 hover:border-amber-400 hover:text-amber-700"
+                      }`}
+                    >
+                      Outros
+                    </button>
+                  </div>
+                  {garantiaOutros && (
+                    <Input
+                      placeholder="Nome do fornecedor..."
+                      value={garantiaLojista}
+                      onChange={(e) => setGarantiaLojista(e.target.value)}
+                      className="h-9 text-sm mt-2"
+                      autoFocus
+                    />
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-medium text-muted-foreground block mb-1">Problema / Motivo</label>
@@ -3305,7 +3341,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 <div className="space-y-2.5 pt-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-semibold text-muted-foreground">Pagamento misto</span>
-                    <span className="font-bold">{formatMoney(valorVendaCustom.trim() || venderDialogPeca.valor)}</span>
+                    <span className="font-bold">{formatMoney(String(pecaValorNum.toFixed(2).replace(".", ",")))}</span>
                   </div>
 
                   {/* Splits adicionados */}
