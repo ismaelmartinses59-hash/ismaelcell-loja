@@ -18,4 +18,9 @@ export interface Order {
   tempo: string;
   status: OrderStatus;
   createdAt: Date;
+  tipo?: string | null;
+  nomeCliente?: string | null;
+  senhaDispo?: string | null;
+  garantia?: string | null;
+  dataServico?: string | null;
 }

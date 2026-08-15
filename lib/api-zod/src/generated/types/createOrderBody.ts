@@ -13,4 +13,9 @@ export interface CreateOrderBody {
   servico: string;
   valor: string;
   tempo: string;
+  tipo?: string;
+  nomeCliente?: string;
+  senhaDispo?: string;
+  garantia?: string;
+  dataServico?: string;
 }

@@ -16,6 +16,7 @@ export const OrderLinha = {
   samsung: "samsung",
   motorola: "motorola",
   ios: "ios",
+  realme: "realme",
 } as const;
 
 export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
@@ -38,6 +39,11 @@ export interface Order {
   tempo: string;
   status: OrderStatus;
   createdAt: string;
+  tipo?: string | null;
+  nomeCliente?: string | null;
+  senhaDispo?: string | null;
+  garantia?: string | null;
+  dataServico?: string | null;
 }
 
 export type CreateOrderBodyLinha =
@@ -48,6 +54,7 @@ export const CreateOrderBodyLinha = {
   samsung: "samsung",
   motorola: "motorola",
   ios: "ios",
+  realme: "realme",
 } as const;
 
 export interface CreateOrderBody {
@@ -56,6 +63,11 @@ export interface CreateOrderBody {
   servico: string;
   valor: string;
   tempo: string;
+  tipo?: string;
+  nomeCliente?: string;
+  senhaDispo?: string;
+  garantia?: string;
+  dataServico?: string;
 }
 
 export type UpdateOrderStatusBodyStatus =
