@@ -33,7 +33,7 @@ export const ListOrdersResponseItem = zod.object({
   id: zod.number(),
   codigo: zod.string(),
   modelo: zod.string(),
-  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios", "realme"]),
   servico: zod.string(),
   valor: zod.string(),
   tempo: zod.string(),
@@ -45,6 +45,11 @@ export const ListOrdersResponseItem = zod.object({
     "encerrado",
   ]),
   createdAt: zod.coerce.date(),
+  tipo: zod.string().optional().nullable(),
+  nomeCliente: zod.string().optional().nullable(),
+  senhaDispo: zod.string().optional().nullable(),
+  garantia: zod.string().optional().nullable(),
+  dataServico: zod.string().optional().nullable(),
 });
 export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
 
@@ -53,10 +58,15 @@ export const ListOrdersResponse = zod.array(ListOrdersResponseItem);
  */
 export const CreateOrderBody = zod.object({
   modelo: zod.string(),
-  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios", "realme"]),
   servico: zod.string(),
   valor: zod.string(),
   tempo: zod.string(),
+  tipo: zod.string().optional(),
+  nomeCliente: zod.string().optional(),
+  senhaDispo: zod.string().optional(),
+  garantia: zod.string().optional(),
+  dataServico: zod.string().optional(),
 });
 
 /**
@@ -70,7 +80,7 @@ export const GetOrderResponse = zod.object({
   id: zod.number(),
   codigo: zod.string(),
   modelo: zod.string(),
-  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios", "realme"]),
   servico: zod.string(),
   valor: zod.string(),
   tempo: zod.string(),
@@ -82,6 +92,11 @@ export const GetOrderResponse = zod.object({
     "encerrado",
   ]),
   createdAt: zod.coerce.date(),
+  tipo: zod.string().optional().nullable(),
+  nomeCliente: zod.string().optional().nullable(),
+  senhaDispo: zod.string().optional().nullable(),
+  garantia: zod.string().optional().nullable(),
+  dataServico: zod.string().optional().nullable(),
 });
 
 /**
@@ -105,7 +120,7 @@ export const UpdateOrderStatusResponse = zod.object({
   id: zod.number(),
   codigo: zod.string(),
   modelo: zod.string(),
-  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios"]),
+  linha: zod.enum(["xiaomi", "samsung", "motorola", "ios", "realme"]),
   servico: zod.string(),
   valor: zod.string(),
   tempo: zod.string(),
@@ -117,6 +132,11 @@ export const UpdateOrderStatusResponse = zod.object({
     "encerrado",
   ]),
   createdAt: zod.coerce.date(),
+  tipo: zod.string().optional().nullable(),
+  nomeCliente: zod.string().optional().nullable(),
+  senhaDispo: zod.string().optional().nullable(),
+  garantia: zod.string().optional().nullable(),
+  dataServico: zod.string().optional().nullable(),
 });
 
 /**
