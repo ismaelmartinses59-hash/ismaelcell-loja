@@ -606,11 +606,10 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 ))}
               </div>
 
-              {/* Stats grid — row 2: 2 cols */}
-              <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+              {/* Stats grid — row 2: 3 cols (PIX entrou | PIX saiu | Em caixa agora) */}
+              <div className="grid grid-cols-3 gap-2 px-3 pb-3">
                 <div className="bg-white rounded-xl p-2.5 border border-gray-100">
                   <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center mb-1.5">
-                    {/* PIX logo — 4 losangos em cruz */}
                     <svg viewBox="0 0 64 64" className="w-4 h-4" fill="none">
                       <path d="M32 8 L40 16 L32 24 L24 16 Z" fill="#2563eb"/>
                       <path d="M8 32 L16 24 L24 32 L16 40 Z" fill="#2563eb"/>
@@ -622,10 +621,20 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   <div className="text-[9px] text-slate-400 mt-0.5">PIX hoje</div>
                 </div>
                 <div className="bg-white rounded-xl p-2.5 border border-gray-100">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center">
-                      <Wallet className="w-3.5 h-3.5 text-emerald-600" />
-                    </div>
+                  <div className="w-7 h-7 rounded-full bg-red-100 flex items-center justify-center mb-1.5">
+                    <svg viewBox="0 0 64 64" className="w-4 h-4" fill="none">
+                      <path d="M32 8 L40 16 L32 24 L24 16 Z" fill="#dc2626"/>
+                      <path d="M8 32 L16 24 L24 32 L16 40 Z" fill="#dc2626"/>
+                      <path d="M32 40 L40 48 L32 56 L24 48 Z" fill="#dc2626"/>
+                      <path d="M40 32 L48 24 L56 32 L48 40 Z" fill="#dc2626"/>
+                    </svg>
+                  </div>
+                  <div className="text-sm font-bold text-red-600 leading-tight">{formatMoney(hoje.saidasPix ?? 0)}</div>
+                  <div className="text-[9px] text-slate-400 mt-0.5">Saiu (PIX)</div>
+                </div>
+                <div className="bg-white rounded-xl p-2.5 border border-gray-100">
+                  <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center mb-1.5">
+                    <Wallet className="w-3.5 h-3.5 text-emerald-600" />
                   </div>
                   <div className="text-sm font-bold text-emerald-700 leading-tight">
                     {formatMoney(
@@ -637,14 +646,6 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   <div className="text-[9px] text-slate-400 mt-0.5">Em caixa agora</div>
                 </div>
               </div>
-
-              {/* Saiu PIX (opcional) */}
-              {(hoje.saidasPix ?? 0) > 0 && (
-                <div className="mx-3 mb-2 flex justify-between text-xs rounded-lg bg-white border border-gray-100 px-3 py-2">
-                  <span className="text-cyan-600">Saiu (PIX)</span>
-                  <span className="font-semibold text-cyan-700">{formatMoney(hoje.saidasPix ?? 0)}</span>
-                </div>
-              )}
 
               <p className="mx-3 mb-2 text-[10px] leading-tight text-slate-400 italic">
                 "Em caixa agora" é só o dinheiro vivo na gaveta. O PIX cai direto na conta e o cartão aparece abaixo — nenhum dos dois entra na gaveta.
