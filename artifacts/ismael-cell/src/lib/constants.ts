@@ -18,6 +18,7 @@ const CLIENTE_SERVICES = [
   "REPARO EM PLACA",
   "DESBLOQUEIO",
   "SOFTWARE",
+  "VENDA DE APARELHO",
 ];
 
 export const SERVICES_BY_LINE_CLIENTE: Record<OrderLinha, string[]> = {
@@ -47,4 +48,5 @@ export const ESTIMATED_TIMES: Record<string, string> = {
   "TROCA TAMPA TRASEIRA": "20 a 40 min",
   "REPARO EM PLACA":     "1 a 5 dias",
   "DESBLOQUEIO":         "5 a 60 min",
+  "VENDA DE APARELHO":   "na hora",
 };
