@@ -2463,6 +2463,15 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                           {c.itens.length} {c.itens.length === 1 ? "item" : "itens"} · {c.conta.tipo === "lojista" ? "Lojista" : "Cliente"}
                           {!aberta && " · ✓ Quitada"}
                         </div>
+                        {!aberta && c.conta.closedAt && (() => {
+                          const exp = new Date(c.conta.closedAt!);
+                          exp.setDate(exp.getDate() + 60);
+                          return (
+                            <div className="text-[9px] text-slate-400 mt-0.5">
+                              Apaga em {exp.toLocaleDateString("pt-BR")}
+                            </div>
+                          );
+                        })()}
                       </div>
                       <div className="text-right shrink-0">
                         <div className={`font-extrabold text-base ${aberta ? "text-orange-700" : "text-green-700"}`}>{fmtBRL(c.saldo)}</div>
