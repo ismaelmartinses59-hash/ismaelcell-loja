@@ -2314,6 +2314,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   {contasAbertas.length} {contasAbertas.length === 1 ? "conta aberta" : "contas abertas"} · Adicione peça fiada na aba Peças ou um serviço aqui embaixo
                 </div>
               </div>
+              <p className="text-[10px] text-slate-400 italic leading-snug px-0.5">
+                🗑️ Notas <b>quitadas</b> com mais de 60 dias são apagadas automaticamente. As em aberto nunca são apagadas.
+              </p>
               {!showNovoServico ? (
                 <Button
                   size="sm"

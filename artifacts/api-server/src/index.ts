@@ -5,6 +5,57 @@ import { sql } from "drizzle-orm";
 import { initPush } from "./lib/push";
 import { agendarNotificacoesCaixa } from "./lib/notificacoes-caixa";
 
+/** Remove contas quitadas (closed_at não nulo) com mais de 60 dias.
+ *  Apenas contas pagas são apagadas — contas em aberto nunca são tocadas. */
+async function limparContasQuitadas(): Promise<void> {
+  try {
+    // 1. Apaga as entradas de caixa (AV) vinculadas aos pagamentos dessas contas
+    await db.execute(sql`
+      DELETE FROM caixa
+      WHERE pagamento_id IN (
+        SELECT p.id FROM contas_receber_pagamentos p
+        INNER JOIN contas_receber c ON c.id = p.conta_id
+        WHERE c.closed_at IS NOT NULL
+          AND c.closed_at < now() - INTERVAL '60 days'
+      )
+    `);
+    // 2. Apaga os pagamentos
+    await db.execute(sql`
+      DELETE FROM contas_receber_pagamentos
+      WHERE conta_id IN (
+        SELECT id FROM contas_receber
+        WHERE closed_at IS NOT NULL
+          AND closed_at < now() - INTERVAL '60 days'
+      )
+    `);
+    // 3. Apaga os itens
+    await db.execute(sql`
+      DELETE FROM contas_receber_itens
+      WHERE conta_id IN (
+        SELECT id FROM contas_receber
+        WHERE closed_at IS NOT NULL
+          AND closed_at < now() - INTERVAL '60 days'
+      )
+    `);
+    // 4. Apaga as contas em si
+    const del = await db.execute(sql`
+      DELETE FROM contas_receber
+      WHERE closed_at IS NOT NULL
+        AND closed_at < now() - INTERVAL '60 days'
+    `);
+    const count = (del as { rowCount?: number }).rowCount ?? 0;
+    if (count > 0) logger.info({ count }, "Contas quitadas antigas removidas (>60 dias)");
+  } catch (err) {
+    logger.error({ err }, "Erro ao limpar contas quitadas antigas");
+  }
+}
+
+/** Agenda limpeza automática: roda imediatamente ao subir e a cada 24 h. */
+function agendarLimpezaContas(): void {
+  limparContasQuitadas();
+  setInterval(limparContasQuitadas, 24 * 60 * 60 * 1000);
+}
+
 async function runStatement(label: string, stmt: Promise<unknown>): Promise<void> {
   try {
     await stmt;
@@ -252,6 +303,7 @@ ensureSchema()
   .then(async () => {
     await initPush();
     agendarNotificacoesCaixa();
+    agendarLimpezaContas();
     app.listen(port, (err) => {
       if (err) {
         logger.error({ err }, "Error listening on port");
