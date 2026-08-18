@@ -2413,31 +2413,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     onChange={(e) => setServValor(e.target.value)}
                     className="h-9 text-sm"
                   />
-                  {!servPecaSel && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-muted-foreground shrink-0">+ Juro/acréscimo</span>
-                      <Input
-                        type="text"
-                        inputMode="decimal"
-                        placeholder="0,00"
-                        value={servJuro}
-                        onChange={(e) => setServJuro(e.target.value)}
-                        className="h-8 text-sm flex-1"
-                      />
-                    </div>
-                  )}
-                  {(() => {
-                    const base = parseFloat(servValor.replace(",", ".")) || 0;
-                    const juro = parseFloat(servJuro.replace(",", ".")) || 0;
-                    if (!servPecaSel && servJuro.trim() && juro > 0 && base > 0) {
-                      return (
-                        <div className="text-[11px] font-semibold text-orange-700 bg-orange-50 rounded px-2 py-1">
-                          {fmtBRL(base)} + {fmtBRL(juro)} = <b>{fmtBRL(base + juro)}</b>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
                   <div>
                     <label className="text-[10px] text-muted-foreground font-medium">Previsão de recebimento (opcional)</label>
                     <Input type="date" value={servData} onChange={(e) => setServData(e.target.value)} className="h-9 text-sm mt-0.5" />
@@ -2449,14 +2424,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     onClick={() => {
                         if (servPecaSel) {
                           venderMutation.mutate(
-                            { id: servPecaSel.id, fiado: true, nomeDevedor: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipoDevedor: servTipo },
+                            { id: servPecaSel.id, fiado: true, nomeDevedor: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipoDevedor: servTipo, valorCustom: servValor.trim() },
                             { onSuccess: () => { setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServJuro(""); setServData(""); setServPecaSel(null); } },
                           );
                         } else {
-                          const base = parseFloat(servValor.replace(",", ".")) || 0;
-                          const juro = parseFloat(servJuro.replace(",", ".")) || 0;
-                          const total = (base + juro).toFixed(2).replace(".", ",");
-                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: total, dataRecebimento: servData || undefined });
+                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim(), dataRecebimento: servData || undefined });
                         }
                       }}
                   >
@@ -2578,10 +2550,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 className="h-9 text-sm flex-1"
                               />
                               <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => {
-                                const base = parseFloat(itemValor.replace(",", ".")) || 0;
-                                const juro = parseFloat(itemJuro.replace(",", ".")) || 0;
-                                const total = (base + juro).toFixed(2).replace(".", ",");
-                                addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: total, formaPagamento: itemForma, dataRecebimento: itemData || undefined });
+                                addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim(), formaPagamento: itemForma, dataRecebimento: itemData || undefined });
                               }}>
                                 <Check className="w-4 h-4" />
                               </Button>
@@ -2589,29 +2558,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 <X className="w-4 h-4" />
                               </Button>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-[10px] text-muted-foreground shrink-0">+ Juro/acréscimo</span>
-                              <Input
-                                type="text"
-                                inputMode="decimal"
-                                placeholder="0,00"
-                                value={itemJuro}
-                                onChange={(e) => setItemJuro(e.target.value)}
-                                className="h-8 text-sm flex-1"
-                              />
-                            </div>
-                            {(() => {
-                              const base = parseFloat(itemValor.replace(",", ".")) || 0;
-                              const juro = parseFloat(itemJuro.replace(",", ".")) || 0;
-                              if (itemJuro.trim() && juro > 0 && base > 0) {
-                                return (
-                                  <div className="text-[11px] font-semibold text-orange-700 bg-orange-50 rounded px-2 py-1">
-                                    {fmtBRL(base)} + {fmtBRL(juro)} = <b>{fmtBRL(base + juro)}</b>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            })()}
                             <div>
                               <label className="text-[10px] text-muted-foreground font-medium">Previsão de recebimento (opcional)</label>
                               <Input type="date" value={itemData} onChange={e => setItemData(e.target.value)} className="h-8 text-xs mt-0.5" />
