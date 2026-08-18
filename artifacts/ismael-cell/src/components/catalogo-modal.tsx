@@ -1091,6 +1091,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setAddItemContaId(null);
       setItemDescricao("");
       setItemValor("");
+      setItemJuro("");
       setItemForma("fiado");
       setMistoSplits([]);
       setMistoForma("dinheiro");
@@ -1099,6 +1100,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setServNome("");
       setServDescricao("");
       setServValor("");
+      setServJuro("");
     }
   }, [open]);
   const [venderDialogPeca, setVenderDialogPeca] = useState<Peca | null>(null);
@@ -1122,6 +1124,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [addItemContaId, setAddItemContaId] = useState<number | null>(null);
   const [itemDescricao, setItemDescricao] = useState("");
   const [itemValor, setItemValor] = useState("");
+  const [itemJuro, setItemJuro] = useState("");
   const [itemForma, setItemForma] = useState<string>("fiado");
   const [itemData, setItemData] = useState("");
   // Novo serviço fiado (cria/reusa conta)
@@ -1130,6 +1133,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [servTipo, setServTipo] = useState<"cliente" | "lojista">("cliente");
   const [servDescricao, setServDescricao] = useState("");
   const [servValor, setServValor] = useState("");
+  const [servJuro, setServJuro] = useState("");
   const [servData, setServData] = useState("");
     // Peça do estoque vinculada ao novo serviço fiado (dá baixa ao lançar)
     const [servPecaSel, setServPecaSel] = useState<Peca | null>(null);
@@ -1632,13 +1636,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const addItemMutation = useMutation({
     mutationFn: ({ contaId, descricao, valor, formaPagamento, dataRecebimento }: { contaId: number; descricao: string; valor: string; formaPagamento: string; dataRecebimento?: string }) =>
       apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor, formaPagamento, dataRecebimento: dataRecebimento || null }) }),
-    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); setItemData(""); toast({ title: "📒 Serviço adicionado à conta!" }); },
+    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemJuro(""); setItemForma("fiado"); setItemData(""); toast({ title: "📒 Serviço adicionado à conta!" }); },
     onError: () => toast({ title: "Erro ao adicionar serviço", variant: "destructive" }),
   });
   const novoServicoMutation = useMutation({
     mutationFn: (data: { nome: string; tipo: string; descricao: string; valor: string; dataRecebimento?: string }) =>
       apiFetch("/api/contas-receber/novo-servico", { method: "POST", body: JSON.stringify(data) }),
-    onSuccess: () => { invalidateContas(); setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServData(""); setServPecaSel(null); toast({ title: "📒 Serviço fiado registrado!" }); },
+    onSuccess: () => { invalidateContas(); setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServJuro(""); setServData(""); setServPecaSel(null); toast({ title: "📒 Serviço fiado registrado!" }); },
     onError: () => toast({ title: "Erro ao registrar serviço", variant: "destructive" }),
   });
   const totalAReceber = contas.reduce((a, c) => a + (c.saldo > 0 ? c.saldo : 0), 0);
@@ -2409,6 +2413,31 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     onChange={(e) => setServValor(e.target.value)}
                     className="h-9 text-sm"
                   />
+                  {!servPecaSel && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] text-muted-foreground shrink-0">+ Juro/acréscimo</span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0,00"
+                        value={servJuro}
+                        onChange={(e) => setServJuro(e.target.value)}
+                        className="h-8 text-sm flex-1"
+                      />
+                    </div>
+                  )}
+                  {(() => {
+                    const base = parseFloat(servValor.replace(",", ".")) || 0;
+                    const juro = parseFloat(servJuro.replace(",", ".")) || 0;
+                    if (!servPecaSel && servJuro.trim() && juro > 0 && base > 0) {
+                      return (
+                        <div className="text-[11px] font-semibold text-orange-700 bg-orange-50 rounded px-2 py-1">
+                          {fmtBRL(base)} + {fmtBRL(juro)} = <b>{fmtBRL(base + juro)}</b>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
                   <div>
                     <label className="text-[10px] text-muted-foreground font-medium">Previsão de recebimento (opcional)</label>
                     <Input type="date" value={servData} onChange={(e) => setServData(e.target.value)} className="h-9 text-sm mt-0.5" />
@@ -2421,10 +2450,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         if (servPecaSel) {
                           venderMutation.mutate(
                             { id: servPecaSel.id, fiado: true, nomeDevedor: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipoDevedor: servTipo },
-                            { onSuccess: () => { setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServData(""); setServPecaSel(null); } },
+                            { onSuccess: () => { setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServJuro(""); setServData(""); setServPecaSel(null); } },
                           );
                         } else {
-                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim(), dataRecebimento: servData || undefined });
+                          const base = parseFloat(servValor.replace(",", ".")) || 0;
+                          const juro = parseFloat(servJuro.replace(",", ".")) || 0;
+                          const total = (base + juro).toFixed(2).replace(".", ",");
+                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: total, dataRecebimento: servData || undefined });
                         }
                       }}
                   >
@@ -2543,15 +2575,43 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 placeholder="Valor (ex: 50,00)"
                                 value={itemValor}
                                 onChange={(e) => setItemValor(e.target.value)}
-                                className="h-9 text-sm"
+                                className="h-9 text-sm flex-1"
                               />
-                              <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim(), formaPagamento: itemForma, dataRecebimento: itemData || undefined })}>
+                              <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => {
+                                const base = parseFloat(itemValor.replace(",", ".")) || 0;
+                                const juro = parseFloat(itemJuro.replace(",", ".")) || 0;
+                                const total = (base + juro).toFixed(2).replace(".", ",");
+                                addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: total, formaPagamento: itemForma, dataRecebimento: itemData || undefined });
+                              }}>
                                 <Check className="w-4 h-4" />
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemForma("fiado"); setItemData(""); }}>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemJuro(""); setItemForma("fiado"); setItemData(""); }}>
                                 <X className="w-4 h-4" />
                               </Button>
                             </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-muted-foreground shrink-0">+ Juro/acréscimo</span>
+                              <Input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="0,00"
+                                value={itemJuro}
+                                onChange={(e) => setItemJuro(e.target.value)}
+                                className="h-8 text-sm flex-1"
+                              />
+                            </div>
+                            {(() => {
+                              const base = parseFloat(itemValor.replace(",", ".")) || 0;
+                              const juro = parseFloat(itemJuro.replace(",", ".")) || 0;
+                              if (itemJuro.trim() && juro > 0 && base > 0) {
+                                return (
+                                  <div className="text-[11px] font-semibold text-orange-700 bg-orange-50 rounded px-2 py-1">
+                                    {fmtBRL(base)} + {fmtBRL(juro)} = <b>{fmtBRL(base + juro)}</b>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            })()}
                             <div>
                               <label className="text-[10px] text-muted-foreground font-medium">Previsão de recebimento (opcional)</label>
                               <Input type="date" value={itemData} onChange={e => setItemData(e.target.value)} className="h-8 text-xs mt-0.5" />
