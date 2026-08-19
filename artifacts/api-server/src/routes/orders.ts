@@ -1,4 +1,4 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Response } from "express";
 import { eq, ilike, or, sql, and, isNotNull, ne } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
 import {
@@ -14,6 +14,51 @@ import {
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+const BLOQUEIO_GARANTIA_MS = 60 * 60 * 1000;
+
+/** Reduz variações como "Redmi A5", "redmi a5" e "Redmi a 5" à mesma chave. */
+function chaveModeloGarantia(modelo: string): string {
+  return modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function temGarantiaAtiva(garantia: string | null | undefined): boolean {
+  return !!garantia && garantia !== "Sem garantia" && garantia !== "0 dias";
+}
+
+/** Busca uma garantia ativa recém-criada para o mesmo aparelho. */
+async function buscarGarantiaRecente(modelo: string, ignorarId?: number) {
+  const candidatas = await db
+    .select()
+    .from(ordersTable)
+    .where(and(
+      sql`${ordersTable.createdAt} >= now() - INTERVAL '60 minutes'`,
+      isNotNull(ordersTable.garantia),
+      ne(ordersTable.garantia, ""),
+      ne(ordersTable.garantia, "Sem garantia"),
+      ne(ordersTable.garantia, "0 dias"),
+    ));
+
+  const chave = chaveModeloGarantia(modelo);
+  return candidatas.find((ordem) =>
+    ordem.id !== ignorarId && chaveModeloGarantia(ordem.modelo) === chave,
+  ) ?? null;
+}
+
+function erroGarantiaDuplicada(
+  res: Response,
+  ordem: { modelo: string; createdAt: Date },
+): void {
+  const expiraEm = new Date(ordem.createdAt.getTime() + BLOQUEIO_GARANTIA_MS);
+  const minutosRestantes = Math.max(1, Math.ceil((expiraEm.getTime() - Date.now()) / 60_000));
+  res.status(409).json({
+    error: `Já existe uma garantia para ${ordem.modelo} criada há menos de 60 minutos. Tente novamente em ${minutosRestantes} min.`,
+    retryAt: expiraEm.toISOString(),
+  });
+}
 
 router.get("/orders/stats", async (req, res): Promise<void> => {
   const tipo = req.query.tipo as string | undefined;
@@ -128,6 +173,14 @@ router.post("/orders", async (req, res): Promise<void> => {
     return;
   }
 
+  if (temGarantiaAtiva(parsed.data.garantia)) {
+    const garantiaRecente = await buscarGarantiaRecente(parsed.data.modelo);
+    if (garantiaRecente) {
+      erroGarantiaDuplicada(res, garantiaRecente);
+      return;
+    }
+  }
+
   const codigo = "OS-" + Date.now();
 
   const [order] = await db
@@ -219,6 +272,28 @@ router.put("/orders/:id", async (req, res): Promise<void> => {
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
     return;
+  }
+
+  const [ordemAtual] = await db
+    .select()
+    .from(ordersTable)
+    .where(eq(ordersTable.id, id));
+
+  if (!ordemAtual) {
+    res.status(404).json({ error: "Ordem não encontrada" });
+    return;
+  }
+
+  // Só bloqueia quando esta ação está criando uma garantia nova. Alterar o
+  // período de uma garantia já existente continua permitido.
+  const criandoGarantia = !temGarantiaAtiva(ordemAtual.garantia)
+    && temGarantiaAtiva(body.data.garantia);
+  if (criandoGarantia) {
+    const garantiaRecente = await buscarGarantiaRecente(body.data.modelo, id);
+    if (garantiaRecente) {
+      erroGarantiaDuplicada(res, garantiaRecente);
+      return;
+    }
   }
 
   const [order] = await db
