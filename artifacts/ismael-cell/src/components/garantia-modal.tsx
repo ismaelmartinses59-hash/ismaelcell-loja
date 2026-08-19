@@ -576,40 +576,6 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                     </div>
                   </div>
 
-                  {/* Confirmação de exclusão */}
-                  {confirmDeleteOrder && (
-                    <div className="rounded-xl border-2 border-red-200 bg-red-50 p-4 space-y-3">
-                      <div className="flex items-start gap-2">
-                        <Trash2 className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-                        <div>
-                          <p className="text-sm font-semibold text-red-800">Apagar garantia?</p>
-                          <p className="text-xs text-red-600 mt-0.5">
-                            {confirmDeleteOrder.modelo} — {confirmDeleteOrder.garantia}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          className="flex-1"
-                          onClick={handleConfirmDelete}
-                          disabled={editOrder.isPending}
-                        >
-                          {editOrder.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Confirmar"}
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="flex-1"
-                          onClick={() => setConfirmDeleteOrder(null)}
-                        >
-                          Cancelar
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
                   {/* Busca */}
                   {ordersComGarantia.length > 0 && (
                     <div className="relative">
@@ -624,7 +590,7 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                   )}
 
                   {/* Lista */}
-                  {ordersComGarantia.length === 0 && !confirmDeleteOrder ? (
+                  {ordersComGarantia.length === 0 ? (
                     <div className="text-center py-8 text-sm text-muted-foreground border border-dashed rounded-lg">
                       Nenhuma OS com garantia registrada ainda.
                     </div>
@@ -688,6 +654,41 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                                 )}
                               </div>
                             </div>
+
+                            {confirmDeleteOrder?.id === o.id && (
+                              <div className="rounded-lg border-2 border-red-200 bg-red-50 p-3 space-y-2">
+                                <div className="flex items-start gap-2">
+                                  <Trash2 className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                                  <div>
+                                    <p className="text-xs font-semibold text-red-800">Apagar garantia?</p>
+                                    <p className="text-[11px] text-red-600 mt-0.5">
+                                      {o.modelo} — {o.garantia}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="destructive"
+                                    className="flex-1 h-8 text-xs"
+                                    onClick={handleConfirmDelete}
+                                    disabled={editOrder.isPending}
+                                  >
+                                    {editOrder.isPending ? <Loader2 className="w-3 h-3 animate-spin" /> : "Confirmar"}
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    className="flex-1 h-8 text-xs"
+                                    onClick={() => setConfirmDeleteOrder(null)}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Validade (só quando não editando) */}
                             {!isEditing && (
