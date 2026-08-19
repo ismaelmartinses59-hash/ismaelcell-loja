@@ -230,7 +230,14 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
           queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
           onSuccess?.();
         },
-        onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
+        onError: (erro) => {
+          const mensagemApi = (erro as { data?: { error?: string } }).data?.error;
+          toast({
+            title: "Não foi possível salvar a garantia",
+            description: mensagemApi ?? "Tente novamente.",
+            variant: "destructive",
+          });
+        },
       }
     );
   };
@@ -291,14 +298,21 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
           dataServico: dataRegistrar,
         }),
       });
-      if (!r.ok) throw new Error("Erro ao criar OS");
+      if (!r.ok) {
+        const erro = await r.json().catch(() => ({}));
+        throw new Error(erro.error || "Erro ao criar garantia");
+      }
       const ordem: Order = await r.json();
       setOrdemCriada(ordem);
       queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
       toast({ title: "✅ Garantia criada!", description: `${ordem.codigo} — ${garantiaSelecionada}` });
-    } catch {
-      toast({ title: "Erro ao criar garantia", variant: "destructive" });
+    } catch (erro) {
+      toast({
+        title: "Não foi possível criar a garantia",
+        description: erro instanceof Error ? erro.message : "Tente novamente.",
+        variant: "destructive",
+      });
     } finally {
       setCriandoOS(false);
     }
@@ -647,13 +661,22 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                                   </span>
                                 )}
                                 {!isEditing ? (
-                                  <button
-                                    onClick={() => handleStartEdit(o)}
-                                    className="p-1 rounded hover:bg-black/5 text-muted-foreground hover:text-foreground transition-colors"
-                                    title="Editar garantia"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => handleStartEdit(o)}
+                                      className="p-1 rounded hover:bg-black/5 text-muted-foreground hover:text-foreground transition-colors"
+                                      title="Editar garantia"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDeleteOrder(o)}
+                                      className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                                      title="Excluir garantia"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
                                 ) : (
                                   <button
                                     onClick={() => { setEditingId(null); setEditValue(""); }}
