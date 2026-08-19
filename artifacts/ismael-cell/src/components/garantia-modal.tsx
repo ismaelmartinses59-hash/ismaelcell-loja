@@ -647,13 +647,22 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                                   </span>
                                 )}
                                 {!isEditing ? (
-                                  <button
-                                    onClick={() => handleStartEdit(o)}
-                                    className="p-1 rounded hover:bg-black/5 text-muted-foreground hover:text-foreground transition-colors"
-                                    title="Editar garantia"
-                                  >
-                                    <Pencil className="w-3.5 h-3.5" />
-                                  </button>
+                                  <>
+                                    <button
+                                      onClick={() => handleStartEdit(o)}
+                                      className="p-1 rounded hover:bg-black/5 text-muted-foreground hover:text-foreground transition-colors"
+                                      title="Editar garantia"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      onClick={() => setConfirmDeleteOrder(o)}
+                                      className="p-1 rounded hover:bg-red-50 text-muted-foreground hover:text-red-600 transition-colors"
+                                      title="Excluir garantia"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
                                 ) : (
                                   <button
                                     onClick={() => { setEditingId(null); setEditValue(""); }}
