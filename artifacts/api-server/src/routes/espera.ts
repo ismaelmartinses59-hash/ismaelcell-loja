@@ -89,6 +89,15 @@ router.post("/espera/:id/pagar", async (req, res): Promise<void> => {
   const fiado = req.body?.fiado === true;
   const nomeDevedor = String(req.body?.nomeDevedor ?? "").trim();
   const tipoDevedor = req.body?.tipoDevedor === "lojista" ? "lojista" : "cliente";
+  const valorCustomRaw = String(req.body?.valorCustom ?? "").trim();
+  const valorCustom = valorCustomRaw ? parseValorBR(valorCustomRaw) : 0;
+  if (valorCustomRaw && valorCustom <= 0) {
+    res.status(400).json({ error: "Valor final inválido" });
+    return;
+  }
+  const valorFinal = valorCustom > 0
+    ? valorCustom.toFixed(2).replace(".", ",")
+    : espera.valor;
   const rawSplits = req.body?.splits;
   const splits: Array<{ forma: string; valor: string }> | null =
     Array.isArray(rawSplits) && rawSplits.length > 0 ? rawSplits : null;
@@ -102,7 +111,7 @@ router.post("/espera/:id/pagar", async (req, res): Promise<void> => {
       pecaId: espera.pecaId,
       modelo: espera.modelo,
       qualidade: espera.qualidade,
-      valor: espera.valor,
+      valor: valorFinal,
     }).returning();
 
     // Fiado: cria item na conta a receber em vez de entrada no caixa
@@ -115,7 +124,7 @@ router.post("/espera/:id/pagar", async (req, res): Promise<void> => {
         vendaId: venda.id,
         modelo: espera.modelo,
         qualidade: espera.qualidade,
-        valor: espera.valor,
+        valor: valorFinal,
         dataRecebimento,
       });
     }
@@ -140,7 +149,7 @@ router.post("/espera/:id/pagar", async (req, res): Promise<void> => {
     } else if (forma) {
       await tx.insert(caixaTable).values({
         tipo: "entrada",
-        valor: espera.valor,
+        valor: valorFinal,
         motivo: `Venda ${espera.modelo} (Espera · ${LABELS[forma]})`,
         pecaId: espera.pecaId,
         vendaId: venda.id,
