@@ -162,6 +162,25 @@ export function CaixaSessaoGuard() {
     staleTime: 15000,
   });
 
+  // Ao voltar de uma notificação no iOS, descarte estados de envio que possam
+  // ter ficado suspensos e busque novamente a sessão atual do caixa.
+  useEffect(() => {
+    const reativar = () => {
+      if (document.visibilityState !== "visible") return;
+      setSubmitting(false);
+      setVSubmitting(false);
+      setSSubmitting(false);
+      setAvSubmitting(false);
+      void refetch();
+    };
+    document.addEventListener("visibilitychange", reativar);
+    window.addEventListener("pageshow", reativar);
+    return () => {
+      document.removeEventListener("visibilitychange", reativar);
+      window.removeEventListener("pageshow", reativar);
+    };
+  }, [refetch]);
+
   const dow = spNow.getDay(); // 0 = domingo, 6 = sábado
   const nowMin = spNow.getHours() * 60 + spNow.getMinutes();
   const openMin = HORA_ABERTURA * 60;
@@ -505,27 +524,42 @@ export function CaixaSessaoGuard() {
   };
 
   const fechar = async () => {
+    if (submitting) return;
     setSubmitting(true);
     try {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 15000);
       const r = await fetch(`${BASE}/api/caixa-sessoes/fechar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ valorContado: valorContado.trim() }),
-      });
+        signal: controller.signal,
+      }).finally(() => window.clearTimeout(timeout));
       if (!r.ok) {
         const j = await r.json().catch(() => ({}));
         throw new Error(j.error || "Erro ao fechar");
       }
+      const sessaoFechada = await r.json();
+      // Fecha o bloqueio imediatamente. Não espere uma segunda requisição:
+      // ela pode ficar suspensa quando o PWA acabou de acordar no iPhone.
+      qc.setQueryData<StatusResp>(["caixa-sessao", data], (atual) =>
+        atual ? { ...atual, sessao: sessaoFechada } : atual,
+      );
       toast({ title: "Caixa fechado! Até amanhã 👋" });
       setValorContado("");
       setContadoTouched(false);
-      await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
-      await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
-      await refetch();
+      void qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
+      void qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
+      void qc.invalidateQueries({ queryKey: ["caixa-historico"] });
     } catch (e) {
       toast({
         title: "Erro ao fechar o caixa",
-        description: e instanceof Error ? e.message : undefined,
+        description:
+          e instanceof DOMException && e.name === "AbortError"
+            ? "A conexão demorou demais. Tente novamente."
+            : e instanceof Error
+              ? e.message
+              : undefined,
         variant: "destructive",
       });
     } finally {
