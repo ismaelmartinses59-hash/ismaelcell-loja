@@ -7,11 +7,11 @@ description: How debtor-account AV payments mirror into the Caixa ledger and the
 
 When a debtor (conta a receber) pays an AV (partial payment), the system must record a matching `entrada` in the Caixa ledger so the cash history is complete.
 
-**Mechanism:** `caixa.pagamento_id` (nullable) links a caixa `entrada` to a `contas_receber_pagamentos` row. Motivo is `AV — <nome>`.
+**Mechanism:** `caixa.pagamento_id` (nullable) links caixa `entrada` rows to one `contas_receber_pagamentos` row. A normal AV has one entrada; a mixed AV has one entrada per payment split, all sharing the same pagamento_id. Motivo starts with `AV — <nome>`.
 
 **Invariant — these three delete paths must ALL keep caixa + pagamentos in sync (each in a transaction):**
-- Register AV → insert pagamento + linked caixa entrada together.
-- Delete pagamento (from the conta UI) → delete the linked caixa row, reopen conta.
+- Register AV → insert pagamento + all linked caixa entries together.
+- Delete pagamento (from the conta UI) → delete every linked caixa row, reopen conta.
 - Delete the AV entrada (from the Caixa UI) → delete the linked pagamento, reopen conta.
 - Delete the whole conta → delete linked caixa rows (`pagamento_id IN (select id ... where conta_id = :id)`) BEFORE deleting pagamentos, else orphan AV entradas inflate Caixa totals.
 
