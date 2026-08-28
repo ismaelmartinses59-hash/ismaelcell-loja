@@ -1553,6 +1553,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   });
   const [esperaPagandoId, setEsperaPagandoId] = useState<number | null>(null);
   const [esperaFiadoStep, setEsperaFiadoStep] = useState<"choose" | "avista" | "cartao" | "misto" | "fiado">("choose");
+  const [esperaTemDesconto, setEsperaTemDesconto] = useState(false);
+  const [esperaValorDesconto, setEsperaValorDesconto] = useState("");
   const [esperaMistoSplits, setEsperaMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
   const [esperaMistoForma, setEsperaMistoForma] = useState<string>("dinheiro");
   const [esperaMistoValor, setEsperaMistoValor] = useState<string>("");
@@ -1572,8 +1574,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao reservar", variant: "destructive" }),
   });
   const esperaPagarMutation = useMutation({
-    mutationFn: (args: { id: number; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; dataRecebimento?: string }) =>
-      apiFetch(`/api/espera/${args.id}/pagar`, { method: "POST", body: JSON.stringify({ formaPagamento: args.formaPagamento, splits: args.splits, fiado: args.fiado, nomeDevedor: args.nomeDevedor, tipoDevedor: args.tipoDevedor, dataRecebimento: args.dataRecebimento || null }) }),
+    mutationFn: (args: { id: number; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; dataRecebimento?: string; valorCustom?: string }) =>
+      apiFetch(`/api/espera/${args.id}/pagar`, { method: "POST", body: JSON.stringify({ formaPagamento: args.formaPagamento, splits: args.splits, fiado: args.fiado, nomeDevedor: args.nomeDevedor, tipoDevedor: args.tipoDevedor, dataRecebimento: args.dataRecebimento || null, valorCustom: args.valorCustom || null }) }),
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["pecas-espera"] });
       invalidateCaixa();
@@ -1581,6 +1583,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       if (vars.fiado) invalidateContas();
       setEsperaPagandoId(null);
       setEsperaFiadoStep("choose");
+      setEsperaTemDesconto(false);
+      setEsperaValorDesconto("");
       setEsperaFiadoNome("");
       setEsperaFiadoData("");
       setEsperaMistoSplits([]);
@@ -2787,6 +2791,15 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
 
             {esperaItems.filter(e => e.status === "aguardando").map((item) => {
               const isPagando = esperaPagandoId === item.id;
+              const valorBaseEspera = parsePtBR(item.valor);
+              const descontoEspera = esperaTemDesconto ? parsePtBR(esperaValorDesconto) : 0;
+              const descontoEsperaValido = descontoEspera > 0 && descontoEspera < valorBaseEspera;
+              const valorEsperaFinal = descontoEsperaValido
+                ? valorBaseEspera - descontoEspera
+                : valorBaseEspera;
+              const valorEsperaCustom = descontoEsperaValido
+                ? valorEsperaFinal.toFixed(2).replace(".", ",")
+                : undefined;
               return (
                 <div key={item.id} className="rounded-xl border bg-amber-50 border-amber-200 overflow-hidden">
                   {/* Header do item */}
@@ -2806,7 +2819,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         <>
                           <Button
                             size="sm"
-                            onClick={() => { setEsperaPagandoId(item.id); setEsperaFiadoStep("choose"); }}
+                            onClick={() => {
+                              setEsperaPagandoId(item.id);
+                              setEsperaFiadoStep("choose");
+                              setEsperaTemDesconto(false);
+                              setEsperaValorDesconto("");
+                            }}
                             className="h-8 bg-green-600 hover:bg-green-700 text-white text-xs px-3"
                           >
                             Receber
@@ -2828,6 +2846,50 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   {/* Painel de pagamento inline */}
                   {isPagando && (
                     <div className="border-t border-amber-200 bg-white px-3 py-3 space-y-2.5">
+                      {(() => {
+                        const valorBase = parsePtBR(item.valor);
+                        const desconto = esperaTemDesconto ? parsePtBR(esperaValorDesconto) : 0;
+                        const descontoValido = desconto > 0 && desconto < valorBase;
+                        const valorFinal = descontoValido ? valorBase - desconto : valorBase;
+                        const valorFinalTexto = valorFinal.toFixed(2).replace(".", ",");
+                        return (
+                          <div className="space-y-1.5 border-b border-slate-100 pb-2">
+                            <label className="flex items-center gap-2 cursor-pointer select-none text-sm text-slate-700">
+                              <input
+                                type="checkbox"
+                                checked={esperaTemDesconto}
+                                onChange={(e) => {
+                                  setEsperaTemDesconto(e.target.checked);
+                                  if (!e.target.checked) setEsperaValorDesconto("");
+                                }}
+                                className="h-4 w-4 accent-amber-600"
+                              />
+                              Tem desconto?
+                            </label>
+                            {esperaTemDesconto && (
+                              <div className="space-y-1.5">
+                                <Input
+                                  type="text"
+                                  inputMode="decimal"
+                                  placeholder="Valor do desconto (R$)"
+                                  value={esperaValorDesconto}
+                                  onChange={(e) => setEsperaValorDesconto(e.target.value)}
+                                  className="h-9 text-sm"
+                                  autoFocus
+                                />
+                                {descontoValido && (
+                                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-xs flex items-center gap-1.5 flex-wrap">
+                                    <span className="line-through text-slate-400">{formatMoney(item.valor)}</span>
+                                    <span className="text-amber-600">−{formatMoney(esperaValorDesconto)}</span>
+                                    <span className="text-slate-500">=</span>
+                                    <span className="font-bold text-green-700">{formatMoney(valorFinalTexto)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {esperaFiadoStep === "choose" && (
                         <div className="space-y-2">
                           <div className="text-xs font-semibold text-muted-foreground">Recebeu como?</div>
@@ -2859,12 +2921,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                           <div className="grid grid-cols-2 gap-2">
                             <Button className="h-12 flex flex-col items-center justify-center bg-green-600 hover:bg-green-700 text-white gap-0.5"
                               disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "dinheiro" })}>
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "dinheiro", valorCustom: valorEsperaCustom })}>
                               <DollarSign className="w-4 h-4" /><span className="font-bold text-xs">DINHEIRO</span>
                             </Button>
                             <Button className="h-12 flex flex-col items-center justify-center bg-emerald-600 hover:bg-emerald-700 text-white gap-0.5"
                               disabled={esperaPagarMutation.isPending}
-                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "pix" })}>
+                              onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: "pix", valorCustom: valorEsperaCustom })}>
                               <Wallet className="w-4 h-4" /><span className="font-bold text-xs">PIX</span>
                             </Button>
                           </div>
@@ -2873,7 +2935,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       )}
 
                       {esperaFiadoStep === "cartao" && (() => {
-                        const bruto = parsePtBR(item.valor);
+                        const bruto = valorEsperaFinal;
                         const opcoes: Array<{ forma: "debito"|"credito_1x"|"credito_2x"|"credito_3x"; label: string }> = [
                           { forma: "debito",      label: "Débito" },
                           { forma: "credito_1x",  label: "Crédito 1x" },
@@ -2891,7 +2953,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                   <Button key={forma}
                                     className="h-auto py-2 px-3 flex items-center justify-between bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg"
                                     disabled={esperaPagarMutation.isPending}
-                                    onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: forma })}>
+                                    onClick={() => esperaPagarMutation.mutate({ id: item.id, formaPagamento: forma, valorCustom: valorEsperaCustom })}>
                                     <div className="flex items-center gap-2">
                                       <CreditCard className="w-4 h-4 shrink-0" />
                                       <span className="font-bold text-xs">{label}</span>
@@ -2932,7 +2994,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                           <Button
                             className="w-full bg-orange-500 hover:bg-orange-600 text-white text-xs"
                             disabled={esperaPagarMutation.isPending || esperaFiadoNome.trim().length < 2}
-                            onClick={() => esperaPagarMutation.mutate({ id: item.id, fiado: true, nomeDevedor: esperaFiadoNome.trim(), tipoDevedor: esperaFiadoTipo, dataRecebimento: esperaFiadoData || undefined })}>
+                            onClick={() => esperaPagarMutation.mutate({ id: item.id, fiado: true, nomeDevedor: esperaFiadoNome.trim(), tipoDevedor: esperaFiadoTipo, dataRecebimento: esperaFiadoData || undefined, valorCustom: valorEsperaCustom })}>
                             📒 Registrar fiado
                           </Button>
                           <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("cartao")}>Voltar</Button>
@@ -2941,7 +3003,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
 
                       {esperaFiadoStep === "misto" && (
                         <div className="space-y-2">
-                          <div className="text-xs font-semibold text-muted-foreground">Pagamento misto</div>
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-muted-foreground">Pagamento misto</span>
+                            <span className="font-bold">{fmtBRL(valorEsperaFinal)}</span>
+                          </div>
                           {esperaMistoSplits.map((s, i) => (
                             <div key={i} className="flex gap-1.5 text-xs items-center">
                               <span className="text-slate-500 w-16 shrink-0">{LABELS_FORMA[s.forma as FormaPagamento] ?? s.forma}</span>
@@ -2968,7 +3033,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                           </div>
                           <Button className="w-full bg-violet-600 hover:bg-violet-700 text-white text-xs"
                             disabled={esperaPagarMutation.isPending || esperaMistoSplits.length === 0}
-                            onClick={() => esperaPagarMutation.mutate({ id: item.id, splits: esperaMistoSplits })}>
+                            onClick={() => esperaPagarMutation.mutate({ id: item.id, splits: esperaMistoSplits, valorCustom: valorEsperaCustom })}>
                             Confirmar misto
                           </Button>
                           <Button variant="ghost" className="w-full text-xs" onClick={() => setEsperaFiadoStep("choose")}>Voltar</Button>
