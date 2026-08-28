@@ -6,6 +6,7 @@ export const vendasTable = pgTable("vendas", {
   modelo: text("modelo").notNull(),
   qualidade: text("qualidade").notNull(),
   valor: text("valor").notNull(),
+  tipo: text("tipo").notNull().default("venda"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

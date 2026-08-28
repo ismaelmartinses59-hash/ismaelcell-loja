@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, sql } from "drizzle-orm";
-import { db, vendasTable, pecasTable } from "@workspace/db";
+import { and, eq, sql } from "drizzle-orm";
+import { db, vendasTable, pecasTable, caixaTable, contasReceberItensTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
@@ -18,12 +18,13 @@ router.get("/vendas", async (req, res): Promise<void> => {
     .where(sql`${vendasTable.createdAt} >= now() - interval ${sql.raw(`'${intervalo}'`)}`)
     .orderBy(sql`${vendasTable.createdAt} desc`);
 
-  const total = rows.reduce((acc, v) => {
+  const vendasReais = rows.filter((v) => v.tipo !== "uso_proprio");
+  const total = vendasReais.reduce((acc, v) => {
     const n = parseFloat(v.valor.replace(",", "."));
     return acc + (isNaN(n) ? 0 : n);
   }, 0);
 
-  res.json({ vendas: rows, total, quantidade: rows.length });
+  res.json({ vendas: rows, total, quantidade: vendasReais.length });
 });
 
 router.delete("/vendas/:id", async (req, res): Promise<void> => {
@@ -38,15 +39,46 @@ router.delete("/vendas/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Venda não encontrada" });
     return;
   }
-
-  await db.delete(vendasTable).where(eq(vendasTable.id, id));
-
-  if (venda.pecaId) {
-    await db
-      .update(pecasTable)
-      .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
-      .where(eq(pecasTable.id, venda.pecaId));
+  const [itemReceber] = await db
+    .select({ id: contasReceberItensTable.id })
+    .from(contasReceberItensTable)
+    .where(eq(contasReceberItensTable.vendaId, venda.id));
+  if (itemReceber) {
+    res.status(409).json({ error: "Esta venda está no A Receber. Remova o item pela conta do cliente." });
+    return;
   }
+  if (venda.tipo === "fiado_quitado") {
+    res.status(409).json({ error: "Venda de fiado quitado não pode devolver a peça ao estoque." });
+    return;
+  }
+
+  await db.transaction(async (tx) => {
+    if (venda.tipo === "uso_proprio") {
+      await tx.delete(caixaTable).where(eq(caixaTable.vendaId, venda.id));
+    }
+    await tx.delete(vendasTable).where(eq(vendasTable.id, id));
+
+    if (venda.pecaId) {
+      const [peca] = await tx.select().from(pecasTable).where(eq(pecasTable.id, venda.pecaId));
+      if (peca) {
+        await tx
+          .update(pecasTable)
+          .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+          .where(eq(pecasTable.id, venda.pecaId));
+        const outroSetor = peca.setor === "cliente" ? "lojista" : "cliente";
+        await tx
+          .update(pecasTable)
+          .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+          .where(
+            and(
+              eq(pecasTable.setor, outroSetor),
+              sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${peca.modelo}))`,
+              sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${peca.qualidade}))`,
+            ),
+          );
+      }
+    }
+  });
 
   res.status(204).send();
 });
