@@ -52,7 +52,7 @@ async function lembrarFechar(): Promise<void> {
       title: "Fechar o caixa 🌙",
       body: "Hora de fechar o caixa! Confira o dinheiro na gaveta e finalize o dia.",
       tag: "fechar-caixa",
-      url: "/",
+      url: "ordens?caixa=fechar",
     });
     logger.info({ ...r }, "fechar reminder sent");
   } catch (err) {

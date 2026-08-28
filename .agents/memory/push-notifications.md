@@ -35,3 +35,17 @@ Don't reintroduce a broadcast-on-subscribe.
 Web push on iPhone only works if the app is INSTALLED to the home screen as a
 PWA (iOS 16.4+). In a regular Safari tab it will not fire. Android Chrome works
 without install. The blocking overlay still works everywhere regardless.
+
+## Notification click must refresh the PWA lifecycle on iOS
+When a caixa notification is tapped, navigate an existing window client to the
+target URL relative to the service-worker scope before focusing it. For closing,
+update the session cache from the successful POST response immediately; do not
+keep the blocking overlay dependent on a follow-up refetch.
+
+**Why:** on iOS, focusing a suspended PWA window can preserve a stale network
+lifecycle. A follow-up status request may then hang even though the close POST
+succeeded, leaving the blocking screen visible until the app is restarted.
+
+**How to apply:** notification-click handlers must use scope-relative navigation
+plus focus. Blocking mutations triggered just after resume should have a timeout
+and update local state from the mutation response before background invalidation.
