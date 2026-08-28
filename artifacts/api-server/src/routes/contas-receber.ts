@@ -9,7 +9,7 @@ import {
   pecasTable,
   vendasTable,
 } from "@workspace/db";
-import { normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
+import { LABELS, normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
 
 const router: IRouter = Router();
 
@@ -145,10 +145,29 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
     res.status(400).json({ error: "Valor inválido" });
     return;
   }
+  const valorNumerico = parseValor(valor);
+  const rawSplits = req.body?.splits;
+  const splits: Array<{ forma: string; valor: string }> | null =
+    Array.isArray(rawSplits) && rawSplits.length > 0 ? rawSplits : null;
+  if (splits) {
+    const splitsValidos = splits.map((split) => ({
+      forma: normalizeForma(split?.forma),
+      valor: parseValor(String(split?.valor ?? "")),
+    }));
+    if (splitsValidos.some((split) => !split.forma || split.valor <= 0)) {
+      res.status(400).json({ error: "Forma ou valor inválido no pagamento misto" });
+      return;
+    }
+    const totalSplits = splitsValidos.reduce((total, split) => total + split.valor, 0);
+    if (Math.abs(totalSplits - valorNumerico) > 0.01) {
+      res.status(400).json({ error: "A soma do pagamento misto precisa ser igual ao valor recebido" });
+      return;
+    }
+  }
   // Forma de pagamento do AV (dinheiro/pix/cartão). A taxa do cartão é prejuízo
   // da loja: o valor que abate a dívida é o cheio; a entrada no caixa guarda a
   // forma + taxa para o líquido aparecer no fechamento.
-  const forma = normalizeForma(req.body?.formaPagamento) ?? "dinheiro";
+  const forma = splits ? null : normalizeForma(req.body?.formaPagamento) ?? "dinheiro";
   // Registra o pagamento E lança a entrada correspondente no caixa (AV),
   // ligadas por pagamentoId para manterem-se em sincronia ao apagar.
   const encontrado = await db.transaction(async (tx) => {
@@ -160,16 +179,32 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
     if (!conta) return false;
     const [pag] = await tx
       .insert(contasReceberPagamentosTable)
-      .values({ contaId: id, valor, formaPagamento: forma })
+      .values({ contaId: id, valor, formaPagamento: splits ? "misto" : forma })
       .returning();
-    await tx.insert(caixaTable).values({
-      tipo: "entrada",
-      valor,
-      motivo: `AV — ${conta.nome}`,
-      pagamentoId: pag.id,
-      formaPagamento: forma,
-      taxaPercent: forma ? String(taxaFor(forma)) : null,
-    });
+    if (splits) {
+      for (const split of splits) {
+        const splitForma = normalizeForma(split.forma);
+        if (splitForma) {
+          await tx.insert(caixaTable).values({
+            tipo: "entrada",
+            valor: split.valor,
+            motivo: `AV — ${conta.nome} (Misto · ${LABELS[splitForma]})`,
+            pagamentoId: pag.id,
+            formaPagamento: splitForma,
+            taxaPercent: String(taxaFor(splitForma)),
+          });
+        }
+      }
+    } else {
+      await tx.insert(caixaTable).values({
+        tipo: "entrada",
+        valor,
+        motivo: `AV — ${conta.nome}`,
+        pagamentoId: pag.id,
+        formaPagamento: forma,
+        taxaPercent: forma ? String(taxaFor(forma)) : null,
+      });
+    }
     const itens = await tx
       .select()
       .from(contasReceberItensTable)
