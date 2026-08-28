@@ -104,8 +104,12 @@ async function ensureSchema(): Promise<void> {
       modelo text NOT NULL,
       qualidade text NOT NULL,
       valor text NOT NULL,
+      tipo text NOT NULL DEFAULT 'venda',
       created_at timestamp NOT NULL DEFAULT now()
     )
+  `));
+  await runStatement("vendas.tipo", db.execute(sql`
+    ALTER TABLE vendas ADD COLUMN IF NOT EXISTS tipo text NOT NULL DEFAULT 'venda'
   `));
   await runStatement("garantias_peca", db.execute(sql`
     CREATE TABLE IF NOT EXISTS garantias_peca (

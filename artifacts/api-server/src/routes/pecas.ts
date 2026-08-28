@@ -603,6 +603,80 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   res.json(peca);
 });
 
+router.post("/pecas/:id/uso-proprio", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }
+  const [atual] = await db.select().from(pecasTable).where(eq(pecasTable.id, id));
+  if (!atual) { res.status(404).json({ error: "Peça não encontrada" }); return; }
+  if (atual.quantidade <= 0) { res.status(400).json({ error: "Sem estoque disponível" }); return; }
+  const custo = parseValorBR(atual.valorCusto);
+  if (custo <= 0) {
+    res.status(400).json({ error: "Cadastre o valor de custo da peça antes de registrar uso próprio" });
+    return;
+  }
+  const formaRaw = normalizeForma(req.body?.formaPagamento);
+  const forma = formaRaw === "pix" ? "pix" : formaRaw === "dinheiro" ? "dinheiro" : null;
+  if (!forma) {
+    res.status(400).json({ error: "Escolha dinheiro ou PIX para a saída" });
+    return;
+  }
+
+  try {
+    const peca = await db.transaction(async (tx) => {
+      const [atualizada] = await tx
+        .update(pecasTable)
+        .set({ quantidade: sql`${pecasTable.quantidade} - 1` })
+        .where(and(eq(pecasTable.id, id), sql`${pecasTable.quantidade} > 0`))
+        .returning();
+      if (!atualizada) throw new Error("Sem estoque disponível");
+
+      const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
+      const gemeas = await tx.select().from(pecasTable).where(
+        and(
+          eq(pecasTable.setor, outroSetor),
+          sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
+          sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
+        ),
+      );
+      if (gemeas.length === 0) throw new Error("Peça gêmea não encontrada no outro setor");
+      for (const g of gemeas) {
+        const [gemeaBaixada] = await tx
+          .update(pecasTable)
+          .set({ quantidade: sql`${pecasTable.quantidade} - 1` })
+          .where(and(eq(pecasTable.id, g.id), sql`${pecasTable.quantidade} > 0`))
+          .returning();
+        if (!gemeaBaixada) throw new Error("Estoque gêmeo sem unidade disponível");
+      }
+
+      const valorCusto = valorParaTexto(custo);
+      const [registro] = await tx.insert(vendasTable).values({
+        pecaId: id,
+        modelo: atual.modelo,
+        qualidade: atual.qualidade,
+        valor: valorCusto,
+        tipo: "uso_proprio",
+      }).returning();
+
+      await tx.insert(caixaTable).values({
+        tipo: "saida",
+        valor: valorCusto,
+        motivo: `Uso próprio: ${atual.modelo}`,
+        pecaId: id,
+        vendaId: registro.id,
+        modelo: atual.modelo,
+        formaPagamento: forma,
+        taxaPercent: "0",
+      });
+
+      return atualizada;
+    });
+    res.json(peca);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Não foi possível registrar o uso próprio";
+    res.status(409).json({ error: message });
+  }
+});
+
 router.post("/pecas/:id/devolver", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) { res.status(400).json({ error: "ID inválido" }); return; }

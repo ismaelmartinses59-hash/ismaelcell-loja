@@ -46,6 +46,7 @@ interface Venda {
   modelo: string;
   qualidade: string;
   valor: string;
+  tipo: string;
   createdAt: string;
 }
 
@@ -1093,6 +1094,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setItemValor("");
       setItemJuro("");
       setItemForma("fiado");
+      setItemPecaSel(null);
       setMistoSplits([]);
       setMistoForma("dinheiro");
       setMistoValor("");
@@ -1108,7 +1110,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [valorDesconto, setValorDesconto] = useState("");
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
-  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista" | "misto">("choose");
+  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista" | "misto" | "uso_proprio">("choose");
   const [mistoSplits, setMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
   const [mistoForma, setMistoForma] = useState<string>("dinheiro");
   const [mistoValor, setMistoValor] = useState<string>("");
@@ -1127,6 +1129,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [itemJuro, setItemJuro] = useState("");
   const [itemForma, setItemForma] = useState<string>("fiado");
   const [itemData, setItemData] = useState("");
+  const [itemPecaSel, setItemPecaSel] = useState<Peca | null>(null);
   // Novo serviço fiado (cria/reusa conta)
   const [showNovoServico, setShowNovoServico] = useState(false);
   const [servNome, setServNome] = useState("");
@@ -1275,7 +1278,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [deletingVendaId, setDeletingVendaId] = useState<number | null>(null);
   const deleteVendaMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/vendas/${id}`, { method: "DELETE" }),
-    onSuccess: () => { invalidateVendas(); invalidatePecas(); setDeletingVendaId(null); toast({ title: "Venda apagada" }); },
+    onSuccess: () => { invalidateVendas(); invalidatePecas(); invalidateCaixa(); setDeletingVendaId(null); toast({ title: "Registro apagado" }); },
     onError: () => toast({ title: "Erro ao apagar venda", variant: "destructive" }),
   });
   const invalidateGarantias = () => qc.invalidateQueries({ queryKey: ["garantias-peca"] });
@@ -1539,6 +1542,29 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     },
     onError: () => toast({ title: "Erro ao registrar venda", variant: "destructive" }),
   });
+  const usoProprioMutation = useMutation({
+    mutationFn: ({ id, formaPagamento }: { id: number; formaPagamento: "dinheiro" | "pix" }) =>
+      apiFetch(`/api/pecas/${id}/uso-proprio`, {
+        method: "POST",
+        body: JSON.stringify({ formaPagamento }),
+      }),
+    onSuccess: (peca: Peca) => {
+      invalidatePecas();
+      invalidateVendas();
+      invalidateCaixa();
+      toast({
+        title: "🔧 Uso próprio registrado",
+        description: `${peca.modelo} — Restam ${peca.quantidade} un.`,
+      });
+      setVenderDialogPeca(null);
+      setFiadoStep("choose");
+    },
+    onError: (error: Error) => toast({
+      title: "Erro ao registrar uso próprio",
+      description: error.message,
+      variant: "destructive",
+    }),
+  });
 
   // ── Modo Espera ───────────────────────────────────────────────────────────
   interface PecaEspera {
@@ -1638,10 +1664,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
   const addItemMutation = useMutation({
-    mutationFn: ({ contaId, descricao, valor, formaPagamento, dataRecebimento }: { contaId: number; descricao: string; valor: string; formaPagamento: string; dataRecebimento?: string }) =>
-      apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor, formaPagamento, dataRecebimento: dataRecebimento || null }) }),
-    onSuccess: () => { invalidateContas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemJuro(""); setItemForma("fiado"); setItemData(""); toast({ title: "📒 Serviço adicionado à conta!" }); },
-    onError: () => toast({ title: "Erro ao adicionar serviço", variant: "destructive" }),
+    mutationFn: ({ contaId, descricao, valor, formaPagamento, dataRecebimento, pecaId }: { contaId: number; descricao: string; valor: string; formaPagamento: string; dataRecebimento?: string; pecaId?: number }) =>
+      apiFetch(`/api/contas-receber/${contaId}/item`, { method: "POST", body: JSON.stringify({ descricao, valor, formaPagamento, dataRecebimento: dataRecebimento || null, pecaId: pecaId ?? null }) }),
+    onSuccess: () => { invalidateContas(); invalidatePecas(); invalidateVendas(); setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemJuro(""); setItemForma("fiado"); setItemData(""); setItemPecaSel(null); toast({ title: "📒 Item adicionado e estoque atualizado!" }); },
+    onError: (error: Error) => toast({ title: "Erro ao adicionar item", description: error.message, variant: "destructive" }),
   });
   const novoServicoMutation = useMutation({
     mutationFn: (data: { nome: string; tipo: string; descricao: string; valor: string; dataRecebimento?: string }) =>
@@ -2275,21 +2301,24 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               {vendasData?.vendas.map((v) => {
                 const hora = new Date(v.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                 const dia = new Date(v.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+                const usoProprio = v.tipo === "uso_proprio";
                 const valorFmt = parseFloat(v.valor.replace(",", ".")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
                 const isConfirming = deletingVendaId === v.id;
                 return (
-                  <div key={v.id} className={`border rounded-xl px-3 py-2.5 flex items-center gap-3 ${isConfirming ? "bg-red-50 border-red-200" : "bg-white"}`}>
-                    <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center shrink-0">
-                      <ShoppingBag className="w-4 h-4 text-green-600" />
+                  <div key={v.id} className={`border rounded-xl px-3 py-2.5 flex items-center gap-3 ${isConfirming ? "bg-red-50 border-red-200" : usoProprio ? "bg-amber-50 border-amber-200" : "bg-white"}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${usoProprio ? "bg-amber-100" : "bg-green-100"}`}>
+                      {usoProprio ? <Package className="w-4 h-4 text-amber-700" /> : <ShoppingBag className="w-4 h-4 text-green-600" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-sm truncate">{v.modelo}</div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">{v.qualidade}</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${usoProprio ? "bg-amber-200 text-amber-900" : "bg-primary/10 text-primary"}`}>
+                          {usoProprio ? "Uso próprio" : v.qualidade}
+                        </span>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className="font-bold text-green-600 text-sm">{valorFmt}</div>
+                      <div className={`font-bold text-sm ${usoProprio ? "text-amber-700" : "text-green-600"}`}>{usoProprio ? `Custo ${valorFmt}` : valorFmt}</div>
                       <div className="text-xs text-muted-foreground">{periodo === "dia" ? hora : `${dia} ${hora}`}</div>
                     </div>
                     {isConfirming ? (
@@ -2494,7 +2523,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <Button size="sm" className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold" onClick={() => { setPagandoContaId(c.conta.id); setPagamentoValor(""); setPagamentoForma("dinheiro"); }}>
                               <Wallet className="w-3.5 h-3.5 mr-1.5" /> AV (Receber)
                             </Button>
-                            <Button size="sm" variant="outline" className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => { setAddItemContaId(c.conta.id); setItemDescricao(""); setItemValor(""); }}>
+                            <Button size="sm" variant="outline" className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => { setAddItemContaId(c.conta.id); setItemDescricao(""); setItemValor(""); setItemPecaSel(null); }}>
                               <Plus className="w-3.5 h-3.5 mr-1" /> Serviço
                             </Button>
                             <Button size="sm" variant="outline" className="h-8 text-xs text-red-600 border-red-200 hover:bg-red-50" onClick={() => setDeletingContaId(c.conta.id)}>
@@ -2506,7 +2535,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         {/* Form adicionar serviço/item à conta */}
                         {addItemContaId === c.conta.id && (() => {
                           const pecasDoTipo = c.conta.tipo === "lojista" ? pecasLojistaAll : pecasClienteAll;
-                          const sugestoes = itemDescricao.trim().length >= 2
+                          const sugestoes = !itemPecaSel && itemDescricao.trim().length >= 2
                             ? pecasDoTipo.filter((p) =>
                                 p.quantidade > 0 &&
                                 p.modelo.toLowerCase().includes(itemDescricao.toLowerCase().trim())
@@ -2520,7 +2549,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 type="text"
                                 placeholder="Serviço (ex: Remoção de conta Google)"
                                 value={itemDescricao}
-                                onChange={(e) => setItemDescricao(e.target.value)}
+                                onChange={(e) => { setItemDescricao(e.target.value); setItemPecaSel(null); }}
                                 className="h-9 text-sm"
                                 autoFocus
                               />
@@ -2533,7 +2562,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                       className="w-full text-left px-3 py-2 hover:bg-orange-50 border-b border-orange-100 last:border-0"
                                       onMouseDown={(e) => {
                                         e.preventDefault();
-                                        setItemDescricao(`${p.modelo} ${p.qualidade}`);
+                                        setItemPecaSel(p);
+                                        setItemDescricao(`${p.modelo} (${p.qualidade})`);
                                         setItemValor(p.valor);
                                       }}
                                     >
@@ -2544,6 +2574,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 </div>
                               )}
                             </div>
+                            {itemPecaSel && (
+                              <div className="rounded-lg bg-emerald-50 border border-emerald-200 px-2.5 py-2 text-[11px] text-emerald-800 flex items-center justify-between gap-2">
+                                <span>📦 <b>{itemPecaSel.modelo}</b> — vai baixar 1 un. do estoque e do gêmeo</span>
+                                <button type="button" className="underline shrink-0" onClick={() => { setItemPecaSel(null); setItemDescricao(""); setItemValor(""); }}>tirar</button>
+                              </div>
+                            )}
                             <div className="flex gap-2">
                               <Input
                                 type="text"
@@ -2554,11 +2590,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 className="h-9 text-sm flex-1"
                               />
                               <Button size="sm" className="h-9 bg-orange-600 hover:bg-orange-700 text-white" disabled={!itemDescricao.trim() || !itemValor.trim() || addItemMutation.isPending} onClick={() => {
-                                addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim(), formaPagamento: itemForma, dataRecebimento: itemData || undefined });
+                                addItemMutation.mutate({ contaId: c.conta.id, descricao: itemDescricao.trim(), valor: itemValor.trim(), formaPagamento: itemForma, dataRecebimento: itemData || undefined, pecaId: itemPecaSel?.id });
                               }}>
                                 <Check className="w-4 h-4" />
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemJuro(""); setItemForma("fiado"); setItemData(""); }}>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setAddItemContaId(null); setItemDescricao(""); setItemValor(""); setItemJuro(""); setItemForma("fiado"); setItemData(""); setItemPecaSel(null); }}>
                                 <X className="w-4 h-4" />
                               </Button>
                             </div>
@@ -3261,6 +3297,47 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <Timer className="w-5 h-5" />
                     <span className="font-bold text-sm">MODO ESPERA — receber depois</span>
                   </Button>
+                  <Button
+                    className="col-span-2 h-12 flex items-center justify-center bg-slate-700 hover:bg-slate-800 text-white gap-2"
+                    disabled={venderMutation.isPending || usoProprioMutation.isPending}
+                    onClick={() => setFiadoStep("uso_proprio")}
+                  >
+                    <Package className="w-5 h-5" />
+                    <span className="font-bold text-sm">USO PRÓPRIO</span>
+                  </Button>
+                </div>
+              )}
+
+              {fiadoStep === "uso_proprio" && (
+                <div className="space-y-3 pt-1">
+                  <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900 space-y-1">
+                    <div className="font-bold">Uso próprio da loja</div>
+                    <div>Baixa 1 unidade do estoque e registra uma saída no caixa pelo custo.</div>
+                    <div className="font-semibold">Custo: {venderDialogPeca.valorCusto ? formatMoney(venderDialogPeca.valorCusto) : "não cadastrado"}</div>
+                  </div>
+                  {!venderDialogPeca.valorCusto || parsePtBR(venderDialogPeca.valorCusto) <= 0 ? (
+                    <div className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                      Cadastre o valor de custo desta peça antes de usar esta opção.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        className="h-14 bg-green-600 hover:bg-green-700 text-white"
+                        disabled={usoProprioMutation.isPending}
+                        onClick={() => usoProprioMutation.mutate({ id: venderDialogPeca.id, formaPagamento: "dinheiro" })}
+                      >
+                        <DollarSign className="w-4 h-4 mr-1.5" /> Dinheiro
+                      </Button>
+                      <Button
+                        className="h-14 bg-emerald-600 hover:bg-emerald-700 text-white"
+                        disabled={usoProprioMutation.isPending}
+                        onClick={() => usoProprioMutation.mutate({ id: venderDialogPeca.id, formaPagamento: "pix" })}
+                      >
+                        <Wallet className="w-4 h-4 mr-1.5" /> PIX
+                      </Button>
+                    </div>
+                  )}
+                  <Button variant="ghost" className="w-full" onClick={() => setFiadoStep("choose")} disabled={usoProprioMutation.isPending}>Voltar</Button>
                 </div>
               )}
 
