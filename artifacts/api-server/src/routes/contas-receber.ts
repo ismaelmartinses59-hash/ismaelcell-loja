@@ -6,6 +6,8 @@ import {
   contasReceberItensTable,
   contasReceberPagamentosTable,
   caixaTable,
+  pecasTable,
+  vendasTable,
 } from "@workspace/db";
 import { normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
 
@@ -36,6 +38,39 @@ async function getContaResumo(contaId: number) {
   const totalPago = pagamentos.reduce((a, p) => a + parseValor(p.valor), 0);
   const saldo = totalItens - totalPago;
   return { conta, itens, pagamentos, totalItens, totalPago, saldo };
+}
+
+async function restaurarEstoqueDaVenda(
+  vendaId: number,
+  executor: DbExecutor,
+): Promise<void> {
+  const [venda] = await executor
+    .select()
+    .from(vendasTable)
+    .where(eq(vendasTable.id, vendaId));
+  if (!venda) return;
+  const [peca] = await executor
+    .select()
+    .from(pecasTable)
+    .where(eq(pecasTable.id, venda.pecaId));
+  if (peca) {
+    await executor
+      .update(pecasTable)
+      .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+      .where(eq(pecasTable.id, peca.id));
+    const outroSetor = peca.setor === "cliente" ? "lojista" : "cliente";
+    await executor
+      .update(pecasTable)
+      .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+      .where(
+        and(
+          eq(pecasTable.setor, outroSetor),
+          sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${peca.modelo}))`,
+          sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${peca.qualidade}))`,
+        ),
+      );
+  }
+  await executor.delete(vendasTable).where(eq(vendasTable.id, vendaId));
 }
 
 // Lista todas as contas com resumo
@@ -114,14 +149,15 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
   // da loja: o valor que abate a dívida é o cheio; a entrada no caixa guarda a
   // forma + taxa para o líquido aparecer no fechamento.
   const forma = normalizeForma(req.body?.formaPagamento) ?? "dinheiro";
-  const r = await getContaResumo(id);
-  if (!r) {
-    res.status(404).json({ error: "Conta não encontrada" });
-    return;
-  }
   // Registra o pagamento E lança a entrada correspondente no caixa (AV),
   // ligadas por pagamentoId para manterem-se em sincronia ao apagar.
-  await db.transaction(async (tx) => {
+  const encontrado = await db.transaction(async (tx) => {
+    const [conta] = await tx
+      .select()
+      .from(contasReceberTable)
+      .where(eq(contasReceberTable.id, id))
+      .for("update");
+    if (!conta) return false;
     const [pag] = await tx
       .insert(contasReceberPagamentosTable)
       .values({ contaId: id, valor, formaPagamento: forma })
@@ -129,19 +165,32 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
     await tx.insert(caixaTable).values({
       tipo: "entrada",
       valor,
-      motivo: `AV — ${r.conta.nome}`,
+      motivo: `AV — ${conta.nome}`,
       pagamentoId: pag.id,
       formaPagamento: forma,
       taxaPercent: forma ? String(taxaFor(forma)) : null,
     });
+    const itens = await tx
+      .select()
+      .from(contasReceberItensTable)
+      .where(eq(contasReceberItensTable.contaId, id));
+    const pagamentos = await tx
+      .select()
+      .from(contasReceberPagamentosTable)
+      .where(eq(contasReceberPagamentosTable.contaId, id));
+    const totalItens = itens.reduce((acc, item) => acc + parseValor(item.valor), 0);
+    const totalPago = pagamentos.reduce((acc, pagamento) => acc + parseValor(pagamento.valor), 0);
+    if (totalItens - totalPago <= 0) {
+      await tx
+        .update(contasReceberTable)
+        .set({ closedAt: new Date() })
+        .where(eq(contasReceberTable.id, id));
+    }
+    return true;
   });
-  // Verifica saldo: se zerou ou ficou negativo, fecha a conta
-  const novo = await getContaResumo(id);
-  if (novo && novo.saldo <= 0) {
-    await db
-      .update(contasReceberTable)
-      .set({ closedAt: new Date() })
-      .where(eq(contasReceberTable.id, id));
+  if (!encontrado) {
+    res.status(404).json({ error: "Conta não encontrada" });
+    return;
   }
   res.json(await getContaResumo(id));
 });
@@ -186,6 +235,8 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
   const descricao = String(req.body?.descricao ?? "").trim();
   const valor = String(req.body?.valor ?? "").trim();
   const formaPagamento = req.body?.formaPagamento ? String(req.body.formaPagamento) : null;
+  const pecaIdRaw = req.body?.pecaId;
+  const pecaId = pecaIdRaw == null || pecaIdRaw === "" ? null : parseInt(String(pecaIdRaw), 10);
   const dataRecebimentoRaw = req.body?.dataRecebimento ? String(req.body.dataRecebimento) : null;
   const dataRecebimento = dataRecebimentoRaw ? new Date(dataRecebimentoRaw) : null;
   if (!descricao) {
@@ -196,6 +247,10 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Valor inválido" });
     return;
   }
+  if (pecaIdRaw != null && pecaIdRaw !== "" && (!pecaId || isNaN(pecaId))) {
+    res.status(400).json({ error: "Peça inválida" });
+    return;
+  }
   const [conta] = await db
     .select()
     .from(contasReceberTable)
@@ -204,19 +259,70 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Conta não encontrada" });
     return;
   }
-  await db.insert(contasReceberItensTable).values({
-    contaId: id,
-    modelo: descricao,
-    qualidade: "Serviço",
-    valor,
-    formaPagamento,
-    dataRecebimento,
-  });
-  // Adicionar dívida reabre a conta caso estivesse quitada
-  await db
-    .update(contasReceberTable)
-    .set({ closedAt: null })
-    .where(eq(contasReceberTable.id, id));
+  try {
+    await db.transaction(async (tx) => {
+      let vendaId: number | null = null;
+      let modelo = descricao;
+      let qualidade = "Serviço";
+
+      if (pecaId) {
+        const [peca] = await tx.select().from(pecasTable).where(eq(pecasTable.id, pecaId));
+        if (!peca) throw new Error("Peça não encontrada");
+
+        const [baixada] = await tx
+          .update(pecasTable)
+          .set({ quantidade: sql`${pecasTable.quantidade} - 1` })
+          .where(and(eq(pecasTable.id, peca.id), sql`${pecasTable.quantidade} > 0`))
+          .returning();
+        if (!baixada) throw new Error("Sem estoque disponível");
+
+        const outroSetor = peca.setor === "cliente" ? "lojista" : "cliente";
+        const gemeas = await tx.select().from(pecasTable).where(
+          and(
+            eq(pecasTable.setor, outroSetor),
+            sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${peca.modelo}))`,
+            sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${peca.qualidade}))`,
+          ),
+        );
+        if (gemeas.length === 0) throw new Error("Peça gêmea não encontrada no outro setor");
+        for (const g of gemeas) {
+          const [gemeaBaixada] = await tx
+            .update(pecasTable)
+            .set({ quantidade: sql`${pecasTable.quantidade} - 1` })
+            .where(and(eq(pecasTable.id, g.id), sql`${pecasTable.quantidade} > 0`))
+            .returning();
+          if (!gemeaBaixada) throw new Error("Estoque gêmeo sem unidade disponível");
+        }
+        const [venda] = await tx.insert(vendasTable).values({
+          pecaId: peca.id,
+          modelo: peca.modelo,
+          qualidade: peca.qualidade,
+          valor,
+        }).returning();
+        vendaId = venda.id;
+        modelo = peca.modelo;
+        qualidade = peca.qualidade;
+      }
+
+      await tx.insert(contasReceberItensTable).values({
+        contaId: id,
+        vendaId,
+        modelo,
+        qualidade,
+        valor,
+        formaPagamento,
+        dataRecebimento,
+      });
+      await tx
+        .update(contasReceberTable)
+        .set({ closedAt: null })
+        .where(eq(contasReceberTable.id, id));
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Não foi possível adicionar o item";
+    res.status(409).json({ error: message });
+    return;
+  }
   res.json(await getContaResumo(id));
 });
 
@@ -258,15 +364,34 @@ router.delete("/contas-receber/itens/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "ID inválido" });
     return;
   }
-  const [item] = await db
-    .select()
-    .from(contasReceberItensTable)
-    .where(eq(contasReceberItensTable.id, id));
-  if (!item) {
+  const removido = await db.transaction(async (tx) => {
+    const [item] = await tx
+      .select()
+      .from(contasReceberItensTable)
+      .where(eq(contasReceberItensTable.id, id))
+      .for("update");
+    if (!item) return false;
+    const [conta] = await tx
+      .select()
+      .from(contasReceberTable)
+      .where(eq(contasReceberTable.id, item.contaId))
+      .for("update");
+    if (conta?.closedAt != null && item.vendaId) {
+      await tx
+        .update(vendasTable)
+        .set({ tipo: "fiado_quitado" })
+        .where(eq(vendasTable.id, item.vendaId));
+    }
+    await tx.delete(contasReceberItensTable).where(eq(contasReceberItensTable.id, id));
+    if (conta?.closedAt == null && item.vendaId) {
+      await restaurarEstoqueDaVenda(item.vendaId, tx);
+    }
+    return true;
+  });
+  if (!removido) {
     res.status(404).json({ error: "Item não encontrado" });
     return;
   }
-  await db.delete(contasReceberItensTable).where(eq(contasReceberItensTable.id, id));
   res.status(204).send();
 });
 
@@ -278,6 +403,27 @@ router.delete("/contas-receber/:id", async (req, res): Promise<void> => {
     return;
   }
   await db.transaction(async (tx) => {
+    const [conta] = await tx
+      .select()
+      .from(contasReceberTable)
+      .where(eq(contasReceberTable.id, id))
+      .for("update");
+    const itens = await tx
+      .select()
+      .from(contasReceberItensTable)
+      .where(eq(contasReceberItensTable.contaId, id))
+      .for("update");
+    if (conta?.closedAt != null) {
+      const vendasQuitadas = itens
+        .map((item) => item.vendaId)
+        .filter((vendaId): vendaId is number => vendaId != null);
+      for (const vendaId of vendasQuitadas) {
+        await tx
+          .update(vendasTable)
+          .set({ tipo: "fiado_quitado" })
+          .where(eq(vendasTable.id, vendaId));
+      }
+    }
     // Remove as entradas de AV no caixa ligadas aos pagamentos desta conta.
     await tx.delete(caixaTable).where(
       sql`${caixaTable.pagamentoId} IN (SELECT id FROM ${contasReceberPagamentosTable} WHERE ${contasReceberPagamentosTable.contaId} = ${id})`,
@@ -288,6 +434,11 @@ router.delete("/contas-receber/:id", async (req, res): Promise<void> => {
     await tx
       .delete(contasReceberItensTable)
       .where(eq(contasReceberItensTable.contaId, id));
+    if (conta?.closedAt == null) {
+      for (const item of itens) {
+        if (item.vendaId) await restaurarEstoqueDaVenda(item.vendaId, tx);
+      }
+    }
     await tx.delete(contasReceberTable).where(eq(contasReceberTable.id, id));
   });
   res.status(204).send();
