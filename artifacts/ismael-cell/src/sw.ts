@@ -59,17 +59,28 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const targetUrl =
-    (event.notification.data && event.notification.data.url) || "/";
+  const rawTarget =
+    (event.notification.data && event.notification.data.url) || "";
+  // URLs do push são relativas ao escopo do PWA. Assim funciona tanto em
+  // produção (raiz) quanto no preview da Replit (subcaminho do artefato).
+  const targetUrl = new URL(
+    String(rawTarget).replace(/^\/+/, ""),
+    self.registration.scope,
+  ).href;
   event.waitUntil(
-    self.clients
-      .matchAll({ type: "window", includeUncontrolled: true })
-      .then((clientList) => {
-        for (const client of clientList) {
-          if ("focus" in client) return client.focus();
-        }
-        if (self.clients.openWindow) return self.clients.openWindow(targetUrl);
-        return undefined;
-      }),
+    (async () => {
+      const clientList = await self.clients.matchAll({
+        type: "window",
+        includeUncontrolled: true,
+      });
+      const existing = clientList[0] as WindowClient | undefined;
+      if (existing) {
+        // No iOS, apenas focus() pode reviver uma página com estado de rede
+        // suspenso. A navegação recria o ciclo da tela antes de focá-la.
+        const navigated = await existing.navigate(targetUrl).catch(() => null);
+        return (navigated || existing).focus();
+      }
+      return self.clients.openWindow?.(targetUrl);
+    })(),
   );
 });
