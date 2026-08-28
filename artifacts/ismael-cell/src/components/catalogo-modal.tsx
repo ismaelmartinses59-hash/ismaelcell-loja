@@ -2694,7 +2694,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 })}
                                 <button
                                   type="button"
-                                  onClick={() => { setPagamentoMisto(true); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); }}
+                                  onClick={() => { setPagamentoMisto(true); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); if (!pagamentoValor) setPagamentoValor(String(c.saldo)); }}
                                   className={`col-span-3 rounded-lg border py-1.5 text-[10px] font-semibold transition-colors ${pagamentoMisto ? "bg-violet-600 text-white border-violet-600" : "bg-white text-violet-700 border-violet-200 hover:bg-violet-50"}`}
                                 >
                                   Misto — dividir o recebimento
@@ -2739,7 +2739,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                       type="button"
                                       size="sm"
                                       className="h-8 bg-violet-600 hover:bg-violet-700 text-white"
-                                      disabled={parsePtBR(pagamentoMistoValor) <= 0 || parsePtBR(pagamentoMistoValor) > pagamentoRestante + 0.01}
+                                      disabled={pagamentoTotalNum <= 0 || parsePtBR(pagamentoMistoValor) <= 0 || parsePtBR(pagamentoMistoValor) > pagamentoRestante + 0.01}
                                       onClick={() => {
                                         setPagamentoMistoSplits((prev) => [...prev, { forma: pagamentoMistoForma, valor: pagamentoMistoValor.trim() }]);
                                         setPagamentoMistoValor("");
@@ -2749,7 +2749,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                     </Button>
                                   </div>
                                   <div className={`text-center text-[10px] font-semibold rounded-md py-1 ${pagamentoMistoPronto ? "bg-emerald-100 text-emerald-700" : pagamentoRestante >= 0 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
-                                    {pagamentoMistoPronto ? "✓ Total confere — pode confirmar" : pagamentoRestante >= 0 ? `Falta: ${formatMoney(String(pagamentoRestante.toFixed(2).replace(".", ",")))}` : `Excesso: ${formatMoney(String(Math.abs(pagamentoRestante).toFixed(2).replace(".", ",")))}`}
+                                    {pagamentoTotalNum <= 0
+                                      ? "Informe primeiro o valor total recebido acima"
+                                      : pagamentoMistoPronto
+                                        ? "✓ Total confere — pode confirmar"
+                                        : pagamentoRestante >= 0
+                                          ? `Falta: ${formatMoney(String(pagamentoRestante.toFixed(2).replace(".", ",")))}`
+                                          : `Excesso: ${formatMoney(String(Math.abs(pagamentoRestante).toFixed(2).replace(".", ",")))}`}
                                   </div>
                                 </div>
                               )}
