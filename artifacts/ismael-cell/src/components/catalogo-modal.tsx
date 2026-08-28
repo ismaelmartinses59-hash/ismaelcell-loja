@@ -1098,6 +1098,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setMistoSplits([]);
       setMistoForma("dinheiro");
       setMistoValor("");
+      setPagamentoMisto(false);
+      setPagamentoMistoSplits([]);
+      setPagamentoMistoForma("dinheiro");
+      setPagamentoMistoValor("");
       setShowNovoServico(false);
       setServNome("");
       setServDescricao("");
@@ -1117,6 +1121,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [pagandoContaId, setPagandoContaId] = useState<number | null>(null);
   const [pagamentoValor, setPagamentoValor] = useState("");
   const [pagamentoForma, setPagamentoForma] = useState<FormaPagamento>("dinheiro");
+  const [pagamentoMisto, setPagamentoMisto] = useState(false);
+  const [pagamentoMistoSplits, setPagamentoMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
+  const [pagamentoMistoForma, setPagamentoMistoForma] = useState<string>("dinheiro");
+  const [pagamentoMistoValor, setPagamentoMistoValor] = useState("");
   const [expandedContaId, setExpandedContaId] = useState<number | null>(null);
   const [deletingContaId, setDeletingContaId] = useState<number | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
@@ -1643,10 +1651,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     enabled: open,
   });
   const pagarMutation = useMutation({
-    mutationFn: ({ contaId, valor, formaPagamento }: { contaId: number; valor: string; formaPagamento?: string }) =>
-      apiFetch(`/api/contas-receber/${contaId}/pagamento`, { method: "POST", body: JSON.stringify({ valor, formaPagamento: formaPagamento ?? "dinheiro" }) }),
-    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); toast({ title: "💰 Pagamento registrado!" }); },
-    onError: () => toast({ title: "Erro ao registrar pagamento", variant: "destructive" }),
+    mutationFn: ({ contaId, valor, formaPagamento, splits }: { contaId: number; valor: string; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }> }) =>
+      apiFetch(`/api/contas-receber/${contaId}/pagamento`, { method: "POST", body: JSON.stringify({ valor, formaPagamento: formaPagamento ?? null, splits: splits ?? null }) }),
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); setPagamentoMisto(false); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); toast({ title: "💰 Pagamento registrado!" }); },
+    onError: (error: Error) => toast({ title: "Erro ao registrar pagamento", description: error.message, variant: "destructive" }),
   });
   const apagarContaMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/${id}`, { method: "DELETE" }),
@@ -2484,6 +2492,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 const expanded = expandedContaId === c.conta.id;
                 const isPagando = pagandoContaId === c.conta.id;
                 const isDeleting = deletingContaId === c.conta.id;
+                const pagamentoTotalNum = parsePtBR(pagamentoValor);
+                const pagamentoSplitTotal = pagamentoMistoSplits.reduce((total, split) => total + parsePtBR(split.valor), 0);
+                const pagamentoRestante = pagamentoTotalNum - pagamentoSplitTotal;
+                const pagamentoMistoPronto = pagamentoMisto && pagamentoMistoSplits.length > 0 && Math.abs(pagamentoRestante) < 0.01;
                 return (
                   <div key={c.conta.id} className={`border rounded-xl overflow-hidden ${aberta ? "bg-white border-orange-200" : "bg-gray-50 border-gray-200 opacity-70"}`}>
                     <button
@@ -2520,7 +2532,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         {/* Botões de ação */}
                         {aberta && !isPagando && !isDeleting && addItemContaId !== c.conta.id && (
                           <div className="flex gap-2">
-                            <Button size="sm" className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold" onClick={() => { setPagandoContaId(c.conta.id); setPagamentoValor(""); setPagamentoForma("dinheiro"); }}>
+                            <Button size="sm" className="flex-1 h-8 bg-green-600 hover:bg-green-700 text-white text-xs font-semibold" onClick={() => { setPagandoContaId(c.conta.id); setPagamentoValor(""); setPagamentoForma("dinheiro"); setPagamentoMisto(false); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); }}>
                               <Wallet className="w-3.5 h-3.5 mr-1.5" /> AV (Receber)
                             </Button>
                             <Button size="sm" variant="outline" className="h-8 text-xs text-orange-600 border-orange-200 hover:bg-orange-50" onClick={() => { setAddItemContaId(c.conta.id); setItemDescricao(""); setItemValor(""); setItemPecaSel(null); }}>
@@ -2638,10 +2650,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 className="h-9 text-sm"
                                 autoFocus
                               />
-                              <Button size="sm" className="h-9 bg-green-600 hover:bg-green-700 text-white" disabled={!pagamentoValor || pagarMutation.isPending} onClick={() => pagarMutation.mutate({ contaId: c.conta.id, valor: pagamentoValor, formaPagamento: pagamentoForma })}>
+                              <Button size="sm" className="h-9 bg-green-600 hover:bg-green-700 text-white" disabled={!pagamentoValor || pagarMutation.isPending || (pagamentoMisto && !pagamentoMistoPronto)} onClick={() => pagarMutation.mutate({ contaId: c.conta.id, valor: pagamentoValor, formaPagamento: pagamentoMisto ? undefined : pagamentoForma, splits: pagamentoMisto ? pagamentoMistoSplits : undefined })}>
                                 <Check className="w-4 h-4" />
                               </Button>
-                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); }}>
+                              <Button size="sm" variant="ghost" className="h-9" onClick={() => { setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); setPagamentoMisto(false); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); }}>
                                 <X className="w-4 h-4" />
                               </Button>
                             </div>
@@ -2667,7 +2679,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                     <button
                                       key={f}
                                       type="button"
-                                      onClick={() => setPagamentoForma(f)}
+                                      onClick={() => { setPagamentoForma(f); setPagamentoMisto(false); }}
                                       className={`rounded-lg border py-1.5 text-[10px] font-semibold transition-colors ${
                                         ativo
                                           ? semTaxa
@@ -2680,7 +2692,67 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                     </button>
                                   );
                                 })}
+                                <button
+                                  type="button"
+                                  onClick={() => { setPagamentoMisto(true); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); }}
+                                  className={`col-span-3 rounded-lg border py-1.5 text-[10px] font-semibold transition-colors ${pagamentoMisto ? "bg-violet-600 text-white border-violet-600" : "bg-white text-violet-700 border-violet-200 hover:bg-violet-50"}`}
+                                >
+                                  Misto — dividir o recebimento
+                                </button>
                               </div>
+                              {pagamentoMisto && (
+                                <div className="mt-2 rounded-lg border border-violet-200 bg-violet-50/60 p-2 space-y-2">
+                                  <div className="text-[10px] font-semibold text-violet-800">Informe quanto recebeu de cada jeito</div>
+                                  {pagamentoMistoSplits.map((split, index) => (
+                                    <div key={`${split.forma}-${index}`} className="flex items-center gap-2 rounded-md bg-white border border-violet-100 px-2 py-1.5 text-[10px]">
+                                      <span className="flex-1 font-semibold text-violet-800">
+                                        {split.forma === "dinheiro" ? "Dinheiro" : split.forma === "pix" ? "PIX" : split.forma === "debito" ? "Débito" : split.forma === "credito_1x" ? "Créd 1x" : split.forma === "credito_2x" ? "Créd 2x" : "Créd 3x"}
+                                      </span>
+                                      <span className="font-bold text-violet-700">{formatMoney(split.valor)}</span>
+                                      <button type="button" onClick={() => setPagamentoMistoSplits((prev) => prev.filter((_, splitIndex) => splitIndex !== index))}>
+                                        <X className="w-3 h-3 text-red-400 hover:text-red-600" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                  <div className="flex gap-1">
+                                    <select
+                                      value={pagamentoMistoForma}
+                                      onChange={(e) => setPagamentoMistoForma(e.target.value)}
+                                      className="h-8 flex-1 rounded-md border border-violet-200 bg-white px-2 text-[10px] text-slate-700"
+                                    >
+                                      <option value="dinheiro">Dinheiro</option>
+                                      <option value="pix">PIX</option>
+                                      <option value="debito">Débito</option>
+                                      <option value="credito_1x">Créd 1x</option>
+                                      <option value="credito_2x">Créd 2x</option>
+                                      <option value="credito_3x">Créd 3x</option>
+                                    </select>
+                                    <Input
+                                      type="text"
+                                      inputMode="decimal"
+                                      placeholder="Valor"
+                                      value={pagamentoMistoValor}
+                                      onChange={(e) => setPagamentoMistoValor(e.target.value)}
+                                      className="h-8 w-24 text-xs"
+                                    />
+                                    <Button
+                                      type="button"
+                                      size="sm"
+                                      className="h-8 bg-violet-600 hover:bg-violet-700 text-white"
+                                      disabled={parsePtBR(pagamentoMistoValor) <= 0 || parsePtBR(pagamentoMistoValor) > pagamentoRestante + 0.01}
+                                      onClick={() => {
+                                        setPagamentoMistoSplits((prev) => [...prev, { forma: pagamentoMistoForma, valor: pagamentoMistoValor.trim() }]);
+                                        setPagamentoMistoValor("");
+                                      }}
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
+                                  <div className={`text-center text-[10px] font-semibold rounded-md py-1 ${pagamentoMistoPronto ? "bg-emerald-100 text-emerald-700" : pagamentoRestante >= 0 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}>
+                                    {pagamentoMistoPronto ? "✓ Total confere — pode confirmar" : pagamentoRestante >= 0 ? `Falta: ${formatMoney(String(pagamentoRestante.toFixed(2).replace(".", ",")))}` : `Excesso: ${formatMoney(String(Math.abs(pagamentoRestante).toFixed(2).replace(".", ",")))}`}
+                                  </div>
+                                </div>
+                              )}
                               {pagamentoForma === "pix" && (
                                 <p className="mt-1 text-[10px] text-emerald-700">PIX — sem taxa, entra na gaveta.</p>
                               )}
