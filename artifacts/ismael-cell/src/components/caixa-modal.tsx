@@ -37,6 +37,7 @@ import {
   Banknote,
   QrCode,
   X,
+  Undo2,
 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -74,6 +75,10 @@ interface CaixaSessao {
   aberturaAt: string;
   fechamentoAt: string | null;
 }
+
+type CaixaMovimentoComVenda = CaixaMovimento & {
+  vendaTipo?: string | null;
+};
 
 /** Horário limite para reabrir o caixa: 20:30 (mesmo valor do backend). */
 const LIMITE_REABRIR_MIN = 20 * 60 + 30;
@@ -205,7 +210,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   // Lançamentos de HOJE vêm de uma query dedicada (por data SP), independente
   // do filtro de período usado no "Resumo do período".
   const { data: hojeMovData, isLoading: hojeMovLoading } = useQuery<{
-    movimentos: CaixaMovimento[];
+    movimentos: CaixaMovimentoComVenda[];
     totalEntradas: number;
     totalSaidas: number;
   }>({
@@ -220,7 +225,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const movimentosHoje = hojeTravado ? [] : (hojeMovData?.movimentos ?? []);
 
   const { data: detalheData, isLoading: detalheLoading } = useQuery<{
-    movimentos: CaixaMovimento[];
+    movimentos: CaixaMovimentoComVenda[];
     totalEntradas: number;
     totalSaidas: number;
   }>({
@@ -302,6 +307,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [sessaoBusy, setSessaoBusy] = useState(false);
   const [fecharAberto, setFecharAberto] = useState(false);
   const [contadoValor, setContadoValor] = useState("");
+  const [refundVendaId, setRefundVendaId] = useState<number | null>(null);
+  const [refundBusy, setRefundBusy] = useState(false);
 
   useEffect(() => {
     if (!open) {
@@ -421,6 +428,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["/api/caixa"] });
     qc.invalidateQueries({ queryKey: ["caixa-hoje"] });
+    qc.invalidateQueries({ queryKey: ["caixa-dia"] });
     qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
     qc.invalidateQueries({ queryKey: ["caixa-historico"] });
     qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
@@ -497,6 +505,96 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         },
         onError: () => toast({ title: "Erro ao excluir", variant: "destructive" }),
       },
+    );
+  };
+
+  const reembolsarVenda = async (vendaId: number, formaPagamento: "dinheiro" | "pix") => {
+    if (refundBusy) return;
+    setRefundBusy(true);
+    try {
+      const r = await fetch(`${BASE}/api/vendas/${vendaId}/reembolsar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formaPagamento }),
+      });
+      if (!r.ok) {
+        const j = await r.json().catch(() => ({}));
+        throw new Error(j.error || "Erro ao reembolsar");
+      }
+      toast({
+        title: "Reembolso realizado!",
+        description: "O valor saiu do Caixa e a venda foi marcada como reembolsada.",
+      });
+      setRefundVendaId(null);
+      invalidate();
+    } catch (e) {
+      toast({
+        title: "Erro ao reembolsar",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "destructive",
+      });
+    } finally {
+      setRefundBusy(false);
+    }
+  };
+
+  const renderReembolsoAction = (m: CaixaMovimentoComVenda) => {
+    const vendaId = m.vendaId;
+    if (!vendaId || m.tipo !== "entrada") return null;
+    if (m.vendaTipo === "reembolsada") {
+      return (
+        <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700">
+          <Undo2 className="h-3.5 w-3.5" />
+          Reembolsado — valor devolvido ao cliente
+        </div>
+      );
+    }
+    if (m.vendaTipo !== "venda") return null;
+    const aberto = refundVendaId === vendaId;
+    return aberto ? (
+      <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2.5">
+        <p className="text-xs font-semibold text-red-800">
+          Reembolsar {formatMoney(parseMoney(m.valor))} ao cliente como:
+        </p>
+        <div className="mt-2 flex gap-2">
+          <Button
+            size="sm"
+            className="h-8 flex-1 bg-emerald-600 hover:bg-emerald-700"
+            disabled={refundBusy}
+            onClick={() => reembolsarVenda(vendaId, "dinheiro")}
+          >
+            Dinheiro
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 flex-1 bg-cyan-600 hover:bg-cyan-700"
+            disabled={refundBusy}
+            onClick={() => reembolsarVenda(vendaId, "pix")}
+          >
+            PIX
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-8 px-2"
+            disabled={refundBusy}
+            onClick={() => setRefundVendaId(null)}
+          >
+            Cancelar
+          </Button>
+        </div>
+      </div>
+    ) : (
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="mt-2 h-8 border-red-200 px-2.5 text-[11px] font-semibold text-red-600 hover:bg-red-50"
+        onClick={() => setRefundVendaId(vendaId)}
+      >
+        <Undo2 className="mr-1 h-3.5 w-3.5" />
+        Reembolsar venda
+      </Button>
     );
   };
 
@@ -955,24 +1053,27 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 {movimentosHoje.map((m) => {
                   const isEntrada = m.tipo === "entrada";
                   return (
-                    <div key={m.id} className="flex items-center gap-3 rounded-2xl border bg-white px-3 py-2.5">
-                      <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isEntrada ? "bg-emerald-100" : "bg-red-100"}`}>
-                        {isEntrada ? <ArrowDownCircle className="w-4 h-4 text-emerald-600" /> : <ArrowUpCircle className="w-4 h-4 text-red-500" />}
+                    <div key={m.id} className="rounded-2xl border bg-white px-3 py-2.5">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isEntrada ? "bg-emerald-100" : "bg-red-100"}`}>
+                          {isEntrada ? <ArrowDownCircle className="w-4 h-4 text-emerald-600" /> : <ArrowUpCircle className="w-4 h-4 text-red-500" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-semibold text-slate-800 truncate">{m.motivo}</p>
+                          <p className="text-[11px] text-slate-400">
+                            {format(new Date(m.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {m.modelo ? ` · ${m.modelo}` : ""}
+                            {m.formaPagamento ? ` · ${m.formaPagamento === "pix" ? "PIX" : m.formaPagamento === "dinheiro" ? "Dinheiro" : m.formaPagamento === "debito" ? "Débito" : m.formaPagamento === "credito_1x" ? "Créd 1x" : m.formaPagamento === "credito_2x" ? "Créd 2x" : m.formaPagamento === "credito_3x" ? "Créd 3x" : m.formaPagamento}` : ""}
+                          </p>
+                        </div>
+                        <span className={`text-sm font-bold shrink-0 ${isEntrada ? "text-emerald-700" : "text-red-600"}`}>
+                          {isEntrada ? "+" : "−"}{formatMoney(parseMoney(m.valor))}
+                        </span>
+                        <button onClick={() => onDelete(m)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Excluir">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
                       </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-slate-800 truncate">{m.motivo}</p>
-                        <p className="text-[11px] text-slate-400">
-                          {format(new Date(m.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
-                          {m.modelo ? ` · ${m.modelo}` : ""}
-                          {m.formaPagamento ? ` · ${m.formaPagamento === "pix" ? "PIX" : m.formaPagamento === "dinheiro" ? "Dinheiro" : m.formaPagamento === "debito" ? "Débito" : m.formaPagamento === "credito_1x" ? "Créd 1x" : m.formaPagamento === "credito_2x" ? "Créd 2x" : m.formaPagamento === "credito_3x" ? "Créd 3x" : m.formaPagamento}` : ""}
-                        </p>
-                      </div>
-                      <span className={`text-sm font-bold shrink-0 ${isEntrada ? "text-emerald-700" : "text-red-600"}`}>
-                        {isEntrada ? "+" : "−"}{formatMoney(parseMoney(m.valor))}
-                      </span>
-                      <button onClick={() => onDelete(m)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Excluir">
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {renderReembolsoAction(m)}
                     </div>
                   );
                 })}
@@ -1118,30 +1219,33 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 return (
                   <div
                     key={m.id}
-                    className="flex items-center gap-3 rounded-lg border bg-white px-3 py-2"
+                    className="rounded-lg border bg-white px-3 py-2"
                   >
-                    {isEntrada ? (
-                      <ArrowUpCircle className="w-5 h-5 text-green-600 shrink-0" />
-                    ) : (
-                      <ArrowDownCircle className="w-5 h-5 text-red-600 shrink-0" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-foreground truncate">
-                        {m.motivo}
-                      </p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {format(new Date(m.createdAt), "dd/MM/yyyy 'às' HH:mm", {
-                          locale: ptBR,
-                        })}
-                        {m.modelo ? ` · ${m.modelo}` : ""}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      {isEntrada ? (
+                        <ArrowUpCircle className="w-5 h-5 text-green-600 shrink-0" />
+                      ) : (
+                        <ArrowDownCircle className="w-5 h-5 text-red-600 shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {m.motivo}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground">
+                          {format(new Date(m.createdAt), "dd/MM/yyyy 'às' HH:mm", {
+                            locale: ptBR,
+                          })}
+                          {m.modelo ? ` · ${m.modelo}` : ""}
+                        </p>
+                      </div>
+                      <span
+                        className={`text-sm font-bold shrink-0 ${isEntrada ? "text-green-700" : "text-red-700"}`}
+                      >
+                        {isEntrada ? "+" : "−"}
+                        {formatMoney(parseMoney(m.valor))}
+                      </span>
                     </div>
-                    <span
-                      className={`text-sm font-bold shrink-0 ${isEntrada ? "text-green-700" : "text-red-700"}`}
-                    >
-                      {isEntrada ? "+" : "−"}
-                      {formatMoney(parseMoney(m.valor))}
-                    </span>
+                    {renderReembolsoAction(m)}
                   </div>
                 );
               })}
