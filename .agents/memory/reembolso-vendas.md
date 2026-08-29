@@ -15,4 +15,7 @@ e zera corretamente o efeito financeiro.
 **How to apply:** permita reembolso apenas uma vez, somente em venda à vista com
 entrada vinculada no Caixa. Fiado deve ser ajustado pelo A Receber. Depois do
 reembolso, bloqueie exclusão da venda e dos lançamentos vinculados para impedir
-segunda devolução de estoque ou divergência no Caixa.
+segunda devolução de estoque ou divergência no Caixa. A ação deve estar
+disponível no próprio lançamento da venda, tanto na lista de hoje quanto no
+detalhe diário do Histórico do Caixa; após o estorno, mostre ali o estado
+persistente "Reembolsado".
