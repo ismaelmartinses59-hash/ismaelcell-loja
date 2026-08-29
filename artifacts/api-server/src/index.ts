@@ -201,6 +201,14 @@ async function ensureSchema(): Promise<void> {
   await runStatement("caixa.taxa_percent", db.execute(
     sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS taxa_percent text`,
   ));
+  await runStatement("caixa.reembolso_origem_id", db.execute(
+    sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS reembolso_origem_id integer`,
+  ));
+  await runStatement("caixa.reembolso_origem_unique", db.execute(sql`
+    CREATE UNIQUE INDEX IF NOT EXISTS caixa_reembolso_origem_unique
+    ON caixa (reembolso_origem_id)
+    WHERE reembolso_origem_id IS NOT NULL
+  `));
   await runStatement("caixa_sessoes", db.execute(sql`
     CREATE TABLE IF NOT EXISTS caixa_sessoes (
       id serial PRIMARY KEY,

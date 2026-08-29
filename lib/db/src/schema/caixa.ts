@@ -8,6 +8,7 @@ export const caixaTable = pgTable("caixa", {
   pecaId: integer("peca_id"),
   vendaId: integer("venda_id"),
   pagamentoId: integer("pagamento_id"),
+  reembolsoOrigemId: integer("reembolso_origem_id"),
   modelo: text("modelo"),
   formaPagamento: text("forma_pagamento"),
   taxaPercent: text("taxa_percent"),

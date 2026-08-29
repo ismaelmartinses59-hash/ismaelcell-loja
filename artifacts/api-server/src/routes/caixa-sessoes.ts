@@ -109,9 +109,16 @@ async function totaisDoDia(data: string): Promise<TotaisDia> {
     const n = parseValor(r.valor);
     if (r.tipo !== "entrada") {
       totalSaidas += n;
-      // Só a saída em dinheiro sai da gaveta; PIX sai da conta.
-      if (normalizeForma(r.formaPagamento) === "pix") saidasPix += n;
-      else saidasDinheiro += n;
+      // Reembolso no cartão reduz o total da maquininha; não sai da gaveta.
+      const forma = normalizeForma(r.formaPagamento);
+      if (forma === "pix") {
+        saidasPix += n;
+      } else if (isCartao(forma) && forma) {
+        const prev = cartaoMap.get(forma)?.bruto ?? 0;
+        cartaoMap.set(forma, { bruto: prev - n });
+      } else {
+        saidasDinheiro += n;
+      }
       continue;
     }
     totalEntradas += n;
