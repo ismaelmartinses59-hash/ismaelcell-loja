@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { db, vendasTable, pecasTable, caixaTable, contasReceberItensTable } from "@workspace/db";
 import { normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
 
@@ -28,6 +28,29 @@ router.get("/vendas", async (req, res): Promise<void> => {
     .where(sql`${vendasTable.createdAt} >= now() - interval ${sql.raw(`'${intervalo}'`)}`)
     .orderBy(sql`${vendasTable.createdAt} desc`);
 
+  const vendaIds = rows.map((v) => v.id);
+  const reembolsoPorVenda = new Map<number, Date>();
+  if (vendaIds.length > 0) {
+    const reembolsos = await db
+      .select({ vendaId: caixaTable.vendaId, createdAt: caixaTable.createdAt })
+      .from(caixaTable)
+      .where(
+        and(
+          inArray(caixaTable.vendaId, vendaIds),
+          eq(caixaTable.tipo, "saida"),
+        ),
+      );
+    for (const reembolso of reembolsos) {
+      if (reembolso.vendaId && !reembolsoPorVenda.has(reembolso.vendaId)) {
+        reembolsoPorVenda.set(reembolso.vendaId, reembolso.createdAt);
+      }
+    }
+  }
+  const vendasComReembolso = rows.map((v) => ({
+    ...v,
+    reembolsoAt: reembolsoPorVenda.get(v.id)?.toISOString() ?? null,
+  }));
+
   const vendasReais = rows.filter(
     (v) => v.tipo !== "uso_proprio" && v.tipo !== "reembolsada",
   );
@@ -36,7 +59,7 @@ router.get("/vendas", async (req, res): Promise<void> => {
     return acc + (isNaN(n) ? 0 : n);
   }, 0);
 
-  res.json({ vendas: rows, total, quantidade: vendasReais.length });
+  res.json({ vendas: vendasComReembolso, total, quantidade: vendasReais.length });
 });
 
 router.delete("/vendas/:id", async (req, res): Promise<void> => {

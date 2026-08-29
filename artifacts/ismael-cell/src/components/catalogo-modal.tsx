@@ -48,6 +48,7 @@ interface Venda {
   valor: string;
   tipo: string;
   createdAt: string;
+  reembolsoAt?: string | null;
 }
 
 interface VendasResumo {
@@ -2350,7 +2351,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     </div>
                     <div className="text-right shrink-0">
                       <div className={`font-bold text-sm ${usoProprio ? "text-amber-700" : reembolsada ? "text-red-700 line-through" : "text-green-600"}`}>{usoProprio ? `Custo ${valorFmt}` : valorFmt}</div>
-                      <div className="text-xs text-muted-foreground">{periodo === "dia" ? hora : `${dia} ${hora}`}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Compra: {periodo === "dia" ? `${dia} ${hora}` : `${dia} ${hora}`}
+                      </div>
+                      {reembolsada && v.reembolsoAt && (
+                        <div className="text-[10px] font-semibold text-red-600">
+                          Reembolso: {new Date(v.reembolsoAt).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      )}
                     </div>
                     {isConfirming ? (
                       <div className="flex gap-1 shrink-0">
