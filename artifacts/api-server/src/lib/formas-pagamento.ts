@@ -9,6 +9,7 @@
 export type FormaPagamento =
   | "dinheiro"
   | "pix"
+  | "cartao"
   | "debito"
   | "credito_1x"
   | "credito_2x"
@@ -18,6 +19,7 @@ export type FormaPagamento =
 export const TAXAS: Record<FormaPagamento, number> = {
   dinheiro: 0,
   pix: 0,
+  cartao: 0,
   debito: 1.69,
   credito_1x: 3.49,
   credito_2x: 6.59,
@@ -28,6 +30,7 @@ export const TAXAS: Record<FormaPagamento, number> = {
 export const LABELS: Record<FormaPagamento, string> = {
   dinheiro: "Dinheiro",
   pix: "PIX",
+  cartao: "Cartão",
   debito: "Cartão débito",
   credito_1x: "Cartão crédito 1x",
   credito_2x: "Cartão crédito 2x",

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   useListCaixa,
   useCreateCaixa,
@@ -78,6 +78,8 @@ interface CaixaSessao {
 type CaixaMovimentoComVenda = CaixaMovimento & {
   vendaTipo?: string | null;
   vendaReembolsoAt?: string | null;
+  reembolsoForma?: string | null;
+  reembolsoOrigemId?: number | null;
 };
 
 /** Horário limite para reabrir o caixa: 20:30 (mesmo valor do backend). */
@@ -158,6 +160,9 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [fim, setFim] = useState("");
   const [showHistorico, setShowHistorico] = useState(false);
   const [diaDetalhe, setDiaDetalhe] = useState<CaixaSessao | null>(null);
+  const [movimentoDetalhe, setMovimentoDetalhe] =
+    useState<CaixaMovimentoComVenda | null>(null);
+  const [mostrarFormasReembolso, setMostrarFormasReembolso] = useState(false);
   const [nowTick, setNowTick] = useState(0);
 
   const { data: fechamentos = [] } = useQuery<CaixaSessao[]>({
@@ -424,6 +429,41 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
 
   const createCaixa = useCreateCaixa();
   const deleteCaixa = useDeleteCaixa();
+  const reembolsarCaixa = useMutation({
+    mutationFn: async ({
+      id,
+      formaPagamento,
+    }: {
+      id: number;
+      formaPagamento: "dinheiro" | "pix" | "cartao";
+    }) => {
+      const r = await fetch(`${BASE}/api/caixa/${id}/reembolsar`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formaPagamento }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error || "Não foi possível reembolsar");
+      }
+      return r.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Reembolso registrado",
+        description: "O lançamento original foi preservado e a saída foi criada.",
+      });
+      setMovimentoDetalhe(null);
+      setMostrarFormasReembolso(false);
+      invalidate();
+    },
+    onError: (error) =>
+      toast({
+        title: "Não foi possível reembolsar",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
 
   const resetForm = () => {
     setValor("");
@@ -518,7 +558,11 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   };
 
   const renderReembolsoStatus = (m: CaixaMovimentoComVenda) => {
-    if (m.tipo !== "entrada" || m.vendaTipo !== "reembolsada") return null;
+    if (
+      m.tipo !== "entrada" ||
+      (!m.vendaReembolsoAt && m.vendaTipo !== "reembolsada")
+    )
+      return null;
       return (
         <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-[11px] font-semibold text-red-700">
           Reembolsado — valor devolvido ao cliente
@@ -981,7 +1025,25 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 {movimentosHoje.map((m) => {
                   const isEntrada = m.tipo === "entrada";
                   return (
-                    <div key={m.id} className="rounded-2xl border bg-white px-3 py-2.5">
+                    <div
+                      key={m.id}
+                      role={isEntrada ? "button" : undefined}
+                      tabIndex={isEntrada ? 0 : undefined}
+                      onClick={() => {
+                        if (isEntrada) {
+                          setMostrarFormasReembolso(false);
+                          setMovimentoDetalhe(m);
+                        }
+                      }}
+                      onKeyDown={(e) => {
+                        if (isEntrada && (e.key === "Enter" || e.key === " ")) {
+                          e.preventDefault();
+                          setMostrarFormasReembolso(false);
+                          setMovimentoDetalhe(m);
+                        }
+                      }}
+                      className={`rounded-2xl border bg-white px-3 py-2.5 ${isEntrada ? "cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-all" : ""}`}
+                    >
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${isEntrada ? "bg-emerald-100" : "bg-red-100"}`}>
                           {isEntrada ? <ArrowDownCircle className="w-4 h-4 text-emerald-600" /> : <ArrowUpCircle className="w-4 h-4 text-red-500" />}
@@ -1003,7 +1065,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         <span className={`text-sm font-bold shrink-0 ${isEntrada ? "text-emerald-700" : "text-red-600"}`}>
                           {isEntrada ? "+" : "−"}{formatMoney(parseMoney(m.valor))}
                         </span>
-                        <button onClick={() => onDelete(m)} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Excluir">
+                        <button onClick={(e) => { e.stopPropagation(); onDelete(m); }} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Excluir">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
@@ -1153,7 +1215,22 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 return (
                   <div
                     key={m.id}
-                    className="rounded-lg border bg-white px-3 py-2"
+                    role={isEntrada ? "button" : undefined}
+                    tabIndex={isEntrada ? 0 : undefined}
+                    onClick={() => {
+                      if (isEntrada) {
+                        setMostrarFormasReembolso(false);
+                        setMovimentoDetalhe(m);
+                      }
+                    }}
+                    onKeyDown={(e) => {
+                      if (isEntrada && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        setMostrarFormasReembolso(false);
+                        setMovimentoDetalhe(m);
+                      }
+                    }}
+                    className={`rounded-lg border bg-white px-3 py-2 ${isEntrada ? "cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-all" : ""}`}
                   >
                     <div className="flex items-center gap-3">
                       {isEntrada ? (
@@ -1187,6 +1264,123 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   </div>
                 );
               })}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={open && !!movimentoDetalhe}
+        onOpenChange={(v) => {
+          if (!v) {
+            setMovimentoDetalhe(null);
+            setMostrarFormasReembolso(false);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Detalhes da venda</DialogTitle>
+          </DialogHeader>
+          {movimentoDetalhe && (
+            <div className="space-y-4">
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="font-semibold text-slate-800">
+                  {movimentoDetalhe.motivo}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  {formatDataHoraSP(movimentoDetalhe.createdAt)}
+                </p>
+                <p className="mt-2 text-xl font-bold text-emerald-700">
+                  {formatMoney(parseMoney(movimentoDetalhe.valor))}
+                </p>
+              </div>
+
+              {movimentoDetalhe.vendaReembolsoAt ||
+              movimentoDetalhe.vendaTipo === "reembolsada" ? (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3">
+                  <p className="font-semibold text-red-700">
+                    Esta venda já foi reembolsada
+                  </p>
+                  {movimentoDetalhe.vendaReembolsoAt && (
+                    <p className="mt-1 text-xs text-red-600">
+                      {formatDataHoraSP(movimentoDetalhe.vendaReembolsoAt)}
+                    </p>
+                  )}
+                </div>
+              ) : movimentoDetalhe.pagamentoId ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                  Este recebimento deve ser corrigido pelo A Receber.
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {!mostrarFormasReembolso ? (
+                    <Button
+                      variant="destructive"
+                      className="w-full"
+                      onClick={() => setMostrarFormasReembolso(true)}
+                    >
+                      Reembolsar
+                    </Button>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-slate-700">
+                        Escolha como devolver:
+                      </p>
+                      <div className="grid grid-cols-3 gap-2">
+                        <Button
+                          variant="outline"
+                          disabled={reembolsarCaixa.isPending}
+                          onClick={() =>
+                            reembolsarCaixa.mutate({
+                              id: movimentoDetalhe.id,
+                              formaPagamento: "pix",
+                            })
+                          }
+                          className="h-12 flex-col gap-1 border-cyan-200 text-cyan-700"
+                        >
+                          <QrCode className="h-4 w-4" />
+                          PIX
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={reembolsarCaixa.isPending}
+                          onClick={() =>
+                            reembolsarCaixa.mutate({
+                              id: movimentoDetalhe.id,
+                              formaPagamento: "cartao",
+                            })
+                          }
+                          className="h-12 flex-col gap-1 border-indigo-200 text-indigo-700"
+                        >
+                          <CreditCard className="h-4 w-4" />
+                          Cartão
+                        </Button>
+                        <Button
+                          variant="outline"
+                          disabled={reembolsarCaixa.isPending}
+                          onClick={() =>
+                            reembolsarCaixa.mutate({
+                              id: movimentoDetalhe.id,
+                              formaPagamento: "dinheiro",
+                            })
+                          }
+                          className="h-12 flex-col gap-1 border-emerald-200 text-emerald-700"
+                        >
+                          <Banknote className="h-4 w-4" />
+                          Dinheiro
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                  {reembolsarCaixa.isPending && (
+                    <p className="flex items-center justify-center gap-2 text-xs text-slate-500">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Registrando reembolso...
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </DialogContent>

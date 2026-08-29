@@ -123,12 +123,37 @@ router.get("/caixa", async (req, res): Promise<void> => {
       }
     }
   }
+  const movimentoIds = rows.map((m) => m.id);
+  const reembolsoPorMovimento = new Map<
+    number,
+    { createdAt: Date; formaPagamento: string | null }
+  >();
+  if (movimentoIds.length > 0) {
+    const reembolsosDiretos = await db
+      .select({
+        origemId: caixaTable.reembolsoOrigemId,
+        createdAt: caixaTable.createdAt,
+        formaPagamento: caixaTable.formaPagamento,
+      })
+      .from(caixaTable)
+      .where(inArray(caixaTable.reembolsoOrigemId, movimentoIds));
+    for (const reembolso of reembolsosDiretos) {
+      if (reembolso.origemId) {
+        reembolsoPorMovimento.set(reembolso.origemId, {
+          createdAt: reembolso.createdAt,
+          formaPagamento: reembolso.formaPagamento,
+        });
+      }
+    }
+  }
   const movimentos = rows.map((m) => ({
     ...m,
     vendaTipo: m.vendaId ? vendaTipos.get(m.vendaId) ?? null : null,
-    vendaReembolsoAt: m.vendaId
-      ? vendaReembolsoAt.get(m.vendaId)?.toISOString() ?? null
-      : null,
+    vendaReembolsoAt:
+      reembolsoPorMovimento.get(m.id)?.createdAt.toISOString() ??
+      (m.vendaId ? vendaReembolsoAt.get(m.vendaId)?.toISOString() ?? null : null),
+    reembolsoForma:
+      reembolsoPorMovimento.get(m.id)?.formaPagamento ?? null,
   }));
 
   let totalEntradas = 0;
@@ -271,6 +296,181 @@ router.post("/caixa", async (req, res): Promise<void> => {
   }
 });
 
+router.post("/caixa/:id/reembolsar", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id) || id <= 0) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+
+  const formaRaw = String(req.body?.formaPagamento ?? "").trim();
+  const forma =
+    formaRaw === "dinheiro" || formaRaw === "pix" || formaRaw === "cartao"
+      ? formaRaw
+      : null;
+  if (!forma) {
+    res.status(400).json({ error: "Escolha Dinheiro, PIX ou Cartão." });
+    return;
+  }
+
+  try {
+    const resultado = await db.transaction(async (tx) => {
+      const [origemInicial] = await tx
+        .select({
+          id: caixaTable.id,
+          vendaId: caixaTable.vendaId,
+        })
+        .from(caixaTable)
+        .where(eq(caixaTable.id, id));
+      if (!origemInicial) throw httpError(404, "Lançamento não encontrado");
+      const lockId = origemInicial.vendaId ?? -origemInicial.id;
+      await tx.execute(sql`
+        SELECT pg_advisory_xact_lock(hashtext('caixa_reembolso'), ${lockId})
+      `);
+      await tx.execute(
+        sql`SELECT id FROM caixa WHERE id = ${id} FOR UPDATE`,
+      );
+      const [origem] = await tx
+        .select()
+        .from(caixaTable)
+        .where(eq(caixaTable.id, id));
+      if (!origem) throw httpError(404, "Lançamento não encontrado");
+      if (origem.tipo !== "entrada") {
+        throw httpError(409, "Somente entradas de venda podem ser reembolsadas.");
+      }
+      if (origem.pagamentoId) {
+        throw httpError(
+          409,
+          "Recebimentos do A Receber devem ser corrigidos pela conta do cliente.",
+        );
+      }
+
+      const [jaReembolsado] = await tx
+        .select({ id: caixaTable.id })
+        .from(caixaTable)
+        .where(eq(caixaTable.reembolsoOrigemId, origem.id));
+      if (jaReembolsado) {
+        throw httpError(409, "Este lançamento já foi reembolsado.");
+      }
+
+      let venda: typeof vendasTable.$inferSelect | null = null;
+      let valorReembolso = origem.valor;
+      if (origem.vendaId) {
+        [venda] = await tx
+          .select()
+          .from(vendasTable)
+          .where(eq(vendasTable.id, origem.vendaId));
+        if (!venda) throw httpError(404, "A venda vinculada não foi encontrada.");
+        if (venda.tipo === "reembolsada") {
+          throw httpError(409, "Esta venda já foi reembolsada.");
+        }
+        if (venda.tipo !== "venda") {
+          throw httpError(409, "Este registro não é uma venda reembolsável.");
+        }
+
+        await tx.execute(sql`
+          SELECT id FROM caixa
+          WHERE venda_id = ${venda.id} AND tipo = 'entrada'
+          FOR UPDATE
+        `);
+        const entradasVenda = await tx
+          .select({
+            id: caixaTable.id,
+            valor: caixaTable.valor,
+          })
+          .from(caixaTable)
+          .where(
+            and(
+              eq(caixaTable.vendaId, venda.id),
+              eq(caixaTable.tipo, "entrada"),
+            ),
+          );
+        if (entradasVenda.length === 0) {
+          throw httpError(409, "Não encontrei o recebimento desta venda no Caixa.");
+        }
+        const totalRecebido = entradasVenda.reduce(
+          (total, entrada) => total + parseValor(entrada.valor),
+          0,
+        );
+        if (totalRecebido <= 0) {
+          throw httpError(409, "O valor recebido desta venda é inválido.");
+        }
+        valorReembolso = totalRecebido.toFixed(2).replace(".", ",");
+
+        const [marcada] = await tx
+          .update(vendasTable)
+          .set({ tipo: "reembolsada" })
+          .where(and(eq(vendasTable.id, venda.id), eq(vendasTable.tipo, "venda")))
+          .returning();
+        if (!marcada) throw httpError(409, "Esta venda já foi reembolsada.");
+
+        const [peca] = await tx
+          .select()
+          .from(pecasTable)
+          .where(eq(pecasTable.id, venda.pecaId));
+        if (!peca) {
+          throw httpError(
+            404,
+            "A peça desta venda não existe mais no estoque.",
+          );
+        }
+        const outroSetor = peca.setor === "cliente" ? "lojista" : "cliente";
+        const gemeas = await tx
+          .select()
+          .from(pecasTable)
+          .where(
+            and(
+              eq(pecasTable.setor, outroSetor),
+              sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${peca.modelo}))`,
+              sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${peca.qualidade}))`,
+            ),
+          );
+        if (gemeas.length === 0) {
+          throw httpError(
+            409,
+            "Não encontrei a peça gêmea no outro setor para devolver o estoque.",
+          );
+        }
+        await tx
+          .update(pecasTable)
+          .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+          .where(eq(pecasTable.id, peca.id));
+        for (const gemea of gemeas) {
+          await tx
+            .update(pecasTable)
+            .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+            .where(eq(pecasTable.id, gemea.id));
+        }
+      }
+
+      const [saida] = await tx
+        .insert(caixaTable)
+        .values({
+          tipo: "saida",
+          valor: valorReembolso,
+          motivo: `Reembolso: ${origem.motivo}`,
+          pecaId: origem.pecaId,
+          vendaId: origem.vendaId,
+          reembolsoOrigemId: origem.id,
+          modelo: origem.modelo,
+          formaPagamento: forma,
+          taxaPercent: "0",
+        })
+        .returning();
+
+      return { origem, saida };
+    });
+    res.json(resultado);
+  } catch (err) {
+    const e = err as HttpError & { code?: string };
+    if (e.code === "23505") {
+      res.status(409).json({ error: "Este lançamento já foi reembolsado." });
+      return;
+    }
+    res.status(e.status ?? 500).json({ error: e.message || "Erro ao reembolsar" });
+  }
+});
+
 router.delete("/caixa/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id) || id <= 0) {
@@ -278,59 +478,42 @@ router.delete("/caixa/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  const [mov] = await db.select().from(caixaTable).where(eq(caixaTable.id, id));
-  if (!mov) {
-    res.status(404).json({ error: "Movimento não encontrado" });
-    return;
-  }
-  if (mov.vendaId) {
-    const [vendaVinculada] = await db
-      .select({ tipo: vendasTable.tipo })
-      .from(vendasTable)
-      .where(eq(vendasTable.id, mov.vendaId));
-    if (vendaVinculada?.tipo === "reembolsada") {
-      res.status(409).json({
-        error:
-          "Lançamentos de uma venda reembolsada não podem ser apagados pelo Caixa.",
-      });
-      return;
-    }
-  }
-
-  await db.transaction(async (tx) => {
-    // Reverte venda + estoque (peça e gêmea) se a movimentação estava vinculada.
-    if (mov.vendaId) {
-      const [venda] = await tx
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT id FROM caixa WHERE id = ${id} FOR UPDATE`,
+      );
+      const [mov] = await tx
         .select()
-        .from(vendasTable)
-        .where(eq(vendasTable.id, mov.vendaId));
-      if (venda) {
-        await tx.delete(vendasTable).where(eq(vendasTable.id, venda.id));
-        if (venda.pecaId) {
-          const [p] = await tx
-            .select()
-            .from(pecasTable)
-            .where(eq(pecasTable.id, venda.pecaId));
-          if (p) {
-            await tx
-              .update(pecasTable)
-              .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
-              .where(eq(pecasTable.id, p.id));
-            const outroSetor = p.setor === "cliente" ? "lojista" : "cliente";
-            await tx
-              .update(pecasTable)
-              .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
-              .where(
-                and(
-                  eq(pecasTable.setor, outroSetor),
-                  sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${p.modelo}))`,
-                  sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${p.qualidade}))`,
-                ),
-              );
-          }
-        }
+        .from(caixaTable)
+        .where(eq(caixaTable.id, id));
+      if (!mov) throw httpError(404, "Movimento não encontrado");
+      if (mov.reembolsoOrigemId) {
+        throw httpError(409, "O lançamento de um reembolso não pode ser apagado.");
       }
-    }
+      const [reembolsoVinculado] = await tx
+        .select({ id: caixaTable.id })
+        .from(caixaTable)
+        .where(eq(caixaTable.reembolsoOrigemId, mov.id));
+      if (reembolsoVinculado) {
+        throw httpError(409, "Um lançamento reembolsado não pode ser apagado.");
+      }
+      if (mov.vendaId) {
+        const [vendaVinculada] = await tx
+          .select({ tipo: vendasTable.tipo })
+          .from(vendasTable)
+          .where(eq(vendasTable.id, mov.vendaId));
+        if (vendaVinculada?.tipo === "reembolsada") {
+          throw httpError(
+            409,
+            "Lançamentos de uma venda reembolsada não podem ser apagados pelo Caixa.",
+          );
+        }
+        throw httpError(
+          409,
+          "Vendas vinculadas não podem ser apagadas pelo Caixa. Use Reembolsar.",
+        );
+      }
 
     // Se for uma entrada de AV (pagamento de fiado), apaga o pagamento
     // vinculado e reabre a conta a receber.
@@ -351,9 +534,12 @@ router.delete("/caixa/:id", async (req, res): Promise<void> => {
     }
 
     await tx.delete(caixaTable).where(eq(caixaTable.id, id));
-  });
-
-  res.status(204).send();
+    });
+    res.status(204).send();
+  } catch (err) {
+    const e = err as HttpError;
+    res.status(e.status ?? 500).json({ error: e.message || "Erro ao excluir" });
+  }
 });
 
 export default router;
