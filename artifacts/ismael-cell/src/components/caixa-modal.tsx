@@ -78,6 +78,7 @@ interface CaixaSessao {
 
 type CaixaMovimentoComVenda = CaixaMovimento & {
   vendaTipo?: string | null;
+  vendaReembolsoAt?: string | null;
 };
 
 /** Horário limite para reabrir o caixa: 20:30 (mesmo valor do backend). */
@@ -111,6 +112,17 @@ function parseMoney(val: string): number {
 function formatHoraSP(iso: string): string {
   return new Date(iso).toLocaleTimeString("pt-BR", {
     timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDataHoraSP(iso: string): string {
+  return new Date(iso).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -1061,10 +1073,16 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-semibold text-slate-800 truncate">{m.motivo}</p>
                           <p className="text-[11px] text-slate-400">
-                            {format(new Date(m.createdAt), "dd/MM/yyyy 'às' HH:mm", { locale: ptBR })}
+                            {m.tipo === "entrada" && m.vendaId ? "Compra: " : m.vendaTipo === "reembolsada" ? "Reembolso: " : ""}
+                            {formatDataHoraSP(m.createdAt)}
                             {m.modelo ? ` · ${m.modelo}` : ""}
                             {m.formaPagamento ? ` · ${m.formaPagamento === "pix" ? "PIX" : m.formaPagamento === "dinheiro" ? "Dinheiro" : m.formaPagamento === "debito" ? "Débito" : m.formaPagamento === "credito_1x" ? "Créd 1x" : m.formaPagamento === "credito_2x" ? "Créd 2x" : m.formaPagamento === "credito_3x" ? "Créd 3x" : m.formaPagamento}` : ""}
                           </p>
+                          {m.tipo === "entrada" && m.vendaTipo === "reembolsada" && m.vendaReembolsoAt && (
+                            <p className="text-[11px] font-semibold text-red-600">
+                              Reembolso: {formatDataHoraSP(m.vendaReembolsoAt)}
+                            </p>
+                          )}
                         </div>
                         <span className={`text-sm font-bold shrink-0 ${isEntrada ? "text-emerald-700" : "text-red-600"}`}>
                           {isEntrada ? "+" : "−"}{formatMoney(parseMoney(m.valor))}
@@ -1232,11 +1250,15 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                           {m.motivo}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
-                          {format(new Date(m.createdAt), "dd/MM/yyyy 'às' HH:mm", {
-                            locale: ptBR,
-                          })}
+                          {m.tipo === "entrada" && m.vendaId ? "Compra: " : m.vendaTipo === "reembolsada" ? "Reembolso: " : ""}
+                          {formatDataHoraSP(m.createdAt)}
                           {m.modelo ? ` · ${m.modelo}` : ""}
                         </p>
+                        {m.tipo === "entrada" && m.vendaTipo === "reembolsada" && m.vendaReembolsoAt && (
+                          <p className="text-[11px] font-semibold text-red-600">
+                            Reembolso: {formatDataHoraSP(m.vendaReembolsoAt)}
+                          </p>
+                        )}
                       </div>
                       <span
                         className={`text-sm font-bold shrink-0 ${isEntrada ? "text-green-700" : "text-red-700"}`}

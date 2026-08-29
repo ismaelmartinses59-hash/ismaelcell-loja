@@ -100,16 +100,35 @@ router.get("/caixa", async (req, res): Promise<void> => {
 
   const vendaIds = [...new Set(rows.flatMap((m) => (m.vendaId ? [m.vendaId] : [])))];
   const vendaTipos = new Map<number, string>();
+  const vendaReembolsoAt = new Map<number, Date>();
   if (vendaIds.length > 0) {
     const vendas = await db
       .select({ id: vendasTable.id, tipo: vendasTable.tipo })
       .from(vendasTable)
       .where(inArray(vendasTable.id, vendaIds));
     for (const venda of vendas) vendaTipos.set(venda.id, venda.tipo);
+
+    const reembolsos = await db
+      .select({ vendaId: caixaTable.vendaId, createdAt: caixaTable.createdAt })
+      .from(caixaTable)
+      .where(
+        and(
+          inArray(caixaTable.vendaId, vendaIds),
+          eq(caixaTable.tipo, "saida"),
+        ),
+      );
+    for (const reembolso of reembolsos) {
+      if (reembolso.vendaId && !vendaReembolsoAt.has(reembolso.vendaId)) {
+        vendaReembolsoAt.set(reembolso.vendaId, reembolso.createdAt);
+      }
+    }
   }
   const movimentos = rows.map((m) => ({
     ...m,
     vendaTipo: m.vendaId ? vendaTipos.get(m.vendaId) ?? null : null,
+    vendaReembolsoAt: m.vendaId
+      ? vendaReembolsoAt.get(m.vendaId)?.toISOString() ?? null
+      : null,
   }));
 
   let totalEntradas = 0;
