@@ -16,3 +16,4 @@
 - [Caixa main list = today only](caixa-lista-hoje.md) — main movements list shows only today (dedicated ?dia query, not period filter); locked days live only in Histórico drilldown; 30s tick drives the 20:30 lock.
 - [Gemini lib lazy init](gemini-lib-lazy-init.md) — integration env vars are Replit-only; the lib must init lazily or it crashes servers (Railway 502) at import.
 - [api-server externalized deps](api-server-externalized-deps.md) — esbuild `external` packages (e.g. @google/*) must be DIRECT deps of api-server; transitive-only = ERR_MODULE_NOT_FOUND on Railway.
+- [Reembolso de vendas](reembolso-vendas.md) — estorno preserva a venda, devolve os dois estoques e lança saída em Dinheiro/PIX; lançamentos ficam protegidos contra exclusão.

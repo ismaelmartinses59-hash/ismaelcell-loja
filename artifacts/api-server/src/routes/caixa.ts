@@ -250,6 +250,19 @@ router.delete("/caixa/:id", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Movimento não encontrado" });
     return;
   }
+  if (mov.vendaId) {
+    const [vendaVinculada] = await db
+      .select({ tipo: vendasTable.tipo })
+      .from(vendasTable)
+      .where(eq(vendasTable.id, mov.vendaId));
+    if (vendaVinculada?.tipo === "reembolsada") {
+      res.status(409).json({
+        error:
+          "Lançamentos de uma venda reembolsada não podem ser apagados pelo Caixa.",
+      });
+      return;
+    }
+  }
 
   await db.transaction(async (tx) => {
     // Reverte venda + estoque (peça e gêmea) se a movimentação estava vinculada.
