@@ -246,6 +246,18 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
     }
   }, [data, form]);
 
+  const atualizarFinanceiroECaixa = async () => {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["financeiro-config"] }),
+      qc.invalidateQueries({ queryKey: ["financeiro-divisao"] }),
+      qc.invalidateQueries({ queryKey: ["/api/caixa"] }),
+      qc.invalidateQueries({ queryKey: ["caixa-hoje"] }),
+      qc.invalidateQueries({ queryKey: ["caixa-dia"] }),
+      qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] }),
+      qc.invalidateQueries({ queryKey: ["caixa-historico"] }),
+    ]);
+  };
+
   // ── Pagar conta fixa ──────────────────────────────────────────────────────
   const pagarFixa = async (conta: ContaFixa, pago: boolean) => {
     setPagandoConta(conta);
@@ -261,7 +273,8 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
         return;
       }
       if (!r.ok) throw new Error("erro");
-      await qc.invalidateQueries({ queryKey: ["financeiro-config"] });
+      setForm(null);
+      await atualizarFinanceiroECaixa();
       toast({
         title: pago ? "✅ Pago! Saída lançada no Caixa." : "Desmarcado",
         description: pago ? "A despesa foi registrada automaticamente." : undefined,
@@ -288,8 +301,8 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
         return;
       }
       if (!r.ok) throw new Error("erro");
-      await qc.invalidateQueries({ queryKey: ["financeiro-config"] });
       setForm(null);
+      await atualizarFinanceiroECaixa();
       toast({
         title: pago ? "✅ Pago! Saída lançada no Caixa." : "Desmarcado",
         description: pago ? "A despesa foi registrada automaticamente." : undefined,

@@ -211,6 +211,10 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
   }
 
   const value = marcandoPago ? hojeSP() : "";
+  // Leia a configuração antes de abrir a transação. Em produção, fazer uma
+  // consulta pelo `db` global enquanto a transação segura a conexão pode
+  // bloquear o pagamento e impedir tanto a baixa quanto a saída no Caixa.
+  const cfg = marcandoPago ? await lerConfig() : null;
 
   await db.transaction(async (tx) => {
     // 1) Atualiza a data de pagamento
@@ -220,8 +224,7 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
       .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
 
     // 2) Ao marcar como pago: lança saída automática no caixa
-    if (marcandoPago) {
-      const cfg = await lerConfig();
+    if (marcandoPago && cfg) {
       const chaveValor = `custo${conta.charAt(0).toUpperCase()}${conta.slice(1)}` as ConfigCampo;
       const valorNum = parseValor(cfg[chaveValor] ?? "0");
       if (valorNum > 0) {
