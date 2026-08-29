@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, inArray, lt, sql } from "drizzle-orm";
 import {
   db,
   caixaTable,
@@ -98,6 +98,20 @@ router.get("/caixa", async (req, res): Promise<void> => {
     .where(conditions.length ? and(...conditions) : undefined)
     .orderBy(sql`${caixaTable.createdAt} desc`);
 
+  const vendaIds = [...new Set(rows.flatMap((m) => (m.vendaId ? [m.vendaId] : [])))];
+  const vendaTipos = new Map<number, string>();
+  if (vendaIds.length > 0) {
+    const vendas = await db
+      .select({ id: vendasTable.id, tipo: vendasTable.tipo })
+      .from(vendasTable)
+      .where(inArray(vendasTable.id, vendaIds));
+    for (const venda of vendas) vendaTipos.set(venda.id, venda.tipo);
+  }
+  const movimentos = rows.map((m) => ({
+    ...m,
+    vendaTipo: m.vendaId ? vendaTipos.get(m.vendaId) ?? null : null,
+  }));
+
   let totalEntradas = 0;
   let totalSaidas = 0;
   for (const m of rows) {
@@ -107,7 +121,7 @@ router.get("/caixa", async (req, res): Promise<void> => {
   }
 
   res.json({
-    movimentos: rows,
+    movimentos,
     totalEntradas,
     totalSaidas,
     saldo: totalEntradas - totalSaidas,
