@@ -1284,10 +1284,31 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     };
   const invalidateVendas = () => qc.invalidateQueries({ queryKey: ["vendas"] });
   const [deletingVendaId, setDeletingVendaId] = useState<number | null>(null);
+  const [refundVendaId, setRefundVendaId] = useState<number | null>(null);
   const deleteVendaMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/vendas/${id}`, { method: "DELETE" }),
     onSuccess: () => { invalidateVendas(); invalidatePecas(); invalidateCaixa(); setDeletingVendaId(null); toast({ title: "Registro apagado" }); },
     onError: () => toast({ title: "Erro ao apagar venda", variant: "destructive" }),
+  });
+  const refundVendaMutation = useMutation({
+    mutationFn: ({ id, formaPagamento }: { id: number; formaPagamento: "dinheiro" | "pix" }) =>
+      apiFetch(`/api/vendas/${id}/reembolsar`, {
+        method: "POST",
+        body: JSON.stringify({ formaPagamento }),
+      }),
+    onSuccess: () => {
+      invalidateVendas();
+      invalidatePecas();
+      invalidateCaixa();
+      setRefundVendaId(null);
+      toast({ title: "Reembolso registrado", description: "Estoque devolvido e saída lançada no Caixa." });
+    },
+    onError: (error) =>
+      toast({
+        title: "Não foi possível reembolsar",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
   });
   const invalidateGarantias = () => qc.invalidateQueries({ queryKey: ["garantias-peca"] });
 
@@ -2310,23 +2331,25 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 const hora = new Date(v.createdAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                 const dia = new Date(v.createdAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
                 const usoProprio = v.tipo === "uso_proprio";
+                const reembolsada = v.tipo === "reembolsada";
                 const valorFmt = parseFloat(v.valor.replace(",", ".")).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
                 const isConfirming = deletingVendaId === v.id;
+                const isRefunding = refundVendaId === v.id;
                 return (
-                  <div key={v.id} className={`border rounded-xl px-3 py-2.5 flex items-center gap-3 ${isConfirming ? "bg-red-50 border-red-200" : usoProprio ? "bg-amber-50 border-amber-200" : "bg-white"}`}>
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${usoProprio ? "bg-amber-100" : "bg-green-100"}`}>
-                      {usoProprio ? <Package className="w-4 h-4 text-amber-700" /> : <ShoppingBag className="w-4 h-4 text-green-600" />}
+                  <div key={v.id} className={`border rounded-xl px-3 py-2.5 flex flex-wrap items-center gap-3 ${isConfirming || isRefunding ? "bg-red-50 border-red-200" : reembolsada ? "bg-red-50/60 border-red-200" : usoProprio ? "bg-amber-50 border-amber-200" : "bg-white"}`}>
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${usoProprio ? "bg-amber-100" : reembolsada ? "bg-red-100" : "bg-green-100"}`}>
+                      {usoProprio ? <Package className="w-4 h-4 text-amber-700" /> : reembolsada ? <Undo2 className="w-4 h-4 text-red-600" /> : <ShoppingBag className="w-4 h-4 text-green-600" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-semibold text-sm truncate">{v.modelo}</div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${usoProprio ? "bg-amber-200 text-amber-900" : "bg-primary/10 text-primary"}`}>
-                          {usoProprio ? "Uso próprio" : v.qualidade}
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${usoProprio ? "bg-amber-200 text-amber-900" : reembolsada ? "bg-red-200 text-red-900" : "bg-primary/10 text-primary"}`}>
+                          {usoProprio ? "Uso próprio" : reembolsada ? "Reembolsada" : v.qualidade}
                         </span>
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <div className={`font-bold text-sm ${usoProprio ? "text-amber-700" : "text-green-600"}`}>{usoProprio ? `Custo ${valorFmt}` : valorFmt}</div>
+                      <div className={`font-bold text-sm ${usoProprio ? "text-amber-700" : reembolsada ? "text-red-700 line-through" : "text-green-600"}`}>{usoProprio ? `Custo ${valorFmt}` : valorFmt}</div>
                       <div className="text-xs text-muted-foreground">{periodo === "dia" ? hora : `${dia} ${hora}`}</div>
                     </div>
                     {isConfirming ? (
@@ -2337,9 +2360,52 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         </Button>
                       </div>
                     ) : (
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => setDeletingVendaId(v.id)} title="Apagar venda">
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </Button>
+                      isRefunding ? (
+                        <span className="text-[10px] font-semibold text-red-600">Escolha abaixo</span>
+                      ) : reembolsada ? (
+                        <span className="text-[10px] font-semibold text-red-600">Estornada</span>
+                      ) : usoProprio ? (
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500 hover:text-red-600 hover:bg-red-50 shrink-0" onClick={() => setDeletingVendaId(v.id)} title="Apagar uso próprio">
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="outline" className="h-8 px-2 text-[11px] text-red-600 border-red-200 hover:bg-red-50 shrink-0" onClick={() => setRefundVendaId(v.id)} title="Reembolsar venda">
+                          <Undo2 className="w-3.5 h-3.5 mr-1" />
+                          Reembolsar
+                        </Button>
+                      )
+                    )}
+                    {isRefunding && (
+                      <div className="basis-full rounded-lg border border-red-200 bg-white p-2.5">
+                        <p className="text-xs font-semibold text-red-800">Devolver {valorFmt} ao cliente como:</p>
+                        <div className="mt-2 flex gap-2">
+                          <Button
+                            size="sm"
+                            className="h-8 flex-1 bg-emerald-600 hover:bg-emerald-700"
+                            disabled={refundVendaMutation.isPending}
+                            onClick={() => refundVendaMutation.mutate({ id: v.id, formaPagamento: "dinheiro" })}
+                          >
+                            Dinheiro
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="h-8 flex-1 bg-cyan-600 hover:bg-cyan-700"
+                            disabled={refundVendaMutation.isPending}
+                            onClick={() => refundVendaMutation.mutate({ id: v.id, formaPagamento: "pix" })}
+                          >
+                            PIX
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 px-2"
+                            disabled={refundVendaMutation.isPending}
+                            onClick={() => setRefundVendaId(null)}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 );
