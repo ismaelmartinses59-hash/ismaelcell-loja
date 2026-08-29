@@ -32,13 +32,14 @@ function detectarLinha(modelo: string): OrderLinha {
   return OrderLinha.samsung;
 }
 
-const GARANTIA_OPTIONS = ["7 dias", "30 dias", "90 dias", "6 meses", "1 ano"];
+const GARANTIA_OPTIONS = ["7 dias", "30 dias", "60 dias", "90 dias", "6 meses", "1 ano"];
 const GARANTIA_OPTIONS_EDIT = ["0 dias", ...GARANTIA_OPTIONS];
 
 function parseGarantiaDias(garantia: string): number | null {
   if (!garantia || garantia === "Sem garantia" || garantia === "0 dias") return null;
   if (garantia === "7 dias") return 7;
   if (garantia === "30 dias") return 30;
+  if (garantia === "60 dias") return 60;
   if (garantia === "90 dias") return 90;
   if (garantia === "6 meses") return 180;
   if (garantia === "1 ano") return 365;
