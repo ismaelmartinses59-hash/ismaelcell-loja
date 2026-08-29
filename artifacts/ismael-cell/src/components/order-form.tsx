@@ -12,7 +12,7 @@ import { SERVICES_BY_LINE, SERVICES_BY_LINE_CLIENTE, ESTIMATED_TIMES } from "@/l
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
-const GARANTIA_OPTIONS = ["Sem garantia", "7 dias", "30 dias", "90 dias", "6 meses", "1 ano"];
+const GARANTIA_OPTIONS = ["Sem garantia", "7 dias", "30 dias", "60 dias", "90 dias", "6 meses", "1 ano"];
 
 const createOrderSchema = z.object({
   modelo: z.string().min(1, "Modelo é obrigatório"),
