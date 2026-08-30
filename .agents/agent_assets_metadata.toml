@@ -12,3 +12,10 @@ id = "qajaIbhOmzfzI7h73-CXu"
 uri = "file://IDEIAS-MELHORIAS.md"
 type = "text"
 title = "Ideias de melhorias — Ismael Cell"
+
+[[outputs]]
+id = "sN3CyWNhnKC1qhHeLFUIB"
+uri = "file://tmp/pedidos-test.mp3"
+type = "audio"
+title = "teste da lista de pedidos"
+description = "Text-to-speech audio: Adicionar duas telas do A quinze, duas telas do A dezesseis, três telas do G vinte e quatro e uma plaquinha de carga do M vinte e três cinco G."

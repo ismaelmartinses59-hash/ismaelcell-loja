@@ -4,12 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer, BookOpen, Wand2, Sparkles } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer, BookOpen, Wand2, Sparkles, ShoppingCart } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
 import { EncomendasTab, FORNECEDORES } from "@/components/encomendas-tab";
+import { PedidosTab } from "@/components/pedidos-tab";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1071,14 +1072,14 @@ interface CatalogoModalProps {
   open: boolean;
   onClose: () => void;
   setor: "cliente" | "lojista";
-  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes";
+  initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos";
   soloTab?: boolean;
 }
 
 export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes">(initialTab ?? "pecas");
+  const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos">(initialTab ?? "pecas");
   useEffect(() => { if (open && initialTab) setAba(initialTab); }, [open, initialTab]);
   useEffect(() => {
     if (!open) {
@@ -1406,6 +1407,32 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     mutationFn: (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => apiFetch("/api/pecas", { method: "POST", body: JSON.stringify({ ...data, setor }) }),
     onSuccess: () => { invalidatePecas(); setShowAdd(false); toast({ title: "Peça adicionada!" }); },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
+  });
+
+  const adicionarAoPedidoMutation = useMutation({
+    mutationFn: (peca: Peca) =>
+      apiFetch("/api/pedidos", {
+        method: "POST",
+        body: JSON.stringify({
+          modelo: peca.modelo,
+          quantidade: 1,
+          setor,
+          qualidade: peca.qualidade,
+        }),
+      }),
+    onSuccess: (_data, peca) => {
+      qc.invalidateQueries({ queryKey: ["pedidos"] });
+      toast({
+        title: "Adicionado aos pedidos",
+        description: `1 unidade de ${peca.modelo}. Itens repetidos serão somados.`,
+      });
+    },
+    onError: (error) =>
+      toast({
+        title: "Não foi possível adicionar",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
   });
 
   const criarEncomendaMutation = useMutation({
@@ -1851,10 +1878,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
 
           {/* Tabs */}
           {!soloTab && (
-          <div className="flex gap-1 bg-muted rounded-lg p-1">
+          <div className="flex gap-1 bg-muted rounded-lg p-1 overflow-x-auto scrollbar-hide">
             <button
               onClick={() => setAba("pecas")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "pecas" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "pecas" ? "bg-white shadow text-primary" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Package className="w-3.5 h-3.5" /> Peças
               {lowStock.length > 0 && (
@@ -1862,8 +1889,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               )}
             </button>
             <button
+              onClick={() => setAba("pedidos")}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "pedidos" ? "bg-white shadow text-indigo-600" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <ShoppingCart className="w-3.5 h-3.5" /> Pedidos
+            </button>
+            <button
               onClick={() => setAba("garantias")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "garantias" ? "bg-white shadow text-amber-600" : "text-muted-foreground hover:text-foreground"}`}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "garantias" ? "bg-white shadow text-amber-600" : "text-muted-foreground hover:text-foreground"}`}
             >
               <ShieldAlert className="w-3.5 h-3.5" /> Garantias
               {pendentes.length > 0 && (
@@ -1872,19 +1905,19 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             </button>
             <button
               onClick={() => setAba("historico")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "historico" ? "bg-white shadow text-green-700" : "text-muted-foreground hover:text-foreground"}`}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "historico" ? "bg-white shadow text-green-700" : "text-muted-foreground hover:text-foreground"}`}
             >
               <ShoppingBag className="w-3.5 h-3.5" /> Histórico
             </button>
             <button
               onClick={() => setAba("encomendas")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "encomendas" ? "bg-white shadow text-blue-600" : "text-muted-foreground hover:text-foreground"}`}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "encomendas" ? "bg-white shadow text-blue-600" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Truck className="w-3.5 h-3.5" /> A Caminho
             </button>
             <button
               onClick={() => setAba("espera")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "espera" ? "bg-white shadow text-amber-600" : "text-muted-foreground hover:text-foreground"}`}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "espera" ? "bg-white shadow text-amber-600" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Timer className="w-3.5 h-3.5" />
               Espera
@@ -1896,7 +1929,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             </button>
             <button
               onClick={() => setAba("devolucoes")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "devolucoes" ? "bg-white shadow text-orange-600" : "text-muted-foreground hover:text-foreground"}`}
+              className={`shrink-0 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-all ${aba === "devolucoes" ? "bg-white shadow text-orange-600" : "text-muted-foreground hover:text-foreground"}`}
             >
               <Undo2 className="w-3.5 h-3.5" />
               Devol.
@@ -2089,6 +2122,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                           >
                             <ShieldAlert className="w-3.5 h-3.5 mr-1.5" />
                             Garantia (peça com defeito)
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={adicionarAoPedidoMutation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              adicionarAoPedidoMutation.mutate(peca);
+                            }}
+                            className="w-full h-8 text-xs font-semibold border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                            data-testid={`button-adicionar-pedido-${peca.id}`}
+                          >
+                            <ShoppingCart className="w-3.5 h-3.5 mr-1.5" />
+                            Adicionar aos pedidos (+1)
                           </Button>
                         </div>
                       )}
@@ -2898,6 +2945,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })}
             </div>
           </>
+        )}
+
+        {/* ── ABA PEDIDOS ────────────────────────────────────────────────── */}
+        {aba === "pedidos" && (
+          <PedidosTab open={open} />
         )}
 
         {/* ── ABA A CAMINHO (ENCOMENDAS) ─────────────────────────────── */}

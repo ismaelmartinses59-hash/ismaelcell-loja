@@ -10,3 +10,4 @@ export * from "./app-config";
 export * from "./encomendas";
 export * from "./pecas-espera";
 export * from "./devolucoes";
+export * from "./pedidos";
