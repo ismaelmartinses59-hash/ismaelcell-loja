@@ -251,6 +251,19 @@ async function ensureSchema(): Promise<void> {
       updated_at timestamp NOT NULL DEFAULT now()
     )
   `));
+  await runStatement("pedidos", db.execute(sql`
+    CREATE TABLE IF NOT EXISTS pedidos (
+      id serial PRIMARY KEY,
+      modelo text NOT NULL,
+      quantidade integer NOT NULL DEFAULT 1,
+      setor text,
+      qualidade text NOT NULL DEFAULT '',
+      observacao text NOT NULL DEFAULT '',
+      status text NOT NULL DEFAULT 'pendente',
+      created_at timestamp NOT NULL DEFAULT now(),
+      updated_at timestamp NOT NULL DEFAULT now()
+    )
+  `));
   await runStatement("encomendas", db.execute(sql`
     CREATE TABLE IF NOT EXISTS encomendas (
       id serial PRIMARY KEY,

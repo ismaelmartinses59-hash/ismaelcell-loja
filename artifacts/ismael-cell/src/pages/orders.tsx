@@ -19,7 +19,7 @@ import {
   Search, LogOut, Activity, CheckCircle2, AlertTriangle, Clock, Plus, X,
   Store, User, TrendingUp, Shield, Package, HandCoins, Wallet, Settings,
   Truck, Timer, Home, ClipboardList, MoreHorizontal, Bell, ChevronRight,
-  Smartphone, ShieldAlert, Undo2
+  Smartphone, ShieldAlert, Undo2, ShoppingCart
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
@@ -38,7 +38,7 @@ export default function Orders() {
   const [showConfig, setShowConfig] = useState(false);
   const [showMais, setShowMais] = useState(false);
   const [bottomTab, setBottomTab] = useState<"inicio" | "ordens" | "caixa">("inicio");
-  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes">("pecas");
+  const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
 
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
@@ -442,6 +442,7 @@ export default function Orders() {
             <div className="grid grid-cols-3 gap-3">
               {[
                 { icon: <Package className="w-5 h-5 text-blue-600" />, bg: "bg-blue-50", label: "Peças", action: () => { setCatalogoTab("pecas"); setShowCatalogo(true); setShowMais(false); } },
+                { icon: <ShoppingCart className="w-5 h-5 text-indigo-600" />, bg: "bg-indigo-50", label: "Pedidos", action: () => { setCatalogoTab("pedidos"); setShowCatalogo(true); setShowMais(false); } },
                 { icon: <Timer className="w-5 h-5 text-amber-600" />, bg: "bg-amber-50", label: "Espera", badge: esperaAguardando.length, action: () => { setCatalogoTab("espera"); setShowCatalogo(true); setShowMais(false); } },
                 { icon: <ShieldAlert className="w-5 h-5 text-amber-700" />, bg: "bg-amber-50", label: "Garantia Peças", badge: garantiasPendentes.length, action: () => { setCatalogoTab("garantias"); setShowCatalogo(true); setShowMais(false); } },
                 { icon: <Shield className="w-5 h-5 text-purple-600" />, bg: "bg-purple-50", label: "Garantia OS", action: () => { setShowGarantia(true); setShowMais(false); } },

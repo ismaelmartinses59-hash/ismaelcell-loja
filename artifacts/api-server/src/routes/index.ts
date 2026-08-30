@@ -13,6 +13,7 @@ import pushRouter from "./push";
 import encomendasRouter from "./encomendas";
 import esperaRouter from "./espera";
 import devolucoesRouter from "./devolucoes";
+import pedidosRouter from "./pedidos";
 
 const router: IRouter = Router();
 
@@ -30,5 +31,6 @@ router.use(pushRouter);
 router.use(encomendasRouter);
 router.use(esperaRouter);
 router.use(devolucoesRouter);
+router.use(pedidosRouter);
 
 export default router;
