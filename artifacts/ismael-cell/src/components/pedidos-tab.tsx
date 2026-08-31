@@ -354,6 +354,29 @@ export function PedidosTab({ open }: { open: boolean }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pedidos"] }),
     onError: (error) => toast({ title: "Não foi possível salvar", description: error instanceof Error ? error.message : undefined, variant: "destructive" }),
   });
+
+  const saveBatchMutation = useMutation({
+    mutationFn: (items: AudioItem[]) =>
+      apiFetch("/api/pedidos/batch", {
+        method: "POST",
+        body: JSON.stringify({
+          itens: items.map((item) => ({
+            modelo: item.modelo,
+            quantidade: Number(item.quantidade),
+            setor: item.setor,
+            qualidade: item.qualidade,
+            observacao: item.observacao,
+          })),
+        }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["pedidos"] }),
+    onError: (error) =>
+      toast({
+        title: "Não foi possível salvar a lista",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
   
   const updateMutation = useMutation({
     mutationFn: (payload: { id: number; data: any }) => apiFetch(`/api/pedidos/${payload.id}`, { method: "PATCH", body: JSON.stringify(payload.data) }),
@@ -386,6 +409,7 @@ export function PedidosTab({ open }: { open: boolean }) {
   });
 
   const startAudio = async () => {
+    if (isRecording || isProcessingAudio) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
@@ -400,8 +424,10 @@ export function PedidosTab({ open }: { open: boolean }) {
         if (recordingTimeoutRef.current) window.clearTimeout(recordingTimeoutRef.current);
         recordingTimeoutRef.current = null;
         stream.getTracks().forEach(t => t.stop());
-        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         setIsProcessingAudio(true);
+        const chunks = [...chunksRef.current];
+        chunksRef.current = [];
+        const blob = new Blob(chunks, { type: mr.mimeType || "audio/webm" });
         
         try {
           const base64 = await new Promise<string>((resolve, reject) => {
@@ -425,8 +451,12 @@ export function PedidosTab({ open }: { open: boolean }) {
           } else {
             toast({ title: "Aviso", description: "Nenhum item compreendido." });
           }
-        } catch (e) {
-          toast({ title: "Erro", description: "Falha ao processar áudio.", variant: "destructive" });
+        } catch (error) {
+          toast({
+            title: "Erro",
+            description: error instanceof Error ? error.message : "Falha ao processar áudio.",
+            variant: "destructive",
+          });
         } finally {
           setIsProcessingAudio(false);
         }
@@ -436,12 +466,15 @@ export function PedidosTab({ open }: { open: boolean }) {
       setIsRecording(true);
       recordingTimeoutRef.current = window.setTimeout(() => {
         if (mr.state === "recording") {
+          setIsProcessingAudio(true);
           mr.stop();
           setIsRecording(false);
           toast({ title: "Gravação encerrada", description: "O limite de 60 segundos foi atingido." });
         }
       }, 60_000);
     } catch (err) {
+      setIsRecording(false);
+      setIsProcessingAudio(false);
       toast({ title: "Erro", description: "Não foi possível acessar o microfone", variant: "destructive" });
     }
   };
@@ -450,6 +483,7 @@ export function PedidosTab({ open }: { open: boolean }) {
     if (mediaRecorderRef.current && isRecording) {
       if (recordingTimeoutRef.current) window.clearTimeout(recordingTimeoutRef.current);
       recordingTimeoutRef.current = null;
+      setIsProcessingAudio(true);
       mediaRecorderRef.current.stop();
       setIsRecording(false);
     }
@@ -528,19 +562,13 @@ export function PedidosTab({ open }: { open: boolean }) {
         <AudioPreviewForm 
           items={audioItems}
           onSave={async (items) => {
-            toast({ title: "Salvando..." });
-            let errors = 0;
-            for (const it of items) {
-              try {
-                await createMutation.mutateAsync({ modelo: it.modelo, quantidade: Number(it.quantidade) || 1, setor: it.setor, qualidade: it.qualidade, observacao: it.observacao });
-              } catch {
-                errors++;
-              }
+            try {
+              await saveBatchMutation.mutateAsync(items);
+              toast({ title: "Sucesso", description: "Itens de áudio salvos." });
+              setMode("list");
+            } catch {
+              // A prévia permanece aberta para o usuário corrigir ou tentar novamente.
             }
-            qc.invalidateQueries({ queryKey: ["pedidos"] });
-            if (errors > 0) toast({ title: "Aviso", description: `${errors} itens falharam.`, variant: "destructive" });
-            else toast({ title: "Sucesso", description: "Itens de áudio salvos." });
-            setMode("list");
           }}
           onCancel={() => setMode("list")}
         />

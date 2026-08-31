@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -85,6 +85,19 @@ export function EncomendasTab({ open }: { open: boolean }) {
   const [cancelItemId, setCancelItemId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  const receiveRequestIds = useRef(new Map<string, string>());
+  const requestIdFor = (key: string) => {
+    const current = receiveRequestIds.current.get(key);
+    if (current) return current;
+    const created =
+      typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    receiveRequestIds.current.set(key, created);
+    return created;
+  };
+  const clearRequestId = (key: string) => receiveRequestIds.current.delete(key);
+
   // "Sla" = chegada parcial (só 1 veio). Guarda qual item + etapa do fluxo.
   type SlaStep = "escolha" | "reembolso-parcial" | "reembolso-total";
   const [slaState, setSlaState] = useState<{
@@ -106,12 +119,13 @@ export function EncomendasTab({ open }: { open: boolean }) {
   };
 
   const receberMutation = useMutation({
-    mutationFn: (payload: { id: number; recebimentos: { itemId: number; qtd: number }[] }) =>
+    mutationFn: (payload: { id: number; recebimentos: { itemId: number; qtd: number }[]; requestId: string; requestKey: string }) =>
       apiFetch(`/api/encomendas/${payload.id}/receber`, {
         method: "POST",
-        body: JSON.stringify({ recebimentos: payload.recebimentos }),
+        body: JSON.stringify({ recebimentos: payload.recebimentos, requestId: payload.requestId }),
       }),
-    onSuccess: () => {
+    onSuccess: (_result, payload) => {
+      clearRequestId(payload.requestKey);
       invalidate();
       setReceivingId(null);
       setRecebimentos({});
@@ -136,10 +150,13 @@ export function EncomendasTab({ open }: { open: boolean }) {
 
   // "Sla": registra 1 recebido + cancela o resto (quando faltante > 1).
   const slaReceberCancelarMutation = useMutation({
-    mutationFn: async (payload: { encId: number; itemId: number; reembolsoForma: "dinheiro" | "pix" }) => {
+    mutationFn: async (payload: { encId: number; itemId: number; reembolsoForma: "dinheiro" | "pix"; requestId: string; requestKey: string }) => {
       await apiFetch(`/api/encomendas/${payload.encId}/receber`, {
         method: "POST",
-        body: JSON.stringify({ recebimentos: [{ itemId: payload.itemId, qtd: 1 }] }),
+        body: JSON.stringify({
+          recebimentos: [{ itemId: payload.itemId, qtd: 1 }],
+          requestId: payload.requestId,
+        }),
       });
       await apiFetch(`/api/encomendas/${payload.encId}/itens/${payload.itemId}/cancelar`, {
         method: "POST",
@@ -147,6 +164,7 @@ export function EncomendasTab({ open }: { open: boolean }) {
       });
     },
     onSuccess: (_r, v) => {
+      clearRequestId(v.requestKey);
       invalidate();
       setSlaState(null);
       toast({ title: "Chegada parcial confirmada", description: `1 unidade entrou no estoque. Restante cancelado — reembolso em ${v.reembolsoForma}.` });
@@ -156,12 +174,16 @@ export function EncomendasTab({ open }: { open: boolean }) {
 
   // "Sla": quando faltante = 1, só registra 1 (item fica totalmente recebido, sem reembolso).
   const slaReceberMutation = useMutation({
-    mutationFn: (payload: { encId: number; itemId: number }) =>
+    mutationFn: (payload: { encId: number; itemId: number; requestId: string; requestKey: string }) =>
       apiFetch(`/api/encomendas/${payload.encId}/receber`, {
         method: "POST",
-        body: JSON.stringify({ recebimentos: [{ itemId: payload.itemId, qtd: 1 }] }),
+        body: JSON.stringify({
+          recebimentos: [{ itemId: payload.itemId, qtd: 1 }],
+          requestId: payload.requestId,
+        }),
       }),
-    onSuccess: () => {
+    onSuccess: (_r, payload) => {
+      clearRequestId(payload.requestKey);
       invalidate();
       setSlaState(null);
       toast({ title: "Chegou! ✅", description: "1 unidade entrou no estoque." });
@@ -201,7 +223,13 @@ export function EncomendasTab({ open }: { open: boolean }) {
       toast({ title: "Informe o que chegou", description: "Digite a quantidade de ao menos um item.", variant: "destructive" });
       return;
     }
-    receberMutation.mutate({ id: enc.id, recebimentos: list });
+    const requestKey = `receber_${enc.id}_${list.map((item) => `${item.itemId}-${item.qtd}`).join("_")}`;
+    receberMutation.mutate({
+      id: enc.id,
+      recebimentos: list,
+      requestKey,
+      requestId: requestIdFor(requestKey),
+    });
   };
 
   return (
@@ -317,7 +345,13 @@ export function EncomendasTab({ open }: { open: boolean }) {
                                 onClick={() => {
                                   if (faltante === 1) {
                                     // Só 1 pedido e veio 1 → item completamente recebido
-                                    slaReceberMutation.mutate({ encId: enc.id, itemId: it.id });
+                                    const requestKey = `sla_receber_${enc.id}_${it.id}`;
+                                    slaReceberMutation.mutate({
+                                      encId: enc.id,
+                                      itemId: it.id,
+                                      requestKey,
+                                      requestId: requestIdFor(requestKey),
+                                    });
                                   } else {
                                     setSlaState((s) => s ? { ...s, step: "reembolso-parcial" } : s);
                                   }
@@ -353,7 +387,16 @@ export function EncomendasTab({ open }: { open: boolean }) {
                                 size="sm"
                                 className="h-7 flex-1 text-[11px] bg-emerald-600 hover:bg-emerald-700"
                                 disabled={slaReceberCancelarMutation.isPending}
-                                onClick={() => slaReceberCancelarMutation.mutate({ encId: enc.id, itemId: it.id, reembolsoForma: "dinheiro" })}
+                                onClick={() => {
+                                  const requestKey = `sla_receber_${enc.id}_${it.id}`;
+                                  slaReceberCancelarMutation.mutate({
+                                    encId: enc.id,
+                                    itemId: it.id,
+                                    reembolsoForma: "dinheiro",
+                                    requestKey,
+                                    requestId: requestIdFor(requestKey),
+                                  });
+                                }}
                               >
                                 💵 Dinheiro
                               </Button>
@@ -361,7 +404,16 @@ export function EncomendasTab({ open }: { open: boolean }) {
                                 size="sm"
                                 className="h-7 flex-1 text-[11px] bg-blue-600 hover:bg-blue-700"
                                 disabled={slaReceberCancelarMutation.isPending}
-                                onClick={() => slaReceberCancelarMutation.mutate({ encId: enc.id, itemId: it.id, reembolsoForma: "pix" })}
+                                onClick={() => {
+                                  const requestKey = `sla_receber_${enc.id}_${it.id}`;
+                                  slaReceberCancelarMutation.mutate({
+                                    encId: enc.id,
+                                    itemId: it.id,
+                                    reembolsoForma: "pix",
+                                    requestKey,
+                                    requestId: requestIdFor(requestKey),
+                                  });
+                                }}
                               >
                                 📱 PIX
                               </Button>
