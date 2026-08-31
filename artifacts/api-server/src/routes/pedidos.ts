@@ -27,6 +27,11 @@ type PedidoInput = {
   observacao: string;
 };
 
+const MAX_PEDIDO_QUANTIDADE = 10_000;
+const AUDIO_WINDOW_MS = 60_000;
+const AUDIO_MAX_REQUESTS_PER_WINDOW = 5;
+const audioRequestsByIp = new Map<string, { count: number; resetAt: number }>();
+
 function normalizeText(value: string): string {
   return value
     .trim()
@@ -36,12 +41,31 @@ function normalizeText(value: string): string {
     .replace(/\s+/g, " ");
 }
 
+function pedidoLockKey(input: PedidoInput): string {
+  return `${normalizeText(input.modelo)}|${input.setor ?? ""}|${normalizeText(input.qualidade)}`;
+}
+
+async function lockPedidoKey(tx: Tx, input: PedidoInput): Promise<void> {
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(hashtext('pedido_item'), hashtext(${pedidoLockKey(input)}))
+  `);
+}
+
+async function lockPedidoIds(tx: Tx, ids: number[]): Promise<void> {
+  for (const id of [...new Set(ids)].sort((a, b) => a - b)) {
+    await tx.execute(sql`
+      SELECT pg_advisory_xact_lock(hashtext('pedido_row'), ${id})
+    `);
+  }
+}
+
 function parsePedidoInput(raw: unknown): PedidoInput {
   const body = (raw ?? {}) as Record<string, unknown>;
   const setorRaw = String(body.setor ?? "").trim().toLowerCase();
+  const quantidade = Number(body.quantidade);
   return {
     modelo: String(body.modelo ?? "").trim().replace(/\s+/g, " "),
-    quantidade: parseInt(String(body.quantidade ?? "0"), 10) || 0,
+    quantidade,
     setor: setorRaw === "cliente" || setorRaw === "lojista" ? setorRaw : null,
     qualidade: String(body.qualidade ?? "").trim(),
     observacao: String(body.observacao ?? "").trim(),
@@ -50,7 +74,23 @@ function parsePedidoInput(raw: unknown): PedidoInput {
 
 function validatePedido(input: PedidoInput): void {
   if (!input.modelo) throw httpError(400, "Informe o modelo ou descrição da peça.");
-  if (input.quantidade < 1) throw httpError(400, "A quantidade deve ser maior que zero.");
+  if (input.modelo.length > 160) throw httpError(400, "O modelo deve ter no máximo 160 caracteres.");
+  if (!Number.isSafeInteger(input.quantidade) || input.quantidade < 1 || input.quantidade > MAX_PEDIDO_QUANTIDADE) {
+    throw httpError(400, `A quantidade deve ser um inteiro entre 1 e ${MAX_PEDIDO_QUANTIDADE}.`);
+  }
+  if (input.qualidade.length > 80) throw httpError(400, "A qualidade deve ter no máximo 80 caracteres.");
+  if (input.observacao.length > 500) throw httpError(400, "A observação deve ter no máximo 500 caracteres.");
+}
+
+function isValidMoneyText(value: string): boolean {
+  if (!value || value.length > 30) return false;
+  const compact = value.replace(/[R$\s]/gi, "");
+  const normalized =
+    compact.includes(",")
+      ? compact.replace(/\./g, "").replace(",", ".")
+      : compact;
+  const amount = Number(normalized);
+  return Number.isFinite(amount) && amount >= 0;
 }
 
 function samePedido(a: PedidoInput, b: PedidoInput): boolean {
@@ -68,10 +108,7 @@ async function mergeOrInsertPedido(
 ): Promise<typeof pedidosTable.$inferSelect> {
   // Serializa apenas a mesma chave para que dois registros iguais não sejam
   // criados por cliques/áudios simultâneos.
-  const lockKey = `${normalizeText(input.modelo)}|${input.setor ?? ""}|${normalizeText(input.qualidade)}`;
-  await tx.execute(sql`
-    SELECT pg_advisory_xact_lock(hashtext('pedido_item'), hashtext(${lockKey}))
-  `);
+  await lockPedidoKey(tx, input);
 
   const pendentes = await tx
     .select()
@@ -156,6 +193,8 @@ router.patch("/pedidos/:id", async (req, res): Promise<void> => {
     const input = parsePedidoInput(req.body);
     validatePedido(input);
     const item = await db.transaction(async (tx) => {
+      await lockPedidoKey(tx, input);
+      await lockPedidoIds(tx, [id]);
       const [atual] = await tx
         .select()
         .from(pedidosTable)
@@ -224,10 +263,14 @@ router.delete("/pedidos/:id", async (req, res): Promise<void> => {
     return;
   }
   try {
-    const [removed] = await db
-      .delete(pedidosTable)
-      .where(eq(pedidosTable.id, id))
-      .returning({ id: pedidosTable.id });
+    const removed = await db.transaction(async (tx) => {
+      await lockPedidoIds(tx, [id]);
+      const [item] = await tx
+        .delete(pedidosTable)
+        .where(eq(pedidosTable.id, id))
+        .returning({ id: pedidosTable.id });
+      return item;
+    });
     if (!removed) {
       res.status(404).json({ error: "Pedido não encontrado" });
       return;
@@ -247,16 +290,90 @@ router.post("/pedidos/:id/status", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Status ou ID inválido" });
     return;
   }
-  const [updated] = await db
-    .update(pedidosTable)
-    .set({ status, updatedAt: new Date() })
-    .where(eq(pedidosTable.id, id))
-    .returning();
+  const updated = await db.transaction(async (tx) => {
+    await lockPedidoIds(tx, [id]);
+    const [item] = await tx
+      .select()
+      .from(pedidosTable)
+      .where(eq(pedidosTable.id, id));
+    if (!item) return undefined;
+
+    if (status === "pendente" && item.status !== "pendente") {
+      const input: PedidoInput = {
+        modelo: item.modelo,
+        quantidade: item.quantidade,
+        setor: item.setor,
+        qualidade: item.qualidade,
+        observacao: item.observacao,
+      };
+      await lockPedidoKey(tx, input);
+      const pendentes = await tx
+        .select()
+        .from(pedidosTable)
+        .where(eq(pedidosTable.status, "pendente"));
+      const duplicado = pendentes.find((candidate) =>
+        samePedido(input, {
+          modelo: candidate.modelo,
+          quantidade: candidate.quantidade,
+          setor: candidate.setor,
+          qualidade: candidate.qualidade,
+          observacao: candidate.observacao,
+        }),
+      );
+      if (duplicado) {
+        const [merged] = await tx
+          .update(pedidosTable)
+          .set({
+            quantidade: duplicado.quantidade + item.quantidade,
+            observacao: item.observacao || duplicado.observacao,
+            updatedAt: new Date(),
+          })
+          .where(eq(pedidosTable.id, duplicado.id))
+          .returning();
+        await tx.delete(pedidosTable).where(eq(pedidosTable.id, id));
+        return merged;
+      }
+    }
+
+    const [changed] = await tx
+      .update(pedidosTable)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(pedidosTable.id, id))
+      .returning();
+    return changed;
+  });
   if (!updated) {
     res.status(404).json({ error: "Pedido não encontrado" });
     return;
   }
   res.json(updated);
+});
+
+// ── POST /pedidos/batch ────────────────────────────────────────────────────
+// Salva toda a prévia do áudio de forma atômica: ou todos os itens entram, ou
+// nenhum entra. Itens repetidos continuam sendo somados.
+router.post("/pedidos/batch", async (req, res): Promise<void> => {
+  try {
+    const rawItems = Array.isArray(req.body?.itens) ? req.body.itens : [];
+    if (!rawItems.length || rawItems.length > 100) {
+      throw httpError(400, "Envie entre 1 e 100 itens.");
+    }
+    const inputs = rawItems.map(parsePedidoInput);
+    inputs.forEach(validatePedido);
+    const ordered = [...inputs].sort((a, b) => pedidoLockKey(a).localeCompare(pedidoLockKey(b)));
+    const itens = await db.transaction(async (tx) => {
+      const saved: Array<typeof pedidosTable.$inferSelect> = [];
+      for (const input of ordered) {
+        saved.push(await mergeOrInsertPedido(tx, input));
+      }
+      return saved;
+    });
+    res.status(201).json({ itens });
+  } catch (error) {
+    const err = error as HttpError;
+    if (!err.status) req.log.error({ err }, "salvar pedidos em lote falhou");
+    res.status(err.status ?? 500).json({ error: err.message || "Falha ao salvar pedidos" });
+  }
 });
 
 // ── POST /pedidos/audio ────────────────────────────────────────────────────
@@ -274,10 +391,29 @@ router.post("/pedidos/audio", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Formato de áudio não suportado neste dispositivo." });
     return;
   }
-  const approxBytes = Math.floor((rawAudio.length * 3) / 4);
-  if (approxBytes > 7.5 * 1024 * 1024) {
+  if (
+    rawAudio.length % 4 !== 0 ||
+    !/^[A-Za-z0-9+/]*={0,2}$/.test(rawAudio)
+  ) {
+    res.status(400).json({ error: "O áudio enviado está corrompido." });
+    return;
+  }
+  const decodedBytes = Buffer.from(rawAudio, "base64").byteLength;
+  if (decodedBytes > 7.5 * 1024 * 1024) {
     res.status(413).json({ error: "Áudio muito grande. Grave um áudio mais curto." });
     return;
+  }
+  const now = Date.now();
+  const ip = req.ip || req.socket.remoteAddress || "desconhecido";
+  const current = audioRequestsByIp.get(ip);
+  if (!current || current.resetAt <= now) {
+    audioRequestsByIp.set(ip, { count: 1, resetAt: now + AUDIO_WINDOW_MS });
+  } else if (current.count >= AUDIO_MAX_REQUESTS_PER_WINDOW) {
+    res.setHeader("Retry-After", String(Math.ceil((current.resetAt - now) / 1000)));
+    res.status(429).json({ error: "Muitos áudios em sequência. Aguarde um minuto e tente novamente." });
+    return;
+  } else {
+    current.count += 1;
   }
 
   const prompt = [
@@ -346,6 +482,7 @@ router.post("/pedidos/convert-encomenda", async (req, res): Promise<void> => {
 
   try {
     const result = await db.transaction(async (tx) => {
+      await lockPedidoIds(tx, ids);
       const pedidos = await tx
         .select()
         .from(pedidosTable)
@@ -361,8 +498,12 @@ router.post("/pedidos/convert-encomenda", async (req, res): Promise<void> => {
         const valorCusto = String(body.valorCusto ?? "").trim();
         const valorCliente = String(body.valorCliente ?? "").trim();
         const valorLojista = String(body.valorLojista ?? "").trim();
-        if (!valorCliente || !valorLojista) {
-          throw httpError(400, `Preencha os dois preços de ${pedido.modelo}.`);
+        if (
+          !isValidMoneyText(valorCusto) ||
+          !isValidMoneyText(valorCliente) ||
+          !isValidMoneyText(valorLojista)
+        ) {
+          throw httpError(400, `Preencha custo e os dois preços válidos de ${pedido.modelo}.`);
         }
         return {
           pedidoId: pedido.id,
@@ -389,10 +530,14 @@ router.post("/pedidos/convert-encomenda", async (req, res): Promise<void> => {
           valorLojista: item.valorLojista,
         })),
       );
-      await tx
+      const claimed = await tx
         .update(pedidosTable)
         .set({ status: "comprado", updatedAt: new Date() })
-        .where(inArray(pedidosTable.id, ids));
+        .where(and(inArray(pedidosTable.id, ids), eq(pedidosTable.status, "pendente")))
+        .returning({ id: pedidosTable.id });
+      if (claimed.length !== ids.length) {
+        throw httpError(409, "Algum item foi alterado durante a conversão.");
+      }
       return { encomenda, itens };
     });
     res.status(201).json(result);

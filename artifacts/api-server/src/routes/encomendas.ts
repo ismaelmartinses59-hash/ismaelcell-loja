@@ -37,6 +37,12 @@ function httpError(status: number, message: string): HttpError {
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+async function lockEncomenda(tx: Tx, id: number): Promise<void> {
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(hashtext('encomenda_row'), ${id})
+  `);
+}
+
 // Soma `qtd` no estoque de um setor (cliente/lojista). Se já existir a peça
 // (mesmo modelo ignorando maiúsc./espaços + qualidade + setor), incrementa; se
 // não, cria. Mesma regra do cadastro/importação de peças (par cliente+lojista).
@@ -50,6 +56,14 @@ async function upsertEstoque(
   qtd: number,
 ): Promise<void> {
   if (qtd <= 0) return;
+  const estoqueKey = [
+    setor,
+    modelo.trim().toLowerCase().replace(/\s+/g, " "),
+    qualidade.trim().toLowerCase().replace(/\s+/g, " "),
+  ].join("|");
+  await tx.execute(sql`
+    SELECT pg_advisory_xact_lock(hashtext('estoque_item'), hashtext(${estoqueKey}))
+  `);
   const [existente] = await tx
     .select()
     .from(pecasTable)
@@ -249,8 +263,13 @@ router.post("/encomendas/:id/receber", async (req, res): Promise<void> => {
     return;
   }
   const recebimentosRaw = (req.body?.recebimentos ?? []) as unknown[];
+  const requestId = String(req.body?.requestId ?? "").trim();
   if (!Array.isArray(recebimentosRaw)) {
     res.status(400).json({ error: "recebimentos inválido" });
+    return;
+  }
+  if (!requestId || requestId.length > 100 || !/^[A-Za-z0-9_-]+$/.test(requestId)) {
+    res.status(400).json({ error: "Identificador da confirmação inválido" });
     return;
   }
   const recebimentos = recebimentosRaw.map((r) => {
@@ -262,7 +281,8 @@ router.post("/encomendas/:id/receber", async (req, res): Promise<void> => {
   });
 
   try {
-    await db.transaction(async (tx) => {
+    const processed = await db.transaction(async (tx) => {
+      await lockEncomenda(tx, id);
       const [enc] = await tx
         .select()
         .from(encomendasTable)
@@ -270,6 +290,17 @@ router.post("/encomendas/:id/receber", async (req, res): Promise<void> => {
       if (!enc) throw httpError(404, "Encomenda não encontrada");
       if (enc.status === "cancelada")
         throw httpError(400, "Encomenda cancelada");
+
+      const claim = await tx.execute(sql`
+        INSERT INTO encomenda_recebimentos (encomenda_id, request_id)
+        VALUES (${id}, ${requestId})
+        ON CONFLICT (encomenda_id, request_id) DO NOTHING
+        RETURNING id
+      `);
+      const claimed =
+        ((claim as { rowCount?: number }).rowCount ?? 0) > 0 ||
+        ((claim as { rows?: unknown[] }).rows?.length ?? 0) > 0;
+      if (!claimed) return false;
 
       let recebeuAlgo = false;
       for (const rec of recebimentos) {
@@ -355,8 +386,9 @@ router.post("/encomendas/:id/receber", async (req, res): Promise<void> => {
       }
 
       await recalcEncomenda(tx, id);
+      return true;
     });
-    res.status(200).json({ ok: true });
+    res.status(200).json({ ok: true, duplicado: !processed });
   } catch (err) {
     const e = err as HttpError;
     if (!e.status) req.log.error({ err }, "receber encomenda falhou");
@@ -382,6 +414,7 @@ router.post(
     const reembolsoForma = formaInvest(req.body?.reembolsoForma);
     try {
       await db.transaction(async (tx) => {
+        await lockEncomenda(tx, id);
         const [enc] = await tx
           .select()
           .from(encomendasTable)
@@ -446,28 +479,34 @@ router.delete("/encomendas/:id", async (req, res): Promise<void> => {
     res.status(400).json({ error: "ID inválido" });
     return;
   }
-  const [enc] = await db
-    .select()
-    .from(encomendasTable)
-    .where(eq(encomendasTable.id, id));
-  if (!enc) {
-    res.status(404).json({ error: "Encomenda não encontrada" });
-    return;
-  }
-  if (enc.saidaCaixaId != null) {
-    res.status(400).json({
-      error:
-        "Encomenda já tem chegada confirmada. Cancele os itens que faltam em vez de excluir.",
+  try {
+    await db.transaction(async (tx) => {
+      await lockEncomenda(tx, id);
+      const [enc] = await tx
+        .select()
+        .from(encomendasTable)
+        .where(eq(encomendasTable.id, id));
+      if (!enc) throw httpError(404, "Encomenda não encontrada");
+      if (enc.saidaCaixaId != null) {
+        throw httpError(
+          400,
+          "Encomenda já tem chegada confirmada. Cancele os itens que faltam em vez de excluir.",
+        );
+      }
+      await tx
+        .delete(encomendaItensTable)
+        .where(eq(encomendaItensTable.encomendaId, id));
+      await tx.execute(sql`
+        DELETE FROM encomenda_recebimentos WHERE encomenda_id = ${id}
+      `);
+      await tx.delete(encomendasTable).where(eq(encomendasTable.id, id));
     });
-    return;
+    res.status(204).send();
+  } catch (err) {
+    const e = err as HttpError;
+    if (!e.status) req.log.error({ err }, "excluir encomenda falhou");
+    res.status(e.status ?? 500).json({ error: e.message || "Falha ao excluir encomenda" });
   }
-  await db.transaction(async (tx) => {
-    await tx
-      .delete(encomendaItensTable)
-      .where(eq(encomendaItensTable.encomendaId, id));
-    await tx.delete(encomendasTable).where(eq(encomendasTable.id, id));
-  });
-  res.status(204).send();
 });
 
 export default router;
