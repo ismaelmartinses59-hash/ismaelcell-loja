@@ -18,3 +18,4 @@
 - [api-server externalized deps](api-server-externalized-deps.md) — esbuild `external` packages (e.g. @google/*) must be DIRECT deps of api-server; transitive-only = ERR_MODULE_NOT_FOUND on Railway.
 - [Reembolso de vendas](reembolso-vendas.md) — estorno preserva a venda, devolve os dois estoques e lança saída em Dinheiro/PIX; lançamentos ficam protegidos contra exclusão.
 - [Pagamento de provisões](pagamento-provisoes.md) — baixa e saída no Caixa são atômicas; leia configurações antes da transação e invalide todos os caches financeiros.
+- [GitHub pelo painel Git](github-git-pane-auth.md) — a autenticação do painel Git pode funcionar mesmo quando o `git push` no terminal rejeita a credencial.
