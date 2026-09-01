@@ -949,6 +949,19 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
     }
     return [...encontrados.values()].slice(0, 6);
   };
+  const candidatosOutraQualidadePara = (row: ImportRow): PecaExistenteImport[] => {
+    if (!row.modelo.trim() || !row.qualidade.trim()) return [];
+    const encontrados = new Map<string, PecaExistenteImport>();
+    for (const peca of pecasExistentes) {
+      if (
+        peca.qualidade.trim().toLowerCase() === row.qualidade.trim().toLowerCase() ||
+        !expansaoModeloImportSegura(peca.modelo, row.modelo)
+      ) continue;
+      const chave = `${peca.modelo.trim().toLowerCase()}|${peca.qualidade.trim().toLowerCase()}`;
+      if (!encontrados.has(chave)) encontrados.set(chave, peca);
+    }
+    return [...encontrados.values()].slice(0, 3);
+  };
 
   const comSugestaoCorrecao = useCallback((row: ImportRow): ImportRow => {
     const sugestao = sugerirCorrecaoImport(row, pecasExistentes);
@@ -1046,6 +1059,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
+            const candidatosOutraQualidade = !r.correcaoPecaId ? candidatosOutraQualidadePara(r) : [];
             return (
               <div key={i} className={`rounded-xl border p-3 space-y-2.5 ${rowValida(r) ? "bg-white" : "bg-amber-50/50 border-amber-300"}`}>
                 <div className="flex items-start gap-2">
@@ -1131,6 +1145,19 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                     </SelectContent>
                   </Select>
                 </div>
+                {candidatosOutraQualidade.length > 0 && (
+                  <div className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-[11px] text-amber-900 flex items-start gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-amber-600" />
+                    <span>
+                      Encontrei nome parecido no estoque, mas com outra qualidade:
+                      {" "}
+                      <b>{candidatosOutraQualidade[0].modelo}</b>
+                      {" "}({candidatosOutraQualidade[0].qualidade}).
+                      {" "}A nota está como <b>{r.qualidade}</b>; por segurança, a correção não mistura qualidades.
+                      {" "}Se for a mesma peça, ajuste a qualidade acima. Caso contrário, mantenha separadas.
+                    </span>
+                  </div>
+                )}
                 {jaCadastrada(r) && (
                   <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800 flex items-start gap-1.5">
                     <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
