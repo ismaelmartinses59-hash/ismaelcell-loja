@@ -804,6 +804,86 @@ interface ImportRow {
   valorCusto: string;
   valorCliente: string;
   valorLojista: string;
+  correcaoPecaId?: number;
+  correcaoGemeaId?: number;
+  correcaoModeloAntigo?: string;
+  aplicarCorrecao?: boolean;
+  buscaCorrecao?: string;
+}
+
+interface PecaExistenteImport {
+  id: number;
+  gemeaId: number;
+  modelo: string;
+  qualidade: string;
+}
+
+const PALAVRAS_GENERICAS_PECA = new Set([
+  "TELA", "DISPLAY", "LCD", "TOUCH", "FRONTAL", "MODULO", "PECA",
+  "BATERIA", "PLACA", "CONECTOR", "FLEX", "ARO",
+]);
+
+function tokensModeloImport(modelo: string): string[] {
+  return modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter((parte) => parte && !PALAVRAS_GENERICAS_PECA.has(parte));
+}
+
+function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): boolean {
+  const antigo = tokensModeloImport(modeloAntigo);
+  const novo = tokensModeloImport(modeloNovo);
+  const chaveAntiga = antigo.join("");
+  const chaveNova = novo.join("");
+  return (
+    chaveAntiga.length >= 3 &&
+    chaveAntiga !== chaveNova &&
+    /[A-Z]/.test(chaveAntiga) &&
+    /\d/.test(chaveAntiga) &&
+    novo.some((_, inicio) =>
+      antigo.every((token, deslocamento) => novo[inicio + deslocamento] === token),
+    )
+  );
+}
+
+function contemSequenciaDeTokens(texto: string, consulta: string): boolean {
+  const tokensTexto = tokensModeloImport(texto);
+  const tokensConsulta = tokensModeloImport(consulta);
+  if (tokensConsulta.length === 0) return false;
+  return tokensTexto.some((_, inicio) =>
+    tokensConsulta.every((token, deslocamento) => tokensTexto[inicio + deslocamento] === token),
+  );
+}
+
+function sugerirCorrecaoImport(
+  row: Pick<ImportRow, "modelo" | "qualidade">,
+  existentes: PecaExistenteImport[],
+): PecaExistenteImport | null {
+  const modeloNovo = row.modelo.trim();
+  const qualidade = row.qualidade.trim().toLowerCase();
+  const chaveNova = tokensModeloImport(modeloNovo).join("");
+  if (!modeloNovo || !qualidade || chaveNova.length < 3) return null;
+
+  const candidatosUnicos = new Map<string, PecaExistenteImport>();
+  for (const peca of existentes) {
+    const modeloAntigo = peca.modelo.trim();
+    const chaveAntiga = tokensModeloImport(modeloAntigo).join("");
+    if (
+      peca.qualidade.trim().toLowerCase() !== qualidade ||
+      modeloAntigo.toLowerCase() === modeloNovo.toLowerCase() ||
+      chaveAntiga.length < 3 ||
+      !/[A-Z]/.test(chaveAntiga) ||
+      !/\d/.test(chaveAntiga) ||
+      !expansaoModeloImportSegura(modeloAntigo, modeloNovo)
+    ) continue;
+    const chave = `${modeloAntigo.toLowerCase()}|${qualidade}`;
+    if (!candidatosUnicos.has(chave)) candidatosUnicos.set(chave, peca);
+  }
+
+  const candidatos = [...candidatosUnicos.values()];
+  return candidatos.length === 1 ? candidatos[0] : null;
 }
 
 // Sugere o preço de venda ao CLIENTE a partir do custo (mesma regra do PecaForm).
@@ -818,7 +898,7 @@ function sugestaoPrecoCliente(custoStr: string): string {
 interface ImportarNotaDialogProps {
   open: boolean;
   itensIniciais: ImportRow[];
-  pecasExistentes: { modelo: string; qualidade: string }[];
+  pecasExistentes: PecaExistenteImport[];
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
   onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
   onClose: () => void;
@@ -845,6 +925,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
   // Índice da linha cujo campo "Modelo" está em foco (para mostrar as sugestões).
   // datalist não funciona no Safari do iPhone, então usamos um dropdown próprio.
   const [focusIdx, setFocusIdx] = useState<number | null>(null);
+  const [focusBuscaIdx, setFocusBuscaIdx] = useState<number | null>(null);
   const sugestoesPara = (texto: string): string[] => {
     const q = texto.toLowerCase().trim();
     if (!q) return [];
@@ -852,10 +933,49 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
       .filter((m) => m.toLowerCase().includes(q) && m.toLowerCase() !== q)
       .slice(0, 6);
   };
+  const candidatosBuscaPara = (row: ImportRow): PecaExistenteImport[] => {
+    const busca = row.buscaCorrecao?.trim() ?? "";
+    if (!busca || !row.qualidade) return [];
+    const encontrados = new Map<string, PecaExistenteImport>();
+    for (const peca of pecasExistentes) {
+      if (
+        peca.qualidade.trim().toLowerCase() !== row.qualidade.trim().toLowerCase() ||
+        peca.modelo.trim().toLowerCase() === row.modelo.trim().toLowerCase() ||
+        !contemSequenciaDeTokens(peca.modelo, busca) ||
+        !expansaoModeloImportSegura(peca.modelo, row.modelo)
+      ) continue;
+      const chave = `${peca.modelo.trim().toLowerCase()}|${peca.qualidade.trim().toLowerCase()}`;
+      if (!encontrados.has(chave)) encontrados.set(chave, peca);
+    }
+    return [...encontrados.values()].slice(0, 6);
+  };
+
+  const comSugestaoCorrecao = useCallback((row: ImportRow): ImportRow => {
+    const sugestao = sugerirCorrecaoImport(row, pecasExistentes);
+    if (!sugestao) {
+      return {
+        ...row,
+        correcaoPecaId: undefined,
+        correcaoGemeaId: undefined,
+        correcaoModeloAntigo: undefined,
+        aplicarCorrecao: undefined,
+      };
+    }
+    const preco = precosExistentes[`${sugestao.modelo.toLowerCase().trim()}|${sugestao.qualidade}`];
+    return {
+      ...row,
+      valorCliente: row.valorCliente.trim() || preco?.cliente || "",
+      valorLojista: row.valorLojista.trim() || preco?.lojista || "",
+      correcaoPecaId: sugestao.id,
+      correcaoGemeaId: sugestao.gemeaId,
+      correcaoModeloAntigo: sugestao.modelo,
+      aplicarCorrecao: false,
+    };
+  }, [pecasExistentes, precosExistentes]);
 
   useEffect(() => {
-    if (open) setRows(itensIniciais);
-  }, [open, itensIniciais]);
+    if (open) setRows(itensIniciais.map(comSugestaoCorrecao));
+  }, [open, itensIniciais, comSugestaoCorrecao]);
 
   const update = (i: number, patch: Partial<ImportRow>) => {
     setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -865,13 +985,32 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
     setRows((cur) =>
       cur.map((r, idx) => {
         if (idx !== i) return r;
-        const next = { ...r, ...patch };
+        const next = comSugestaoCorrecao({ ...r, ...patch });
         const pe = precosExistentes[`${next.modelo.toLowerCase().trim()}|${next.qualidade}`];
         if (pe?.cliente) next.valorCliente = pe.cliente;
         if (pe?.lojista) next.valorLojista = pe.lojista;
         return next;
       }),
     );
+  };
+  const selecionarCorrecaoManual = (i: number, peca: PecaExistenteImport) => {
+    setRows((cur) =>
+      cur.map((r, idx) => {
+        if (idx !== i) return r;
+        const preco = precosExistentes[`${peca.modelo.toLowerCase().trim()}|${peca.qualidade}`];
+        return {
+          ...r,
+          correcaoPecaId: peca.id,
+          correcaoGemeaId: peca.gemeaId,
+          correcaoModeloAntigo: peca.modelo,
+          aplicarCorrecao: false,
+          buscaCorrecao: peca.modelo,
+          valorCliente: r.valorCliente.trim() || preco?.cliente || "",
+          valorLojista: r.valorLojista.trim() || preco?.lojista || "",
+        };
+      }),
+    );
+    setFocusBuscaIdx(null);
   };
   const remove = (i: number) => setRows((cur) => cur.filter((_, idx) => idx !== i));
 
@@ -935,6 +1074,38 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                         ))}
                       </div>
                     )}
+                    <div className="mt-2">
+                      <label className="text-[10px] font-medium text-violet-700 uppercase mb-1 block">
+                        Encontrar peça no estoque (opcional)
+                      </label>
+                      <Input
+                        value={r.buscaCorrecao ?? ""}
+                        onChange={(e) => update(i, { buscaCorrecao: e.target.value })}
+                        onFocus={() => setFocusBuscaIdx(i)}
+                        onBlur={() => setTimeout(() => setFocusBuscaIdx((c) => (c === i ? null : c)), 150)}
+                        autoComplete="off"
+                        placeholder="Digite parte do modelo, ex.: Note 60"
+                        className="h-8 border-violet-200 focus-visible:ring-violet-400"
+                      />
+                      {focusBuscaIdx === i && candidatosBuscaPara(r).length > 0 && (
+                        <div className="relative z-50 mt-1 bg-white border border-violet-200 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto">
+                          <div className="px-3 py-1.5 text-[10px] uppercase text-violet-700 bg-violet-50">
+                            Toque para associar à peça cadastrada
+                          </div>
+                          {candidatosBuscaPara(r).map((peca) => (
+                            <button
+                              key={`${peca.id}-${peca.gemeaId}`}
+                              type="button"
+                              onPointerDown={(e) => { e.preventDefault(); selecionarCorrecaoManual(i, peca); }}
+                              className="block w-full text-left px-3 py-2.5 text-sm hover:bg-violet-50 active:bg-violet-100 border-b last:border-b-0"
+                            >
+                              <span className="font-medium">{peca.modelo}</span>
+                              <span className="block text-[10px] text-muted-foreground">estoque Cliente + Lojista · {peca.qualidade}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="w-20 shrink-0">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qtd.</label>
@@ -964,6 +1135,50 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                   <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800 flex items-start gap-1.5">
                     <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
                     <span>Já existe no sistema — vai <b>somar {r.quantidade || 0} no estoque</b> desta peça, sem criar cópia.</span>
+                  </div>
+                )}
+                {r.correcaoPecaId && r.correcaoModeloAntigo && (
+                  <div className={`rounded-lg border px-3 py-2.5 space-y-2 ${
+                    r.aplicarCorrecao
+                      ? "bg-violet-50 border-violet-300 text-violet-900"
+                      : "bg-slate-50 border-slate-200 text-slate-700"
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold">Correção inteligente encontrada</p>
+                        <p className="text-[11px] mt-1 break-words">
+                          <span className="line-through opacity-70">{r.correcaoModeloAntigo}</span>
+                          <span className="mx-1.5">→</span>
+                          <b>{r.modelo}</b>
+                        </p>
+                        <p className="text-[10px] mt-1 opacity-75">
+                          {r.aplicarCorrecao
+                            ? "Vai atualizar a peça antiga e somar nesta mesma linha."
+                            : "Escolha se deseja corrigir a peça antiga ou manter as duas separadas."}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={r.aplicarCorrecao ? "default" : "outline"}
+                        className={r.aplicarCorrecao ? "h-8 bg-violet-600 hover:bg-violet-700" : "h-8"}
+                        onClick={() => update(i, { aplicarCorrecao: true })}
+                      >
+                        <Check className="w-3.5 h-3.5 mr-1" /> Corrigir antiga
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant={!r.aplicarCorrecao ? "default" : "outline"}
+                        className="h-8"
+                        onClick={() => update(i, { aplicarCorrecao: false })}
+                      >
+                        Manter separadas
+                      </Button>
+                    </div>
                   </div>
                 )}
                 <div className="grid grid-cols-3 gap-2">
@@ -1379,6 +1594,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             valorCusto: r.valorCusto.trim(),
             valorCliente: r.valorCliente.trim(),
             valorLojista: r.valorLojista.trim(),
+            correcaoPecaId: r.aplicarCorrecao ? r.correcaoPecaId : undefined,
+            correcaoGemeaId: r.aplicarCorrecao ? r.correcaoGemeaId : undefined,
           })),
         }),
       });
@@ -1387,8 +1604,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setImportRows([]);
       const criados = resp?.criados ?? (resp?.cadastrados ?? rows.length);
       const somados = resp?.somados ?? 0;
+      const corrigidos = resp?.corrigidos ?? 0;
       const desc = somados > 0
-        ? `${criados} nova(s) + ${somados} somada(s) ao estoque que já existia.`
+        ? `${criados} nova(s) + ${somados} somada(s) ao estoque existente${corrigidos ? `, com ${corrigidos} nome(s) corrigido(s)` : ""}.`
         : `${criados} peças adicionadas nos dois setores.`;
       toast({ title: "Peças cadastradas!", description: desc });
     } catch (err: unknown) {
@@ -2007,7 +2225,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               <ImportarNotaDialog
                 open={importOpen}
                 itensIniciais={importRows}
-                pecasExistentes={pecasTodas.map((p) => ({ modelo: p.modelo, qualidade: p.qualidade }))}
+                pecasExistentes={pecasClienteAll.flatMap((p) => {
+                  const gemea = pecasLojistaAll.find(
+                    (g) =>
+                      g.modelo.trim().toLowerCase() === p.modelo.trim().toLowerCase() &&
+                      g.qualidade.trim().toLowerCase() === p.qualidade.trim().toLowerCase(),
+                  );
+                  return gemea ? [{ id: p.id, gemeaId: gemea.id, modelo: p.modelo, qualidade: p.qualidade }] : [];
+                })}
                 precosExistentes={precosExistentes}
                 onConfirm={confirmImport}
                 onClose={() => { if (!importSaving) { setImportOpen(false); setImportRows([]); } }}

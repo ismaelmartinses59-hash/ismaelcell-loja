@@ -8,6 +8,45 @@ import { ai } from "@workspace/integrations-gemini-ai";
 const router: IRouter = Router();
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
+const PALAVRAS_GENERICAS_PECA = new Set([
+  "TELA", "DISPLAY", "LCD", "TOUCH", "FRONTAL", "MODULO", "PECA",
+  "BATERIA", "PLACA", "CONECTOR", "FLEX", "ARO",
+]);
+
+function tokensModelo(modelo: string): string[] {
+  return modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter((parte) => parte && !PALAVRAS_GENERICAS_PECA.has(parte));
+}
+
+function expansaoModeloSegura(modeloAntigo: string, modeloNovo: string): boolean {
+  const antigo = tokensModelo(modeloAntigo);
+  const novo = tokensModelo(modeloNovo);
+  const chaveAntiga = antigo.join("");
+  const chaveNova = novo.join("");
+  const sequenciaExata = novo.some((_, inicio) =>
+    antigo.every((token, deslocamento) => novo[inicio + deslocamento] === token),
+  );
+  return (
+    chaveAntiga.length >= 3 &&
+    chaveAntiga !== chaveNova &&
+    /[A-Z]/.test(chaveAntiga) &&
+    /\d/.test(chaveAntiga) &&
+    sequenciaExata
+  );
+}
+
+class ImportacaoInvalida extends Error {
+  statusCode: number;
+
+  constructor(message: string, statusCode = 400) {
+    super(message);
+    this.statusCode = statusCode;
+  }
+}
 
 /** Converte texto monetário pt-BR ("400,00", "1.234,56", "75") em número. */
 function parseValorBR(raw: unknown): number {
@@ -52,7 +91,7 @@ router.post("/pecas/importar-nota", async (req, res): Promise<void> => {
   const prompt = [
     "Você recebe a NOTA/PEDIDO de um fornecedor de peças de celular (telas/displays, baterias etc).",
     "Extraia CADA item da nota. Para cada item devolva:",
-    '- "modelo": o modelo do aparelho/peça como está escrito (ex: "A03", "Redmi Note 11", "MOTO G35", "iPhone 11"). Mantenha o nome curto e limpo.',
+    '- "modelo": o nome COMPLETO da peça como está escrito. Preserve todos os aparelhos compatíveis e os separadores (ex: "TELA REALME C63/C61/NARZO N63/NOTE 60/NOTE 60X"). Não reduza uma lista de compatibilidade a um único modelo.',
     '- "quantidade": número inteiro de unidades daquele item (se não achar, use 1).',
     '- "custo": o valor UNITÁRIO em reais que aparece na nota, só números com ponto decimal (ex: "85.00"). Se não houver, use "".',
     `- "qualidade": SE a nota indicar a qualidade da tela, escolha a mais próxima desta lista: ${QUALIDADES_TELA.join(", ")}. Se não indicar, use "".`,
@@ -163,7 +202,7 @@ router.post("/pecas/normalizar-modelo", async (req, res): Promise<void> => {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [{ role: "user", parts: [{ text: prompt }] }],
-      config: { responseMimeType: "application/json", maxOutputTokens: 1024 },
+      config: { responseMimeType: "application/json", maxOutputTokens: 8192 },
     });
     const raw = response.text ?? "";
     let parsed: {
@@ -207,6 +246,12 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
       valorCliente: String(o.valorCliente ?? "").trim(),
       valorLojista: String(o.valorLojista ?? "").trim(),
       quantidade: parseInt(String(o.quantidade ?? "0"), 10) || 0,
+      correcaoPecaId: Number.isInteger(Number(o.correcaoPecaId)) && Number(o.correcaoPecaId) > 0
+        ? Number(o.correcaoPecaId)
+        : null,
+      correcaoGemeaId: Number.isInteger(Number(o.correcaoGemeaId)) && Number(o.correcaoGemeaId) > 0
+        ? Number(o.correcaoGemeaId)
+        : null,
     };
   });
   const invalido = normalizados.find((n) => !n.modelo || !n.qualidade || !n.valorCliente || !n.valorLojista || n.quantidade < 1);
@@ -218,6 +263,7 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
     const resultado = await db.transaction(async (tx) => {
       let criados = 0;
       let somados = 0;
+      let corrigidos = 0;
       // Cada item vira um par de gêmeos (cliente + lojista). Se já existir uma
       // peça com o MESMO modelo (ignorando maiúsc./espaços) + qualidade + setor,
       // apenas SOMA a quantidade no estoque existente — não cria cópia.
@@ -232,7 +278,7 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
           .where(
             and(
               sql`lower(trim(${pecasTable.modelo})) = ${n.modelo.toLowerCase()}`,
-              eq(pecasTable.qualidade, n.qualidade),
+              sql`lower(trim(${pecasTable.qualidade})) = ${n.qualidade.toLowerCase().trim()}`,
               eq(pecasTable.setor, setor),
             ),
           )
@@ -253,6 +299,89 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
         return "criado" as const;
       };
       for (const n of normalizados) {
+        if (n.correcaoPecaId) {
+          if (!n.correcaoGemeaId || n.correcaoGemeaId === n.correcaoPecaId) {
+            throw new ImportacaoInvalida("O par Cliente/Lojista da correção é inválido.", 409);
+          }
+          // O lock serializa correções da mesma peça. A validação é repetida no
+          // servidor: a sugestão visual nunca é aceita como fonte de verdade.
+          for (const lockId of [n.correcaoPecaId, n.correcaoGemeaId].sort((a, b) => a - b)) {
+            await tx.execute(sql`
+              SELECT pg_advisory_xact_lock(hashtext('corrigir_modelo_peca'), ${lockId})
+            `);
+          }
+          const [alvo] = await tx
+            .select()
+            .from(pecasTable)
+            .where(eq(pecasTable.id, n.correcaoPecaId))
+            .limit(1);
+          if (!alvo) {
+            throw new ImportacaoInvalida("A peça sugerida para correção não existe mais.", 409);
+          }
+          const modeloOriginal = alvo.modelo.trim();
+          const qualidadeOriginal = alvo.qualidade.trim();
+          await tx.execute(sql`
+            SELECT pg_advisory_xact_lock(
+              hashtext('corrigir_modelo_par'),
+              hashtext(${`${modeloOriginal.toLowerCase()}|${qualidadeOriginal.toLowerCase()}`})
+            )
+          `);
+          if (alvo.qualidade.trim().toLowerCase() !== n.qualidade.trim().toLowerCase()) {
+            throw new ImportacaoInvalida("A correção sugerida tem qualidade diferente da peça existente.", 409);
+          }
+
+          const jaCorrigida = alvo.modelo.trim().toLowerCase() === n.modelo.trim().toLowerCase();
+          if (!jaCorrigida && !expansaoModeloSegura(alvo.modelo, n.modelo)) {
+            throw new ImportacaoInvalida("A correção de nome não passou pela validação de segurança.", 409);
+          }
+
+          if (!jaCorrigida) {
+            const outroSetor = alvo.setor === "cliente" ? "lojista" : "cliente";
+            const [gemea] = await tx
+              .select()
+              .from(pecasTable)
+              .where(eq(pecasTable.id, n.correcaoGemeaId))
+              .limit(1);
+            if (
+              !gemea ||
+              gemea.setor !== outroSetor ||
+              gemea.modelo.trim().toLowerCase() !== modeloOriginal.toLowerCase() ||
+              gemea.qualidade.trim().toLowerCase() !== qualidadeOriginal.toLowerCase()
+            ) {
+              throw new ImportacaoInvalida(
+                "A peça correspondente no outro setor não confere com a correção selecionada.",
+                409,
+              );
+            }
+
+            const alvos = [alvo, gemea];
+            for (const item of alvos) {
+              const [conflito] = await tx
+                .select({ id: pecasTable.id })
+                .from(pecasTable)
+                .where(
+                  and(
+                    sql`lower(trim(${pecasTable.modelo})) = ${n.modelo.toLowerCase()}`,
+                    sql`lower(trim(${pecasTable.qualidade})) = ${n.qualidade.toLowerCase()}`,
+                    eq(pecasTable.setor, item.setor),
+                    sql`${pecasTable.id} <> ${item.id}`,
+                  ),
+                )
+                .limit(1);
+              if (conflito) {
+                throw new ImportacaoInvalida(
+                  `O nome corrigido já pertence a outra peça no setor ${item.setor}. Revise a sugestão.`,
+                  409,
+                );
+              }
+            }
+
+            await tx.update(pecasTable).set({ modelo: n.modelo }).where(eq(pecasTable.id, alvo.id));
+            await tx.update(pecasTable).set({ modelo: n.modelo }).where(eq(pecasTable.id, gemea.id));
+            corrigidos++;
+          }
+        }
+
         // O status (novo vs. já existia) é decidido pelo lado CLIENTE; o gêmeo
         // lojista acompanha para manter os dois em sincronia.
         const r = await upsertSetor("cliente", n.valorCliente, n);
@@ -275,10 +404,19 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
           taxaPercent: "0",
         });
       }
-      return { criados, somados };
+      return { criados, somados, corrigidos };
     });
-    res.status(201).json({ cadastrados: resultado.criados + resultado.somados, criados: resultado.criados, somados: resultado.somados });
+    res.status(201).json({
+      cadastrados: resultado.criados + resultado.somados,
+      criados: resultado.criados,
+      somados: resultado.somados,
+      corrigidos: resultado.corrigidos,
+    });
   } catch (err) {
+    if (err instanceof ImportacaoInvalida) {
+      res.status(err.statusCode).json({ error: err.message });
+      return;
+    }
     req.log.error({ err }, "importar/confirmar falhou");
     res.status(500).json({ error: "Falha ao cadastrar as peças (nada foi salvo)" });
   }
