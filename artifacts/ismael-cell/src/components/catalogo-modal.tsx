@@ -809,6 +809,7 @@ interface ImportRow {
   correcaoModeloAntigo?: string;
   aplicarCorrecao?: boolean;
   buscaCorrecao?: string;
+  modoNomeCompleto?: boolean;
 }
 
 interface PecaExistenteImport {
@@ -926,6 +927,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
   // datalist não funciona no Safari do iPhone, então usamos um dropdown próprio.
   const [focusIdx, setFocusIdx] = useState<number | null>(null);
   const [focusBuscaIdx, setFocusBuscaIdx] = useState<number | null>(null);
+  const modeloRefs = useRef<Record<number, HTMLInputElement | null>>({});
   const sugestoesPara = (texto: string): string[] => {
     const q = texto.toLowerCase().trim();
     if (!q) return [];
@@ -1066,6 +1068,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                   <div className="flex-1 min-w-0 relative">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Modelo / Peça</label>
                     <Input
+                       ref={(el) => { modeloRefs.current[i] = el; }}
                       value={r.modelo}
                       onChange={(e) => updateComPreco(i, { modelo: e.target.value })}
                       onFocus={() => setFocusIdx(i)}
@@ -1159,9 +1162,27 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                   </div>
                 )}
                 {jaCadastrada(r) && (
-                  <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800 flex items-start gap-1.5">
-                    <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                    <span>Já existe no sistema — vai <b>somar {r.quantidade || 0} no estoque</b> desta peça, sem criar cópia.</span>
+                  <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800 space-y-2">
+                    <div className="flex items-start gap-1.5">
+                      <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <span>Já existe no sistema — vai <b>somar {r.quantidade || 0} no estoque</b> desta peça, sem criar cópia.</span>
+                    </div>
+                    <button
+                      type="button"
+                      className="ml-5 text-left text-[11px] font-semibold text-violet-700 underline underline-offset-2 hover:text-violet-900"
+                      onClick={() => {
+                        update(i, { modoNomeCompleto: true });
+                        requestAnimationFrame(() => modeloRefs.current[i]?.focus());
+                      }}
+                    >
+                      <Pencil className="inline-block w-3 h-3 mr-1" />
+                      Quero atualizar para o nome completo
+                    </button>
+                    {r.modoNomeCompleto && (
+                      <p className="ml-5 text-[10px] text-green-700">
+                        Edite o campo Modelo / Peça acima com todos os modelos compatíveis. A opção de corrigir a peça antiga aparecerá aqui.
+                      </p>
+                    )}
                   </div>
                 )}
                 {r.correcaoPecaId && r.correcaoModeloAntigo && (
