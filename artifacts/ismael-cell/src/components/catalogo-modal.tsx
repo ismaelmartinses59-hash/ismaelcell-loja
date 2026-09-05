@@ -2393,7 +2393,21 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                             <Button
                               size="sm"
                               disabled={peca.quantidade === 0 || venderMutation.isPending}
-                              onClick={(e) => { e.stopPropagation(); setVenderDialogPeca(peca); setFiadoStep("choose"); setFiadoNome(""); setFiadoTipo(setor === "lojista" ? "lojista" : "cliente"); setTemDesconto(false); setValorDesconto(""); }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setVenderDialogPeca(peca);
+                                setFiadoStep(import.meta.env.DEV ? "parcial" : "choose");
+                                setFiadoNome("");
+                                setFiadoTipo(setor === "lojista" ? "lojista" : "cliente");
+                                setTemDesconto(false);
+                                setValorDesconto("");
+                                setParcialValorPago("");
+                                setParcialDataPrevista("");
+                                setParcialMisto(false);
+                                setParcialForma("dinheiro");
+                                setParcialSplits([]);
+                                setParcialSplitValor("");
+                              }}
                               className="flex-1 h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
                             >
                               <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
