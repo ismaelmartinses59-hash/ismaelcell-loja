@@ -129,6 +129,20 @@ function formatDataHoraSP(iso: string): string {
   });
 }
 
+function labelFormaPagamento(
+  formaPagamento: string | null | undefined,
+  tipo: string,
+): string {
+  const forma = String(formaPagamento ?? "").trim().toLowerCase();
+  if (forma && forma in LABELS_FORMA) {
+    return LABELS_FORMA[forma as FormaPagamento];
+  }
+  // Saídas antigas não gravavam a forma; a regra financeira sempre as tratou
+  // como dinheiro, então o histórico deve exibir a mesma classificação.
+  if (!forma && tipo === "saida") return "Dinheiro";
+  return forma || "Não informado";
+}
+
 /** "Hoje" (YYYY-MM-DD) no fuso de São Paulo. */
 function hojeSP(): string {
   return new Intl.DateTimeFormat("en-CA", {
@@ -1054,7 +1068,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                             {m.tipo === "entrada" && m.vendaId ? "Compra: " : m.vendaTipo === "reembolsada" ? "Reembolso: " : ""}
                             {formatDataHoraSP(m.createdAt)}
                             {m.modelo ? ` · ${m.modelo}` : ""}
-                            {m.formaPagamento ? ` · ${m.formaPagamento === "pix" ? "PIX" : m.formaPagamento === "dinheiro" ? "Dinheiro" : m.formaPagamento === "debito" ? "Débito" : m.formaPagamento === "credito_1x" ? "Créd 1x" : m.formaPagamento === "credito_2x" ? "Créd 2x" : m.formaPagamento === "credito_3x" ? "Créd 3x" : m.formaPagamento}` : ""}
+                            {` · ${labelFormaPagamento(m.formaPagamento, m.tipo)}`}
                           </p>
                           {m.tipo === "entrada" && m.vendaTipo === "reembolsada" && m.vendaReembolsoAt && (
                             <p className="text-[11px] font-semibold text-red-600">
@@ -1247,6 +1261,23 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                           {formatDataHoraSP(m.createdAt)}
                           {m.modelo ? ` · ${m.modelo}` : ""}
                         </p>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold">
+                          <span
+                            className={`rounded-full px-2 py-0.5 ${
+                              isEntrada
+                                ? "bg-emerald-100 text-emerald-700"
+                                : "bg-red-100 text-red-700"
+                            }`}
+                          >
+                            {isEntrada ? (m.vendaId ? "Venda" : "Entrada") : "Saída"}
+                          </span>
+                          <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">
+                            {labelFormaPagamento(m.formaPagamento, m.tipo)}
+                          </span>
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
+                            {formatDataHoraSP(m.createdAt)}
+                          </span>
+                        </div>
                         {m.tipo === "entrada" && m.vendaTipo === "reembolsada" && m.vendaReembolsoAt && (
                           <p className="text-[11px] font-semibold text-red-600">
                             Reembolso: {formatDataHoraSP(m.vendaReembolsoAt)}
