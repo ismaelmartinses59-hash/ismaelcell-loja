@@ -2398,7 +2398,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setVenderDialogPeca(peca);
-                                setFiadoStep(import.meta.env.DEV ? "parcial" : "choose");
+                                setFiadoStep("parcial");
                                 setFiadoNome("");
                                 setFiadoTipo(setor === "lojista" ? "lojista" : "cliente");
                                 setTemDesconto(false);
@@ -4198,13 +4198,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <Button
                       variant="ghost"
                       className="flex-1"
-                      onClick={() => {
-                        if (import.meta.env.DEV) {
-                          setVenderDialogPeca(null);
-                        } else {
-                          setFiadoStep("choose");
-                        }
-                      }}
+                      onClick={() => setVenderDialogPeca(null)}
                       disabled={venderMutation.isPending}
                     >
                       Voltar
