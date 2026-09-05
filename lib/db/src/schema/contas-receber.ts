@@ -23,6 +23,7 @@ export const contasReceberItensTable = pgTable("contas_receber_itens", {
 export const contasReceberPagamentosTable = pgTable("contas_receber_pagamentos", {
   id: serial("id").primaryKey(),
   contaId: integer("conta_id").notNull(),
+  vendaId: integer("venda_id"),
   valor: text("valor").notNull(),
   formaPagamento: text("forma_pagamento"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
