@@ -1379,7 +1379,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [valorDesconto, setValorDesconto] = useState("");
   const [fiadoNome, setFiadoNome] = useState("");
   const [fiadoTipo, setFiadoTipo] = useState<"cliente" | "lojista">("cliente");
-  const [fiadoStep, setFiadoStep] = useState<"choose" | "fiado" | "cartao" | "credito" | "avista" | "misto" | "uso_proprio">("choose");
+  const [fiadoStep, setFiadoStep] = useState<"choose" | "parcial" | "cartao" | "credito" | "avista" | "misto" | "uso_proprio">("choose");
+  const [parcialValorPago, setParcialValorPago] = useState("");
+  const [parcialDataPrevista, setParcialDataPrevista] = useState("");
+  const [parcialMisto, setParcialMisto] = useState(false);
+  const [parcialForma, setParcialForma] = useState<string>("dinheiro");
+  const [parcialSplits, setParcialSplits] = useState<Array<{ forma: string; valor: string }>>([]);
+  const [parcialSplitForma, setParcialSplitForma] = useState<string>("dinheiro");
+  const [parcialSplitValor, setParcialSplitValor] = useState("");
   const [mistoSplits, setMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
   const [mistoForma, setMistoForma] = useState<string>("dinheiro");
   const [mistoValor, setMistoValor] = useState<string>("");
@@ -1804,24 +1811,30 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onError: () => toast({ title: "Erro ao devolver", variant: "destructive" }),
   });
   const venderMutation = useMutation({
-    mutationFn: (args: { id: number; fiado?: boolean; nomeDevedor?: string; tipoDevedor?: string; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; valorCustom?: string }) =>
+    mutationFn: (args: { id: number; fiado?: boolean; parcial?: boolean; pagamentoMisto?: boolean; nomeDevedor?: string; tipoDevedor?: string; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }>; valorCustom?: string; valorPago?: string; dataPrevista?: string }) =>
       apiFetch(`/api/pecas/${args.id}/vender`, {
         method: "POST",
         body: JSON.stringify({
           fiado: args.fiado ?? false,
+          parcial: args.parcial ?? false,
+          pagamentoMisto: args.pagamentoMisto ?? false,
           nomeDevedor: args.nomeDevedor ?? "",
           tipoDevedor: args.tipoDevedor ?? "cliente",
           formaPagamento: args.formaPagamento ?? "dinheiro",
           splits: args.splits ?? null,
           valorCustom: args.valorCustom ?? null,
+          valorPago: args.valorPago ?? null,
+          dataPrevista: args.dataPrevista || null,
         }),
       }),
     onSuccess: (peca: Peca, vars) => {
       invalidatePecas();
       invalidateVendas();
       invalidateCaixa();
-      if (vars.fiado) invalidateContas();
-      const tipoLabel = vars.fiado
+      if (vars.fiado || vars.parcial) invalidateContas();
+      const tipoLabel = vars.parcial
+        ? "Venda parcial registrada"
+        : vars.fiado
         ? `📒 Fiado p/ ${vars.nomeDevedor}`
         : vars.splits
           ? "✅ Vendida (Misto)"
@@ -1830,7 +1843,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             : vars.formaPagamento && vars.formaPagamento !== "dinheiro"
               ? `💳 Vendida no ${LABELS_FORMA[vars.formaPagamento as FormaPagamento]}`
               : "✅ Vendida à vista";
-      if (peca.quantidade === 0) {
+      if (vars.parcial) {
+        const saldo = parsePtBR(peca.valor) - parsePtBR(vars.valorPago ?? "0");
+        toast({ title: "Venda parcial registrada", description: `Saldo pendente: ${formatMoney(String(saldo.toFixed(2)))}` });
+      } else if (peca.quantidade === 0) {
         toast({ title: `${tipoLabel} — Estoque esgotado.`, description: `${peca.modelo}` });
       } else {
         toast({ title: `${tipoLabel} — Restam ${peca.quantidade} un.`, description: peca.modelo });
@@ -1841,8 +1857,17 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setMistoSplits([]);
       setMistoForma("dinheiro");
       setMistoValor("");
+      setParcialValorPago("");
+      setParcialDataPrevista("");
+      setParcialMisto(false);
+      setParcialSplits([]);
+      setParcialSplitValor("");
     },
-    onError: () => toast({ title: "Erro ao registrar venda", variant: "destructive" }),
+    onError: (error: Error) => toast({
+      title: "Erro ao registrar venda",
+      description: error.message,
+      variant: "destructive",
+    }),
   });
   const usoProprioMutation = useMutation({
     mutationFn: ({ id, formaPagamento }: { id: number; formaPagamento: "dinheiro" | "pix" }) =>
@@ -2234,7 +2259,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input className="pl-9" placeholder="Buscar modelo ou qualidade..." value={search} onChange={(e) => setSearch(e.target.value)} />
                 </div>
-                <Button
+                   <Button
                   size="sm"
                   variant="outline"
                   className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
@@ -3659,7 +3684,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
         {venderDialogPeca && (
           <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
-            <div className="bg-white rounded-2xl w-full max-w-sm p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+             <div className="bg-white rounded-2xl w-full max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
               {/* Cabeçalho — preço limpo, sem edição inline */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -3696,10 +3721,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   <Button
                     className="h-16 flex flex-col items-center justify-center bg-orange-500 hover:bg-orange-600 text-white gap-0.5"
                     disabled={venderMutation.isPending}
-                    onClick={() => setFiadoStep("fiado")}
+                    onClick={() => {
+                      setParcialValorPago("");
+                      setParcialDataPrevista("");
+                      setParcialMisto(false);
+                      setParcialForma("dinheiro");
+                      setParcialSplits([]);
+                      setParcialSplitValor("");
+                      setFiadoNome("");
+                      setFiadoTipo("cliente");
+                      setFiadoStep("parcial");
+                    }}
                   >
                     <HandCoins className="w-5 h-5" />
-                    <span className="font-bold text-xs">FIADO</span>
+                     <span className="font-bold text-xs">PARCIAL</span>
                   </Button>
                   <Button
                     className="h-16 flex flex-col items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-0.5"
@@ -3990,10 +4025,39 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 );
               })()}
 
-              {fiadoStep === "fiado" && (
+              {fiadoStep === "parcial" && (() => {
+                const total = parsePtBR(venderDialogPeca.valor);
+                const pago = parsePtBR(parcialValorPago);
+                const receber = total - pago;
+                const splitTotal = parcialSplits.reduce((s, split) => s + parsePtBR(split.valor), 0);
+                const valorValido = pago > 0 && pago < total;
+                const mistoPronto = parcialSplits.length > 0 && Math.abs(splitTotal - pago) < 0.01;
+                const formaLabel = (f: string) => LABELS_FORMA[f as FormaPagamento] ?? f;
+                const adicionarSplit = () => {
+                  const valor = parsePtBR(parcialSplitValor);
+                  if (valor > 0 && valor <= pago - splitTotal + 0.01) {
+                    setParcialSplits((atual) => [...atual, { forma: parcialSplitForma, valor: parcialSplitValor }]);
+                    setParcialSplitValor("");
+                  }
+                };
+                const confirmar = () => venderMutation.mutate({
+                  id: venderDialogPeca.id, parcial: true, nomeDevedor: fiadoNome.trim(),
+                  tipoDevedor: fiadoTipo, valorPago: parcialValorPago,
+                  formaPagamento: parcialMisto ? undefined : parcialForma, pagamentoMisto: parcialMisto,
+                  splits: parcialMisto ? parcialSplits : undefined, dataPrevista: parcialDataPrevista,
+                });
+                return (
                 <div className="space-y-2.5 pt-1">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded-xl bg-green-50 border border-green-200 p-2 text-center"><div className="text-[10px] font-bold text-green-700">VALOR PAGO</div><div className="font-bold text-green-800">{formatMoney(parcialValorPago || "0")}</div></div>
+                    <div className="rounded-xl bg-amber-50 border border-amber-200 p-2 text-center"><div className="text-[10px] font-bold text-amber-700">A RECEBER</div><div className="font-bold text-amber-800">{formatMoney(String(Math.max(0, receber).toFixed(2)))}</div></div>
+                  </div>
+                  <div className="text-xs text-muted-foreground">Total da venda: <b className="text-foreground">{formatMoney(venderDialogPeca.valor)}</b></div>
+                  <Input inputMode="decimal" placeholder="Valor pago agora (R$)" value={parcialValorPago} onChange={(e) => { setParcialValorPago(e.target.value); setParcialSplits([]); }} autoFocus />
+                  {pago === 0 && parcialValorPago.trim() && <div className="text-xs text-amber-700">Para valor zero, registre manualmente em A Receber.</div>}
+                  {pago >= total && <div className="text-xs text-amber-700">Para pagar o total, use a venda normal.</div>}
                   <div>
-                    <label className="text-xs font-semibold text-muted-foreground">Quem ficou devendo?</label>
+                    <label className="text-xs font-semibold text-muted-foreground">Quem ficará devendo?</label>
                     <div className="flex gap-1 mt-1 mb-2">
                       <button type="button" onClick={() => setFiadoTipo("cliente")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${fiadoTipo === "cliente" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
                         <User className="w-3.5 h-3.5" /> Cliente
@@ -4003,10 +4067,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       </button>
                     </div>
                     <Input
-                      placeholder="Nome de quem ficou devendo"
+                      placeholder="Nome do cliente ou lojista"
                       value={fiadoNome}
                       onChange={(e) => setFiadoNome(e.target.value)}
-                      autoFocus
                       list="fiado-nomes"
                       className="h-10"
                     />
@@ -4035,23 +4098,39 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       </div>
                     )}
                   </div>
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Data prevista para receber (opcional)</label>
+                    <Input type="date" value={parcialDataPrevista} onChange={(e) => setParcialDataPrevista(e.target.value)} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-muted-foreground">Forma de pagamento</span>
+                    <button type="button" className="text-xs font-semibold text-violet-700" onClick={() => { setParcialMisto(!parcialMisto); setParcialSplits([]); }}>{parcialMisto ? "Usar uma forma" : "Pagamento misto"}</button>
+                  </div>
+                  {!parcialMisto ? (
+                    <div className="grid grid-cols-3 gap-1">
+                      {(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as const).map((forma) => <button key={forma} type="button" onClick={() => setParcialForma(forma)} className={`h-9 rounded-lg border text-[10px] font-semibold ${parcialForma === forma ? "bg-violet-600 border-violet-600 text-white" : "bg-white"}`}>{formaLabel(forma)}</button>)}
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5 rounded-xl border border-violet-100 bg-violet-50/50 p-2">
+                      {parcialSplits.map((split, index) => <div key={index} className="flex text-xs"><span className="flex-1">{formaLabel(split.forma)} · {formatMoney(split.valor)}</span><button type="button" onClick={() => setParcialSplits((atual) => atual.filter((_, i) => i !== index))}><X className="w-3 h-3 text-red-500" /></button></div>)}
+                      <div className="text-[11px] text-violet-700">Splits: {formatMoney(String(splitTotal.toFixed(2)))} de {formatMoney(parcialValorPago || "0")}</div>
+                      <div className="grid grid-cols-3 gap-1">{(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as const).map((forma) => <button key={forma} type="button" onClick={() => setParcialSplitForma(forma)} className={`rounded border py-1 text-[9px] ${parcialSplitForma === forma ? "bg-violet-600 text-white" : "bg-white"}`}>{formaLabel(forma)}</button>)}</div>
+                      <div className="flex gap-1"><Input className="h-8 text-xs" inputMode="decimal" placeholder="Valor do split" value={parcialSplitValor} onChange={(e) => setParcialSplitValor(e.target.value)} /><Button size="sm" className="h-8" onClick={adicionarSplit} disabled={!valorValido}><Plus className="w-3 h-3" /></Button></div>
+                    </div>
+                  )}
                   <div className="flex gap-2 pt-1">
                     <Button variant="ghost" className="flex-1" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
                     <Button
                       className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
-                      disabled={!fiadoNome.trim() || venderMutation.isPending}
-                      onClick={() => {
-                        const _vbF = venderDialogPeca.valor;
-                        const _dnF = temDesconto ? parsePtBR(valorDesconto) : 0;
-                        const _vcF = (_dnF > 0 && _dnF < parsePtBR(_vbF)) ? String((parsePtBR(_vbF) - _dnF).toFixed(2).replace(".", ",")) : undefined;
-                        venderMutation.mutate({ id: venderDialogPeca.id, fiado: true, nomeDevedor: contaExataFiado ? contaExataFiado.conta.nome : fiadoNome.trim(), tipoDevedor: fiadoTipo, valorCustom: _vcF });
-                      }}
+                      disabled={!fiadoNome.trim() || !valorValido || (parcialMisto && !mistoPronto) || venderMutation.isPending}
+                      onClick={confirmar}
                     >
-                      {venderMutation.isPending ? "..." : "Confirmar"}
+                      {venderMutation.isPending ? "..." : "Confirmar parcial"}
                     </Button>
                   </div>
                 </div>
-              )}
+                );
+              })()}
             </div>
           </div>
         )}

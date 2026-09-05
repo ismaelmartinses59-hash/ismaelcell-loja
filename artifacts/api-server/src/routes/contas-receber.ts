@@ -419,6 +419,10 @@ router.delete("/contas-receber/itens/:id", async (req, res): Promise<void> => {
     }
     await tx.delete(contasReceberItensTable).where(eq(contasReceberItensTable.id, id));
     if (conta?.closedAt == null && item.vendaId) {
+      // Uma venda parcial possui pagamentos iniciais. Ao desfazer o item, eles
+      // não podem sobreviver no caixa nem na ficha.
+      await tx.delete(caixaTable).where(eq(caixaTable.vendaId, item.vendaId));
+      await tx.delete(contasReceberPagamentosTable).where(eq(contasReceberPagamentosTable.vendaId, item.vendaId));
       await restaurarEstoqueDaVenda(item.vendaId, tx);
     }
     return true;

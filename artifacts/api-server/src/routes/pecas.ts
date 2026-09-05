@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
-import { db, pecasTable, vendasTable, contasReceberItensTable, caixaTable, devolucoesTable } from "@workspace/db";
+import { db, pecasTable, vendasTable, contasReceberItensTable, contasReceberPagamentosTable, caixaTable, devolucoesTable } from "@workspace/db";
 import { findOrCreateConta } from "./contas-receber";
-import { LABELS, normalizeForma, taxaFor } from "../lib/formas-pagamento.js";
+import { LABELS, normalizeForma, taxaFor, type FormaPagamento } from "../lib/formas-pagamento.js";
 import { ai } from "@workspace/integrations-gemini-ai";
 
 const router: IRouter = Router();
@@ -638,10 +638,11 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   if (!atual) { res.status(404).json({ error: "Peça não encontrada" }); return; }
   if (atual.quantidade <= 0) { res.status(400).json({ error: "Sem estoque disponível" }); return; }
   const fiado = req.body?.fiado === true;
+  const parcial = req.body?.parcial === true;
   const nomeDevedor = String(req.body?.nomeDevedor ?? "").trim();
   const tipoDevedor = req.body?.tipoDevedor === "lojista" ? "lojista" : "cliente";
   // Forma de pagamento da venda à vista (dinheiro, PIX ou cartão). Só vale quando NÃO é fiado.
-  const forma = fiado ? null : normalizeForma(req.body?.formaPagamento);
+  const forma = (fiado || parcial) ? null : normalizeForma(req.body?.formaPagamento);
   // Splits de pagamento misto: [{ forma, valor }]
   const rawSplits = req.body?.splits;
   const splits: Array<{ forma: string; valor: string }> | null =
@@ -649,9 +650,70 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
   // Preço negociado (desconto/acréscimo) — usa o valor da peça se não informado.
   const valorCustomRaw = String(req.body?.valorCustom ?? "").trim();
   const valorVenda = valorCustomRaw || atual.valor;
+  const valorVendaFinal = parseValorBR(valorVenda);
+  const valorVendaCanonico = valorVendaFinal > 0 ? valorParaTexto(valorVendaFinal) : "";
+  const valorPagoFinal = parseValorBR(req.body?.valorPago);
+  const valorPagoCanonico = valorPagoFinal > 0 ? valorParaTexto(valorPagoFinal) : "";
+  const dataPrevistaRaw = String(req.body?.dataPrevista ?? "").trim();
+  const dataPrevistaCandidata = /^\d{4}-\d{2}-\d{2}$/.test(dataPrevistaRaw)
+    ? new Date(`${dataPrevistaRaw}T12:00:00-03:00`)
+    : null;
+  const dataPrevista = dataPrevistaCandidata && !Number.isNaN(dataPrevistaCandidata.getTime())
+    ? dataPrevistaCandidata
+    : null;
   if (fiado && !nomeDevedor) {
     res.status(400).json({ error: "Nome do devedor obrigatório no fiado" });
     return;
+  }
+  if (!valorVendaCanonico || valorVendaFinal <= 0) {
+    res.status(400).json({ error: "Valor total inválido" });
+    return;
+  }
+  if (parcial && dataPrevistaRaw && !dataPrevista) {
+    res.status(400).json({ error: "Data prevista inválida" });
+    return;
+  }
+  const pagamentosParciais: Array<{ forma: FormaPagamento; valor: string }> = [];
+  if (parcial) {
+    if (!nomeDevedor) {
+      res.status(400).json({ error: "Nome obrigatório na venda parcial" });
+      return;
+    }
+    if (!valorPagoCanonico || valorPagoFinal <= 0) {
+      res.status(400).json({ error: "Informe um valor pago maior que zero; para zero use A Receber manual" });
+      return;
+    }
+    if (valorPagoFinal >= valorVendaFinal - 0.00001) {
+      res.status(400).json({ error: "Para pagar o total, use a venda normal" });
+      return;
+    }
+    if (req.body?.pagamentoMisto === true && !splits) {
+      res.status(400).json({ error: "Adicione ao menos um split no pagamento misto" });
+      return;
+    }
+    if (splits) {
+      for (const split of splits) {
+        const splitForma = normalizeForma(split?.forma);
+        const splitValor = parseValorBR(split?.valor);
+        if (!splitForma || splitValor <= 0) {
+          res.status(400).json({ error: "Forma ou valor inválido no pagamento misto" });
+          return;
+        }
+        pagamentosParciais.push({ forma: splitForma, valor: valorParaTexto(splitValor) });
+      }
+      const soma = pagamentosParciais.reduce((total, pagamento) => total + parseValorBR(pagamento.valor), 0);
+      if (Math.abs(soma - valorPagoFinal) > 0.01) {
+        res.status(400).json({ error: "A soma dos pagamentos deve ser igual ao valor pago" });
+        return;
+      }
+    } else {
+      const formaParcial = normalizeForma(req.body?.formaPagamento);
+      if (!formaParcial) {
+        res.status(400).json({ error: "Forma de pagamento inválida" });
+        return;
+      }
+      pagamentosParciais.push({ forma: formaParcial, valor: valorPagoCanonico });
+    }
   }
   // Todas as escritas da venda (estoque, venda, item fiado, gêmea e entrada
   // de cartão no caixa) acontecem numa única transação, para que a entrada de
@@ -668,18 +730,41 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
         pecaId: id,
         modelo: atual.modelo,
         qualidade: atual.qualidade,
-        valor: valorVenda,
+        valor: valorVendaCanonico,
+        tipo: parcial ? "fiado" : undefined,
       })
       .returning();
-    if (fiado) {
+    if (fiado || parcial) {
       const contaId = await findOrCreateConta(nomeDevedor, tipoDevedor, tx);
       await tx.insert(contasReceberItensTable).values({
         contaId,
         vendaId: venda.id,
         modelo: atual.modelo,
         qualidade: atual.qualidade,
-        valor: valorVenda,
+        valor: valorVendaCanonico,
+        dataRecebimento: parcial ? dataPrevista : null,
       });
+      if (parcial) {
+        for (const pagamento of pagamentosParciais) {
+          const [pagamentoCriado] = await tx.insert(contasReceberPagamentosTable).values({
+            contaId,
+            vendaId: venda.id,
+            valor: pagamento.valor,
+            formaPagamento: pagamento.forma,
+          }).returning();
+          await tx.insert(caixaTable).values({
+            tipo: "entrada",
+            valor: pagamento.valor,
+            motivo: `Venda parcial ${atual.modelo} (${LABELS[pagamento.forma]})`,
+            pecaId: id,
+            vendaId: venda.id,
+            pagamentoId: pagamentoCriado.id,
+            modelo: atual.modelo,
+            formaPagamento: pagamento.forma,
+            taxaPercent: String(taxaFor(pagamento.forma)),
+          });
+        }
+      }
     }
     // Estoque compartilhado: decrementa também a peça gêmea no outro setor
     const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
@@ -705,7 +790,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
     // caixa, vinculada à venda+peça, para que excluir a movimentação reverta
     // estoque e venda. Dinheiro e PIX têm taxa 0; cartão carrega a taxa.
     // Só o fiado NÃO gera entrada (vira conta a receber).
-    if (!fiado) {
+    if (!fiado && !parcial) {
       if (splits && splits.length > 0) {
         // Pagamento misto: uma entrada no caixa por split
         for (const split of splits) {
