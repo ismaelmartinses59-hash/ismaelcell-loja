@@ -4133,7 +4133,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     </div>
                   )}
                   <div className="flex gap-2 pt-1">
-                    <Button variant="ghost" className="flex-1" onClick={() => setFiadoStep("choose")} disabled={venderMutation.isPending}>Voltar</Button>
+                    <Button
+                      variant="ghost"
+                      className="flex-1"
+                      onClick={() => {
+                        if (import.meta.env.DEV) {
+                          setVenderDialogPeca(null);
+                        } else {
+                          setFiadoStep("choose");
+                        }
+                      }}
+                      disabled={venderMutation.isPending}
+                    >
+                      Voltar
+                    </Button>
                     <Button
                       className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
                       disabled={!fiadoNome.trim() || !valorValido || (parcialMisto && !mistoPronto) || venderMutation.isPending}
