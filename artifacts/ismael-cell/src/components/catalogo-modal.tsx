@@ -2408,23 +2408,41 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 setParcialSplits([]);
                                 setParcialSplitValor("");
                               }}
-                              className="flex-1 h-8 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
+                              className="flex-1 h-11 text-xs font-semibold bg-green-600 hover:bg-green-700 text-white disabled:opacity-40"
                             >
                               <ShoppingBag className="w-3.5 h-3.5 mr-1.5" />
                               {peca.quantidade === 0 ? "Esgotado" : "Vendido (-1 un.)"}
                             </Button>
                             <Button
                               size="sm"
-                              variant="outline"
-                              disabled={peca.quantidade === 0 || devolverMutation.isPending}
-                              onClick={(e) => { e.stopPropagation(); setDevolverDialogPeca(peca); }}
-                              className="h-8 text-xs font-semibold border-orange-300 text-orange-700 hover:bg-orange-50 disabled:opacity-40"
-                              title="Devolver ao fornecedor"
+                              disabled={peca.quantidade === 0 || esperaMutation.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                esperaMutation.mutate({ pecaId: peca.id });
+                              }}
+                              className="flex-1 h-11 text-[10px] leading-tight font-semibold bg-amber-500 hover:bg-amber-600 text-white disabled:opacity-40"
+                              title="Colocar em modo espera para receber depois"
                             >
-                              <Undo2 className="w-3.5 h-3.5 mr-1.5" />
-                              Devolver
+                              <Timer className="w-3.5 h-3.5 mr-1.5 shrink-0" />
+                              <span>
+                                MODO ESPERA
+                                <span className="block font-normal">receber depois</span>
+                              </span>
                             </Button>
                           </div>
+                          <Button
+                            size="sm"
+                            disabled={peca.quantidade === 0 || usoProprioMutation.isPending}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setVenderDialogPeca(peca);
+                              setFiadoStep("uso_proprio");
+                            }}
+                            className="w-full h-9 text-xs font-semibold bg-slate-700 hover:bg-slate-800 text-white disabled:opacity-40"
+                          >
+                            <Package className="w-3.5 h-3.5 mr-1.5" />
+                            USO PRÓPRIO
+                          </Button>
                           <Button
                             size="sm"
                             variant="outline"
