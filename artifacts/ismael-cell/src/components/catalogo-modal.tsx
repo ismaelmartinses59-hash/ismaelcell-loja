@@ -3719,7 +3719,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
         {venderDialogPeca && (
           <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
-             <div className="bg-white rounded-2xl w-full max-w-sm max-h-[calc(100vh-2rem)] overflow-y-auto p-4 space-y-3" onClick={(e) => e.stopPropagation()}>
+             <div className="bg-white rounded-2xl w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain touch-pan-y p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3 [-webkit-overflow-scrolling:touch]" onClick={(e) => e.stopPropagation()}>
               {/* Cabeçalho — preço limpo, sem edição inline */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -4123,7 +4123,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     placeholder={parcialQuitacaoComDesconto ? "Valor final da venda (ex.: 170,00)" : "Valor pago agora (R$)"}
                     value={parcialValorPago}
                     onChange={(e) => { setParcialValorPago(e.target.value); setParcialSplits([]); }}
-                    autoFocus
                   />
                   {parcialQuitacaoComDesconto && valorValido && (
                     <div className="rounded-lg bg-green-50 border border-green-200 px-3 py-2 text-xs text-green-800">
