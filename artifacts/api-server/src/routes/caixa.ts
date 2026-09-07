@@ -500,9 +500,38 @@ router.delete("/caixa/:id", async (req, res): Promise<void> => {
       }
       if (mov.vendaId) {
         const [vendaVinculada] = await tx
-          .select({ tipo: vendasTable.tipo })
+          .select()
           .from(vendasTable)
           .where(eq(vendasTable.id, mov.vendaId));
+        if (vendaVinculada?.tipo === "uso_proprio") {
+          await tx.delete(caixaTable).where(eq(caixaTable.id, id));
+          await tx.delete(vendasTable).where(eq(vendasTable.id, vendaVinculada.id));
+
+          if (vendaVinculada.pecaId) {
+            const [peca] = await tx
+              .select()
+              .from(pecasTable)
+              .where(eq(pecasTable.id, vendaVinculada.pecaId));
+            if (peca) {
+              await tx
+                .update(pecasTable)
+                .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+                .where(eq(pecasTable.id, peca.id));
+              const outroSetor = peca.setor === "cliente" ? "lojista" : "cliente";
+              await tx
+                .update(pecasTable)
+                .set({ quantidade: sql`${pecasTable.quantidade} + 1` })
+                .where(
+                  and(
+                    eq(pecasTable.setor, outroSetor),
+                    sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${peca.modelo}))`,
+                    sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${peca.qualidade}))`,
+                  ),
+                );
+            }
+          }
+          return;
+        }
         if (vendaVinculada?.tipo === "reembolsada") {
           throw httpError(
             409,
