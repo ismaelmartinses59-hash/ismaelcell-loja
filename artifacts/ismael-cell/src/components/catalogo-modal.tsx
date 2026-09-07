@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { createPortal } from "react-dom";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -3733,13 +3732,21 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         )}
 
         {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
-        {venderDialogPeca && createPortal(
-          <div className="fixed inset-0 z-[70] bg-black/50 flex items-stretch sm:items-center justify-center p-0 sm:p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
-             <div
+        {venderDialogPeca && (
+          <Dialog
+            open
+            onOpenChange={(aberto) => {
+              if (!aberto && !venderMutation.isPending) setVenderDialogPeca(null);
+            }}
+          >
+             <DialogContent
                ref={venderDialogScrollRef}
-               className="box-border bg-white w-full min-w-0 max-w-full h-[100dvh] max-h-[100dvh] rounded-none overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3 [-webkit-overflow-scrolling:touch] sm:w-full sm:max-w-sm sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:rounded-2xl sm:p-4"
-               onClick={(e) => e.stopPropagation()}
+               className="fixed left-0 top-0 z-[80] block box-border w-full min-w-0 max-w-full h-[100dvh] max-h-[100dvh] translate-x-0 translate-y-0 rounded-none border-0 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3 [-webkit-overflow-scrolling:touch] [&>button]:hidden sm:left-1/2 sm:top-1/2 sm:w-full sm:max-w-sm sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border sm:p-4"
              >
+               <DialogTitle className="sr-only">Registrar venda da peça</DialogTitle>
+               <DialogDescription className="sr-only">
+                 Informe o pagamento recebido e, se necessário, o saldo que ficará a receber.
+               </DialogDescription>
               {/* Cabeçalho — preço limpo, sem edição inline */}
                <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-start justify-between gap-2 border-b bg-white px-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-3 sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:p-0">
                 <div className="flex-1 min-w-0">
@@ -4233,9 +4240,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 </div>
                 );
               })()}
-            </div>
-          </div>,
-          document.body,
+             </DialogContent>
+          </Dialog>
         )}
 
         {/* Indicador de geração */}
