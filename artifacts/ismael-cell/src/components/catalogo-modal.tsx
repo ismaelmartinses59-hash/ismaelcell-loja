@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -3732,7 +3733,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         )}
 
         {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
-        {venderDialogPeca && (
+        {venderDialogPeca && createPortal(
           <div className="fixed inset-0 z-[70] bg-black/50 flex items-stretch sm:items-center justify-center p-0 sm:p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
              <div
                ref={venderDialogScrollRef}
@@ -4233,7 +4234,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 );
               })()}
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
 
         {/* Indicador de geração */}
