@@ -1388,6 +1388,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [parcialSplits, setParcialSplits] = useState<Array<{ forma: string; valor: string }>>([]);
   const [parcialSplitForma, setParcialSplitForma] = useState<string>("dinheiro");
   const [parcialSplitValor, setParcialSplitValor] = useState("");
+  const venderDialogScrollRef = useRef<HTMLDivElement>(null);
   const [mistoSplits, setMistoSplits] = useState<Array<{ forma: string; valor: string }>>([]);
   const [mistoForma, setMistoForma] = useState<string>("dinheiro");
   const [mistoValor, setMistoValor] = useState<string>("");
@@ -1408,6 +1409,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [itemDescricao, setItemDescricao] = useState("");
   const [itemValor, setItemValor] = useState("");
   const [itemJuro, setItemJuro] = useState("");
+
+  useEffect(() => {
+    if (!venderDialogPeca || fiadoStep !== "parcial") return;
+    const frame = requestAnimationFrame(() => {
+      venderDialogScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [venderDialogPeca, fiadoStep]);
   const [itemForma, setItemForma] = useState<string>("fiado");
   const [itemData, setItemData] = useState("");
   const [itemPecaSel, setItemPecaSel] = useState<Peca | null>(null);
@@ -3719,7 +3728,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
         {venderDialogPeca && (
           <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
-             <div className="bg-white rounded-2xl w-full max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto overscroll-contain touch-pan-y p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3 [-webkit-overflow-scrolling:touch]" onClick={(e) => e.stopPropagation()}>
+             <div
+               ref={venderDialogScrollRef}
+               className="bg-white rounded-2xl w-[calc(100vw-2rem)] max-w-sm min-w-0 max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3 [-webkit-overflow-scrolling:touch]"
+               onClick={(e) => e.stopPropagation()}
+             >
               {/* Cabeçalho — preço limpo, sem edição inline */}
               <div className="flex items-start justify-between gap-2">
                 <div className="flex-1 min-w-0">
@@ -4182,14 +4195,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <button type="button" className="text-xs font-semibold text-violet-700" onClick={() => { setParcialMisto(!parcialMisto); setParcialSplits([]); }}>{parcialMisto ? "Usar uma forma" : "Pagamento misto"}</button>
                   </div>
                   {!parcialMisto ? (
-                    <div className="grid grid-cols-3 gap-1">
-                      {(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as const).map((forma) => <button key={forma} type="button" onClick={() => setParcialForma(forma)} className={`h-9 rounded-lg border text-[10px] font-semibold ${parcialForma === forma ? "bg-violet-600 border-violet-600 text-white" : "bg-white"}`}>{formaLabel(forma)}</button>)}
+                    <div className="grid grid-cols-3 gap-1 min-w-0">
+                      {(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as const).map((forma) => <button key={forma} type="button" onClick={() => setParcialForma(forma)} className={`h-9 min-w-0 px-1 whitespace-normal leading-tight rounded-lg border text-[10px] font-semibold ${parcialForma === forma ? "bg-violet-600 border-violet-600 text-white" : "bg-white"}`}>{formaLabel(forma)}</button>)}
                     </div>
                   ) : (
                     <div className="space-y-1.5 rounded-xl border border-violet-100 bg-violet-50/50 p-2">
                       {parcialSplits.map((split, index) => <div key={index} className="flex text-xs"><span className="flex-1">{formaLabel(split.forma)} · {formatMoney(split.valor)}</span><button type="button" onClick={() => setParcialSplits((atual) => atual.filter((_, i) => i !== index))}><X className="w-3 h-3 text-red-500" /></button></div>)}
                       <div className="text-[11px] text-violet-700">Splits: {formatMoney(String(splitTotal.toFixed(2)))} de {formatMoney(parcialValorPago || "0")}</div>
-                      <div className="grid grid-cols-3 gap-1">{(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as const).map((forma) => <button key={forma} type="button" onClick={() => setParcialSplitForma(forma)} className={`rounded border py-1 text-[9px] ${parcialSplitForma === forma ? "bg-violet-600 text-white" : "bg-white"}`}>{formaLabel(forma)}</button>)}</div>
+                      <div className="grid grid-cols-3 gap-1 min-w-0">{(["dinheiro", "pix", "debito", "credito_1x", "credito_2x", "credito_3x"] as const).map((forma) => <button key={forma} type="button" onClick={() => setParcialSplitForma(forma)} className={`min-w-0 px-1 whitespace-normal leading-tight rounded border py-1 text-[9px] ${parcialSplitForma === forma ? "bg-violet-600 text-white" : "bg-white"}`}>{formaLabel(forma)}</button>)}</div>
                       <div className="flex gap-1"><Input className="h-8 text-xs" inputMode="decimal" placeholder="Valor do split" value={parcialSplitValor} onChange={(e) => setParcialSplitValor(e.target.value)} /><Button size="sm" className="h-8" onClick={adicionarSplit} disabled={!valorValido}><Plus className="w-3 h-3" /></Button></div>
                     </div>
                   )}
