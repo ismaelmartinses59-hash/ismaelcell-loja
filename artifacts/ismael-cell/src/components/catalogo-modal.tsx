@@ -2156,7 +2156,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-lg w-full max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-lg w-full max-h-[90vh] flex flex-col min-h-0 overflow-hidden p-0 gap-0">
 
         {/* Header */}
         <DialogHeader className="px-4 pt-4 pb-0 shrink-0">
