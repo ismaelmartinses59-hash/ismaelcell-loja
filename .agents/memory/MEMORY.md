@@ -20,3 +20,4 @@
 - [Pagamento de provisões](pagamento-provisoes.md) — baixa e saída no Caixa são atômicas; leia configurações antes da transação e invalide todos os caches financeiros.
 - [GitHub pelo painel Git](github-git-pane-auth.md) — a autenticação do painel Git pode funcionar mesmo quando o `git push` no terminal rejeita a credencial.
 - [Venda parcial com entrada](venda-parcial-entrada.md) — A Receber guarda o total da venda e pagamentos iniciais separados; o saldo é sempre total menos pagamentos.
+- [Modais móveis sobre Radix](modal-mobile-radix-portal.md) — overlays `fixed` dentro de DialogContent transformado ficam presos ao modal pai; renderize-os em portal no body.
