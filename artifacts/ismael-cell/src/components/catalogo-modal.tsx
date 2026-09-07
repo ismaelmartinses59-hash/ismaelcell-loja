@@ -2418,7 +2418,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                 setFiadoTipo(setor === "lojista" ? "lojista" : "cliente");
                                 setTemDesconto(false);
                                 setValorDesconto("");
-                                setParcialValorPago("");
+                                setParcialValorPago(peca.valor);
                                 setParcialQuitacaoComDesconto(false);
                                 setParcialDataPrevista("");
                                 setParcialMisto(false);
@@ -4092,10 +4092,27 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 const pago = parsePtBR(parcialValorPago);
                 const desconto = parcialQuitacaoComDesconto ? total - pago : 0;
                 const receber = parcialQuitacaoComDesconto ? 0 : total - pago;
+                const temSaldo = receber > 0.009;
                 const splitTotal = parcialSplits.reduce((s, split) => s + parsePtBR(split.valor), 0);
-                const valorValido = pago > 0 && pago < total;
+                const valorValido = pago > 0 && (parcialQuitacaoComDesconto ? pago < total : pago <= total + 0.009);
                 const mistoPronto = parcialSplits.length > 0 && Math.abs(splitTotal - pago) < 0.01;
                 const formaLabel = (f: string) => LABELS_FORMA[f as FormaPagamento] ?? f;
+                const trocarTipoVenda = (tipo: "cliente" | "lojista") => {
+                  setFiadoTipo(tipo);
+                  setFiadoNome("");
+                  const lista = tipo === "cliente" ? pecasClienteAll : pecasLojistaAll;
+                  const correspondente = lista
+                    .filter((p) =>
+                      p.modelo.trim().toLowerCase() === venderDialogPeca.modelo.trim().toLowerCase()
+                      && p.qualidade.trim().toLowerCase() === venderDialogPeca.qualidade.trim().toLowerCase()
+                    )
+                    .sort((a, b) => b.id - a.id)[0];
+                  if (correspondente) {
+                    setVenderDialogPeca(correspondente);
+                    setParcialValorPago(correspondente.valor);
+                    setParcialSplits([]);
+                  }
+                };
                 const adicionarSplit = () => {
                   const valor = parsePtBR(parcialSplitValor);
                   if (valor > 0 && valor <= pago - splitTotal + 0.01) {
@@ -4104,11 +4121,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   }
                 };
                 const confirmar = () => venderMutation.mutate(
-                  parcialQuitacaoComDesconto
+                  parcialQuitacaoComDesconto || !temSaldo
                     ? {
                         id: venderDialogPeca.id,
                         fiado: false,
-                        valorCustom: parcialValorPago,
+                        valorCustom: parcialQuitacaoComDesconto ? parcialValorPago : venderDialogPeca.valor,
                         formaPagamento: parcialMisto ? undefined : parcialForma,
                         pagamentoMisto: parcialMisto,
                         splits: parcialMisto ? parcialSplits : undefined,
@@ -4157,17 +4174,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     </div>
                   )}
                   {pago === 0 && parcialValorPago.trim() && <div className="text-xs text-amber-700">Para valor zero, registre manualmente em A Receber.</div>}
-                  {pago >= total && <div className="text-xs text-amber-700">{parcialQuitacaoComDesconto ? "O valor com desconto precisa ser menor que o preço original." : "Marque a opção acima para quitar tudo com desconto."}</div>}
+                  {pago > total && <div className="text-xs text-amber-700">O valor pago não pode ser maior que o preço da peça.</div>}
                   {!parcialQuitacaoComDesconto && <div>
-                    <label className="text-xs font-semibold text-muted-foreground">Quem ficará devendo?</label>
+                    <label className="text-xs font-semibold text-muted-foreground">{temSaldo ? "Quem ficará devendo?" : "Preço da venda para"}</label>
                     <div className="flex gap-1 mt-1 mb-2">
-                      <button type="button" onClick={() => setFiadoTipo("cliente")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${fiadoTipo === "cliente" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
-                        <User className="w-3.5 h-3.5" /> Cliente
+                      <button type="button" onClick={() => trocarTipoVenda("cliente")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${fiadoTipo === "cliente" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                        <User className="w-3.5 h-3.5" /> Cliente {precosExistentes[`${venderDialogPeca.modelo.toLowerCase().trim()}|${venderDialogPeca.qualidade}`]?.cliente ? `· ${formatMoney(precosExistentes[`${venderDialogPeca.modelo.toLowerCase().trim()}|${venderDialogPeca.qualidade}`].cliente!)}` : ""}
                       </button>
-                      <button type="button" onClick={() => setFiadoTipo("lojista")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${fiadoTipo === "lojista" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>
-                        <Store className="w-3.5 h-3.5" /> Lojista
+                      <button type="button" onClick={() => trocarTipoVenda("lojista")} className={`flex-1 h-8 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 ${fiadoTipo === "lojista" ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600"}`}>
+                        <Store className="w-3.5 h-3.5" /> Lojista {precosExistentes[`${venderDialogPeca.modelo.toLowerCase().trim()}|${venderDialogPeca.qualidade}`]?.lojista ? `· ${formatMoney(precosExistentes[`${venderDialogPeca.modelo.toLowerCase().trim()}|${venderDialogPeca.qualidade}`].lojista!)}` : ""}
                       </button>
                     </div>
+                    {temSaldo && <>
                     <Input
                       placeholder="Nome do cliente ou lojista"
                       value={fiadoNome}
@@ -4199,8 +4217,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         Se já existe uma conta aberta com esse nome, a peça vai entrar nela.
                       </div>
                     )}
+                    </>}
                   </div>}
-                  {!parcialQuitacaoComDesconto && <div className="space-y-1">
+                  {!parcialQuitacaoComDesconto && temSaldo && <div className="space-y-1">
                     <label className="text-xs font-semibold text-muted-foreground">Data prevista para receber (opcional)</label>
                     <Input type="date" value={parcialDataPrevista} onChange={(e) => setParcialDataPrevista(e.target.value)} />
                   </div>}
@@ -4231,10 +4250,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     </Button>
                     <Button
                       className="flex-1 bg-orange-500 hover:bg-orange-600 text-white font-bold"
-                      disabled={(!parcialQuitacaoComDesconto && !fiadoNome.trim()) || !valorValido || (parcialMisto && !mistoPronto) || venderMutation.isPending}
+                      disabled={(!parcialQuitacaoComDesconto && temSaldo && !fiadoNome.trim()) || !valorValido || (parcialMisto && !mistoPronto) || venderMutation.isPending}
                       onClick={confirmar}
                     >
-                      {venderMutation.isPending ? "..." : parcialQuitacaoComDesconto ? "Confirmar com desconto" : "Confirmar parcial"}
+                      {venderMutation.isPending ? "..." : parcialQuitacaoComDesconto ? "Confirmar com desconto" : temSaldo ? "Confirmar parcial" : "Confirmar venda"}
                     </Button>
                   </div>
                 </div>
