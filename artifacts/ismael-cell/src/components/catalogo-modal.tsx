@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1412,10 +1413,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
 
   useEffect(() => {
     if (!venderDialogPeca || fiadoStep !== "parcial") return;
-    const frame = requestAnimationFrame(() => {
-      venderDialogScrollRef.current?.scrollTo({ top: 0, behavior: "instant" });
-    });
-    return () => cancelAnimationFrame(frame);
+    const resetScroll = () => {
+      if (venderDialogScrollRef.current) venderDialogScrollRef.current.scrollTop = 0;
+    };
+    resetScroll();
+    const frame = requestAnimationFrame(resetScroll);
+    const timer = window.setTimeout(resetScroll, 150);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
   }, [venderDialogPeca, fiadoStep]);
   const [itemForma, setItemForma] = useState<string>("fiado");
   const [itemData, setItemData] = useState("");
@@ -3726,15 +3733,15 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         )}
 
         {/* ── Diálogo À VISTA / FIADO ──────────────────────────────────── */}
-        {venderDialogPeca && (
-          <div className="fixed inset-0 z-[70] bg-black/50 flex items-end sm:items-center justify-center p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
+        {venderDialogPeca && createPortal(
+          <div className="fixed inset-0 z-[70] bg-black/50 flex items-stretch sm:items-center justify-center p-0 sm:p-4" onClick={() => !venderMutation.isPending && setVenderDialogPeca(null)}>
              <div
                ref={venderDialogScrollRef}
-               className="bg-white rounded-2xl w-[calc(100vw-2rem)] max-w-sm min-w-0 max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3 [-webkit-overflow-scrolling:touch]"
+               className="box-border bg-white w-full min-w-0 max-w-full h-[100dvh] max-h-[100dvh] rounded-none overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y px-4 pt-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-3 [-webkit-overflow-scrolling:touch] sm:w-full sm:max-w-sm sm:h-auto sm:max-h-[calc(100vh-2rem)] sm:rounded-2xl sm:p-4"
                onClick={(e) => e.stopPropagation()}
              >
               {/* Cabeçalho — preço limpo, sem edição inline */}
-              <div className="flex items-start justify-between gap-2">
+               <div className="sticky top-0 z-20 -mx-4 -mt-4 flex items-start justify-between gap-2 border-b bg-white px-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-3 sm:static sm:mx-0 sm:mt-0 sm:border-0 sm:p-0">
                 <div className="flex-1 min-w-0">
                   <div className="text-xs text-muted-foreground">Vendendo</div>
                   <div className="font-bold text-base truncate">{venderDialogPeca.modelo}</div>
@@ -4227,7 +4234,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 );
               })()}
             </div>
-          </div>
+          </div>,
+          document.body,
         )}
 
         {/* Indicador de geração */}
