@@ -937,15 +937,10 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
   };
   const candidatosBuscaPara = (row: ImportRow): PecaExistenteImport[] => {
     const busca = row.buscaCorrecao?.trim() ?? "";
-    if (!busca || !row.qualidade) return [];
+    if (!busca) return [];
     const encontrados = new Map<string, PecaExistenteImport>();
     for (const peca of pecasExistentes) {
-      if (
-        peca.qualidade.trim().toLowerCase() !== row.qualidade.trim().toLowerCase() ||
-        peca.modelo.trim().toLowerCase() === row.modelo.trim().toLowerCase() ||
-        !contemSequenciaDeTokens(peca.modelo, busca) ||
-        !expansaoModeloImportSegura(peca.modelo, row.modelo)
-      ) continue;
+      if (!contemSequenciaDeTokens(peca.modelo, busca)) continue;
       const chave = `${peca.modelo.trim().toLowerCase()}|${peca.qualidade.trim().toLowerCase()}`;
       if (!encontrados.has(chave)) encontrados.set(chave, peca);
     }
@@ -1120,6 +1115,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                               <span className="block text-[10px] text-muted-foreground">estoque Cliente + Lojista · {peca.qualidade}</span>
                             </button>
                           ))}
+                        </div>
+                      )}
+                      {focusBuscaIdx === i && (r.buscaCorrecao?.trim().length ?? 0) >= 2 && candidatosBuscaPara(r).length === 0 && (
+                        <div className="relative z-50 mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                          Nenhuma peça encontrada no estoque com esse modelo.
                         </div>
                       )}
                     </div>
