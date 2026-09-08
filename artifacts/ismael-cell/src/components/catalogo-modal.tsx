@@ -1622,8 +1622,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       });
       setImportRows(rows);
       setImportOpen(true);
-    } catch {
-      toast({ title: "Não consegui ler a nota", description: "Tente novamente com outra foto ou PDF.", variant: "destructive" });
+    } catch (error) {
+      toast({
+        title: "Não consegui ler a nota",
+        description: error instanceof Error ? error.message : "Tente novamente com outra foto ou PDF.",
+        variant: "destructive",
+      });
     } finally {
       setImportReading(false);
     }
