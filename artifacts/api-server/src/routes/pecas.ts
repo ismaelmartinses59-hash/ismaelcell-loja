@@ -99,19 +99,32 @@ router.post("/pecas/importar-nota", async (req, res): Promise<void> => {
     "Não invente itens que não estão na nota. Não adicione comentários.",
   ].join("\n");
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: mt, data: fileBase64 } },
-            { text: prompt },
+    let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
+    let ultimoErro: unknown;
+    for (let tentativa = 1; tentativa <= 3; tentativa++) {
+      try {
+        response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { inlineData: { mimeType: mt, data: fileBase64 } },
+                { text: prompt },
+              ],
+            },
           ],
-        },
-      ],
-      config: { responseMimeType: "application/json", maxOutputTokens: 8192 },
-    });
+          config: { responseMimeType: "application/json", maxOutputTokens: 8192 },
+        });
+        break;
+      } catch (err) {
+        ultimoErro = err;
+        if (tentativa < 3) {
+          await new Promise((resolve) => setTimeout(resolve, tentativa * 700));
+        }
+      }
+    }
+    if (!response) throw ultimoErro;
     const raw = response.text ?? "";
     let parsed: unknown;
     try {
@@ -148,7 +161,12 @@ router.post("/pecas/importar-nota", async (req, res): Promise<void> => {
     res.json({ itens });
   } catch (err) {
     req.log.error({ err }, "importar-nota falhou");
-    res.status(500).json({ error: "Falha ao ler a nota do fornecedor." });
+    const mensagem = err instanceof Error ? err.message : "";
+    if (mensagem.includes("AI_INTEGRATIONS_GEMINI_API_KEY")) {
+      res.status(503).json({ error: "A leitura automática de notas não está configurada neste servidor." });
+      return;
+    }
+    res.status(503).json({ error: "O leitor de notas ficou indisponível por alguns instantes. Tente novamente." });
   }
 });
 
