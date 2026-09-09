@@ -381,6 +381,14 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   };
 
   const fecharCaixa = async () => {
+    if (!contadoValor.trim()) {
+      toast({
+        title: "Conte o dinheiro da gaveta",
+        description: "Digite o valor físico que você encontrou antes de fechar.",
+        variant: "destructive",
+      });
+      return;
+    }
     setSessaoBusy(true);
     try {
       const r = await fetch(`${BASE}/api/caixa-sessoes/fechar`, {
@@ -587,6 +595,14 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const totalEntradas = data?.totalEntradas ?? 0;
   const totalSaidas = data?.totalSaidas ?? 0;
   const saldo = data?.saldo ?? 0;
+  const valorEsperadoGaveta = hoje?.sessao
+    ? parseMoney(hoje.sessao.valorInicial) +
+      (hoje.entradasDinheiro ?? hoje.totalEntradas) -
+      (hoje.saidasDinheiro ?? hoje.totalSaidas)
+    : 0;
+  const diferencaContagem = contadoValor.trim()
+    ? parseMoney(contadoValor) - valorEsperadoGaveta
+    : null;
 
   return (
     <Dialog
@@ -611,11 +627,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             {hoje?.sessao && hoje.sessao.status !== "fechado" && !fecharAberto && (
               <button
                 onClick={() => {
-                  const ini = hoje.sessao ? parseMoney(hoje.sessao.valorInicial) : 0;
-                  setContadoValor(
-                    (ini + (hoje.entradasDinheiro ?? hoje.totalEntradas) - (hoje.saidasDinheiro ?? hoje.totalSaidas))
-                      .toFixed(2).replace(".", ","),
-                  );
+                  setContadoValor("");
                   setFecharAberto(true);
                 }}
                 disabled={sessaoBusy}
@@ -793,8 +805,18 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               {hoje.sessao.status !== "fechado" && (
                 fecharAberto ? (
                   <div className="mx-3 mb-3 space-y-2 border-t border-emerald-100 pt-3">
-                    <label className="text-xs font-semibold text-slate-700">Quanto tem na gaveta agora?</label>
-                    <Input inputMode="decimal" placeholder="Ex: 150,00" value={contadoValor} onChange={(e) => setContadoValor(e.target.value)} className="h-11 text-base" />
+                    <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                      Segundo os lançamentos, deveria haver <b>{formatMoney(valorEsperadoGaveta)}</b> na gaveta.
+                    </div>
+                    <label className="text-xs font-semibold text-slate-700">Conte o dinheiro físico e digite o total encontrado</label>
+                    <Input inputMode="decimal" placeholder="Não vem preenchido — digite o que contou" value={contadoValor} onChange={(e) => setContadoValor(e.target.value)} className="h-11 text-base" />
+                    {diferencaContagem !== null && Math.abs(diferencaContagem) >= 0.01 && (
+                      <div className={`rounded-lg border px-3 py-2 text-xs font-semibold ${diferencaContagem > 0 ? "border-amber-300 bg-amber-50 text-amber-900" : "border-red-300 bg-red-50 text-red-800"}`}>
+                        {diferencaContagem > 0
+                          ? `Sobra de ${formatMoney(diferencaContagem)}: há mais dinheiro físico do que lançamentos registrados.`
+                          : `Falta de ${formatMoney(Math.abs(diferencaContagem))}: há menos dinheiro físico do que o esperado.`}
+                      </div>
+                    )}
                     <div className="flex gap-2">
                       <Button variant="outline" onClick={() => setFecharAberto(false)} disabled={sessaoBusy} className="flex-1">Cancelar</Button>
                       <Button onClick={fecharCaixa} disabled={sessaoBusy} className="flex-1 bg-indigo-600 hover:bg-indigo-700">{sessaoBusy ? "Fechando..." : "Confirmar"}</Button>
@@ -804,8 +826,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   <div className="px-3 pb-3">
                     <Button
                       onClick={() => {
-                        const ini = hoje.sessao ? parseMoney(hoje.sessao.valorInicial) : 0;
-                        setContadoValor((ini + (hoje.entradasDinheiro ?? hoje.totalEntradas) - (hoje.saidasDinheiro ?? hoje.totalSaidas)).toFixed(2).replace(".", ","));
+                        setContadoValor("");
                         setFecharAberto(true);
                       }}
                       disabled={sessaoBusy}
