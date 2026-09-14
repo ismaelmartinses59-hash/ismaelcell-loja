@@ -4095,10 +4095,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 const total = parsePtBR(venderDialogPeca.valor);
                 const pago = parsePtBR(parcialValorPago);
                 const desconto = parcialQuitacaoComDesconto ? total - pago : 0;
-                const receber = parcialQuitacaoComDesconto ? 0 : total - pago;
+                const receber = parcialQuitacaoComDesconto ? 0 : Math.max(0, total - pago);
                 const temSaldo = receber > 0.009;
                 const splitTotal = parcialSplits.reduce((s, split) => s + parsePtBR(split.valor), 0);
-                const valorValido = pago > 0 && (parcialQuitacaoComDesconto ? pago < total : pago <= total + 0.009);
+                // Sem desconto, qualquer valor positivo pode ser o preço negociado.
+                // Assim, uma peça cadastrada por R$ 75 pode ser vendida por R$ 85.
+                // Quando o valor é menor que o preço, continua sendo venda parcial.
+                const valorValido = pago > 0 && (parcialQuitacaoComDesconto ? pago < total : true);
                 const mistoPronto = parcialSplits.length > 0 && Math.abs(splitTotal - pago) < 0.01;
                 const formaLabel = (f: string) => LABELS_FORMA[f as FormaPagamento] ?? f;
                 const trocarTipoVenda = (tipo: "cliente" | "lojista") => {
@@ -4129,7 +4132,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     ? {
                         id: venderDialogPeca.id,
                         fiado: false,
-                        valorCustom: parcialQuitacaoComDesconto ? parcialValorPago : venderDialogPeca.valor,
+                        valorCustom: parcialQuitacaoComDesconto || pago >= total ? parcialValorPago : venderDialogPeca.valor,
                         formaPagamento: parcialMisto ? undefined : parcialForma,
                         pagamentoMisto: parcialMisto,
                         splits: parcialMisto ? parcialSplits : undefined,
@@ -4178,7 +4181,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     </div>
                   )}
                   {pago === 0 && parcialValorPago.trim() && <div className="text-xs text-amber-700">Para valor zero, registre manualmente em A Receber.</div>}
-                  {pago > total && <div className="text-xs text-amber-700">O valor pago não pode ser maior que o preço da peça.</div>}
+                   {!parcialQuitacaoComDesconto && pago > total && (
+                     <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800">
+                       Venda à vista por <b>{formatMoney(parcialValorPago)}</b>. Esse valor será salvo como o preço final, sem nome e sem data de recebimento.
+                     </div>
+                   )}
                   {!parcialQuitacaoComDesconto && <div>
                     <label className="text-xs font-semibold text-muted-foreground">{temSaldo ? "Quem ficará devendo?" : "Preço da venda para"}</label>
                     <div className="flex gap-1 mt-1 mb-2">
