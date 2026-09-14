@@ -10,6 +10,7 @@
 - [Formas de pagamento — PIX vs cartão](formas-pagamento-pix.md) — PIX = no taxa, counts in gaveta like cash; cartão fee is shop's loss (debt stays gross); isCartao must exclude dinheiro AND pix; backend/frontend libs mirrored.
 - [Web push notifications](push-notifications.md) — VAPID keys live in DB (not env) so Railway works zero-config; confirmation ping must target one device, never broadcast; iOS needs PWA installed.
 - [Caixa sessões timezone authority](caixa-sessoes-timezone.md) — day-scoped/blocking caixa logic derives "today" server-side in São Paulo; client computes SP wall-clock with explicit timeZone, never device-local.
+- [Contagem física no fechamento](caixa-fechamento-contagem.md) — valor contado deve começar vazio e ser comparado ao esperado; nunca preencha a contagem com o valor do sistema.
 - [AV ↔ Caixa linkage](caixa-av-link.md) — fiado AV payments mirror into caixa via `caixa.pagamento_id`; all 4 create/delete paths (incl. delete-whole-conta) must stay in sync or the ledger drifts.
 - [Peça cost → caixa saída](peca-custo-vira-saida.md) — adding stock auto-lançs the custo as a saída (opt-in via formaInvestimento dinheiro/pix, in-tx); twin cost counted once, import = one aggregate saída, never on edit.
 - [Divisão de lucro](divisao-lucro-modelo.md) — daily profit split on caixa fechamento; cost from peça.valorCusto (not saídas); AV entradas count as full profit by design.
