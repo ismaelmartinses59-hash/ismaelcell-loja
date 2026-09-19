@@ -573,6 +573,22 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     );
   };
 
+  const irParaLancamento = (novoTipo: "entrada" | "saida") => {
+    setTipo(novoTipo);
+    if (novoTipo === "saida") {
+      setVincularPeca(false);
+      setPecaSel(null);
+      setModeloBusca("");
+      if (isCartaoForma(formaPagto)) setFormaPagto("dinheiro");
+    }
+    requestAnimationFrame(() => {
+      document.getElementById("caixa-lancamento-form")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
   const onDelete = (m: CaixaMovimento) => {
     const msg = `Excluir esta ${m.tipo === "entrada" ? "entrada" : "saída"} de ${formatMoney(parseMoney(m.valor))}?${m.vendaId ? "\n\nO estoque da peça será devolvido e a venda removida." : ""}`;
     if (!window.confirm(msg)) return;
@@ -895,6 +911,24 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         )}
                       </div>
                     )}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => irParaLancamento("entrada")}
+                        className="flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-emerald-300 bg-emerald-50 px-3 py-2.5 text-xs font-bold text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        <ArrowDownCircle className="h-4 w-4" />
+                        Adicionar entrada
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => irParaLancamento("saida")}
+                        className="flex items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-red-300 bg-red-50 px-3 py-2.5 text-xs font-bold text-red-700 transition-colors hover:bg-red-100"
+                      >
+                        <ArrowUpCircle className="h-4 w-4" />
+                        Adicionar saída
+                      </button>
+                    </div>
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
                       Segundo os lançamentos, deveria haver <b>{formatMoney(valorEsperadoGaveta)}</b> na gaveta.
                     </div>
@@ -1002,7 +1036,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           </div>
 
           {/* ── Formulário ─────────────────────────────────────────────────── */}
-          <div className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+          <div id="caixa-lancamento-form" className="rounded-2xl border border-gray-200 bg-white overflow-hidden">
             {/* Entrada / Saída tabs */}
             <div className="grid grid-cols-2 border-b border-gray-100">
               <button
