@@ -82,6 +82,16 @@ type CaixaMovimentoComVenda = CaixaMovimento & {
   reembolsoOrigemId?: number | null;
 };
 
+type VendaDoFechamento = {
+  id: number;
+  modelo: string;
+  qualidade: string;
+  valor: string;
+  tipo: string | null;
+  createdAt: string;
+  reembolsoAt?: string | null;
+};
+
 /** Horário limite para reabrir o caixa: 20:30 (mesmo valor do backend). */
 const LIMITE_REABRIR_MIN = 20 * 60 + 30;
 
@@ -261,6 +271,27 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         return Number.isFinite(criadoEm) && criadoEm >= Date.now() - 60 * 60 * 1000;
       })
     : [];
+
+  const { data: vendasHojeData, isFetching: vendasHojeFetching, refetch: refetchVendasHoje } = useQuery<{
+    vendas: VendaDoFechamento[];
+  }>({
+    queryKey: ["vendas-fechamento-hoje", hojeStr],
+    enabled: open,
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/vendas?periodo=dia`);
+      if (!r.ok) throw new Error("erro ao carregar vendas de hoje");
+      return r.json();
+    },
+  });
+  const vendasDoDia = (vendasHojeData?.vendas ?? []).filter((v) => {
+    const dataSP = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+    }).format(new Date(v.createdAt));
+    return dataSP === hojeStr && v.tipo !== "uso_proprio";
+  });
+  const vendasHistorico = historicoMovimentos === "hora"
+    ? vendasDoDia.filter((v) => new Date(v.createdAt).getTime() >= Date.now() - 60 * 60 * 1000)
+    : vendasDoDia;
 
   const { data: detalheData, isLoading: detalheLoading } = useQuery<{
     movimentos: CaixaMovimentoComVenda[];
