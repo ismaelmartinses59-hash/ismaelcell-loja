@@ -545,6 +545,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
     qc.invalidateQueries({ queryKey: ["pecas"] });
     qc.invalidateQueries({ queryKey: ["vendas"] });
+    qc.invalidateQueries({ queryKey: ["vendas-fechamento-hoje"] });
     qc.invalidateQueries({ queryKey: ["contas-receber"] });
   };
 
