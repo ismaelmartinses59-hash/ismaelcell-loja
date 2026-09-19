@@ -177,6 +177,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [movimentoDetalhe, setMovimentoDetalhe] =
     useState<CaixaMovimentoComVenda | null>(null);
   const [mostrarFormasReembolso, setMostrarFormasReembolso] = useState(false);
+  const [historicoUltimaHora, setHistoricoUltimaHora] = useState<"entrada" | "saida" | null>(null);
   const [nowTick, setNowTick] = useState(0);
 
   const { data: fechamentos = [] } = useQuery<CaixaSessao[]>({
@@ -239,7 +240,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
 
   // Lançamentos de HOJE vêm de uma query dedicada (por data SP), independente
   // do filtro de período usado no "Resumo do período".
-  const { data: hojeMovData, isLoading: hojeMovLoading } = useQuery<{
+  const { data: hojeMovData, isLoading: hojeMovLoading, isFetching: hojeMovFetching, refetch: refetchHojeMov } = useQuery<{
     movimentos: CaixaMovimentoComVenda[];
     totalEntradas: number;
     totalSaidas: number;
@@ -253,6 +254,14 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     },
   });
   const movimentosHoje = hojeTravado ? [] : (hojeMovData?.movimentos ?? []);
+  const movimentosUltimaHora = historicoUltimaHora
+    ? movimentosHoje.filter((m) => {
+        const criadoEm = new Date(m.createdAt).getTime();
+        return Number.isFinite(criadoEm)
+          && criadoEm >= Date.now() - 60 * 60 * 1000
+          && m.tipo === historicoUltimaHora;
+      })
+    : [];
 
   const { data: detalheData, isLoading: detalheLoading } = useQuery<{
     movimentos: CaixaMovimentoComVenda[];
@@ -342,6 +351,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     if (!open) {
       setFecharAberto(false);
       setContadoValor("");
+      setHistoricoUltimaHora(null);
     }
   }, [open]);
 
@@ -805,6 +815,81 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               {hoje.sessao.status !== "fechado" && (
                 fecharAberto ? (
                   <div className="mx-3 mb-3 space-y-2 border-t border-emerald-100 pt-3">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoricoUltimaHora("entrada");
+                          void refetchHojeMov();
+                        }}
+                        className={`rounded-xl border-2 border-dashed px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                          historicoUltimaHora === "entrada"
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-800"
+                            : "border-emerald-200 bg-emerald-50/40 text-emerald-700 hover:bg-emerald-50"
+                        }`}
+                      >
+                        <ArrowDownCircle className="mb-1 h-4 w-4" />
+                        Ver entradas
+                        <span className="block text-[10px] font-normal">da última hora</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setHistoricoUltimaHora("saida");
+                          void refetchHojeMov();
+                        }}
+                        className={`rounded-xl border-2 border-dashed px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                          historicoUltimaHora === "saida"
+                            ? "border-red-500 bg-red-50 text-red-800"
+                            : "border-red-200 bg-red-50/40 text-red-700 hover:bg-red-50"
+                        }`}
+                      >
+                        <ArrowUpCircle className="mb-1 h-4 w-4" />
+                        Ver saídas
+                        <span className="block text-[10px] font-normal">da última hora</span>
+                      </button>
+                    </div>
+                    {historicoUltimaHora && (
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5">
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <span className="text-xs font-bold text-slate-700">
+                            {historicoUltimaHora === "entrada" ? "Entradas da última hora" : "Saídas da última hora"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setHistoricoUltimaHora(null)}
+                            className="text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+                          >
+                            Fechar
+                          </button>
+                        </div>
+                        {hojeMovFetching && (
+                          <p className="py-2 text-center text-[11px] text-slate-500">Atualizando lançamentos...</p>
+                        )}
+                        {!hojeMovFetching && movimentosUltimaHora.length === 0 && (
+                          <p className="py-2 text-[11px] text-slate-500">
+                            Nenhum lançamento de {historicoUltimaHora === "entrada" ? "entrada" : "saída"} nos últimos 60 minutos.
+                          </p>
+                        )}
+                        {!hojeMovFetching && movimentosUltimaHora.length > 0 && (
+                          <div className="space-y-1.5">
+                            {movimentosUltimaHora.map((m) => (
+                              <div key={m.id} className="rounded-lg border border-white bg-white px-2.5 py-2">
+                                <div className="flex items-start justify-between gap-2 text-xs">
+                                  <span className="min-w-0 font-semibold text-slate-700">{m.motivo}</span>
+                                  <span className={`shrink-0 font-bold ${m.tipo === "entrada" ? "text-emerald-700" : "text-red-600"}`}>
+                                    {m.tipo === "entrada" ? "+" : "−"}{formatMoney(parseMoney(m.valor))}
+                                  </span>
+                                </div>
+                                <div className="mt-0.5 text-[10px] text-slate-500">
+                                  {formatHoraSP(m.createdAt)} · {labelFormaPagamento(m.formaPagamento, m.tipo)}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
                       Segundo os lançamentos, deveria haver <b>{formatMoney(valorEsperadoGaveta)}</b> na gaveta.
                     </div>
