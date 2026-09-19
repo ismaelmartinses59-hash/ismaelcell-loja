@@ -14,6 +14,7 @@ confirmação automática e esconde dinheiro físico sem lançamento ou faltas r
 
 **How to apply:** qualquer mudança no fechamento deve preservar três valores
 distintos: esperado pelos lançamentos, contado fisicamente e diferença entre eles.
-Durante a conferência, deve haver acesso rápido aos lançamentos de entrada e saída
-dos últimos 60 minutos, atualizados no momento do toque, para confirmar se um
-lançamento recente já foi feito antes de fechar.
+Durante a conferência, deve haver uma lista mista de todas as entradas e saídas do
+dia, atualizada no momento do toque, para confirmar item por item se tudo foi
+lançado antes de fechar. A última hora deve ser apenas um filtro opcional dessa
+mesma lista.
