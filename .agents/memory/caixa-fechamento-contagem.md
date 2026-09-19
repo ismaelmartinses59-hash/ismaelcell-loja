@@ -18,3 +18,7 @@ Durante a conferência, deve haver uma lista mista de todas as entradas e saída
 dia, atualizada no momento do toque, para confirmar item por item se tudo foi
 lançado antes de fechar. A última hora deve ser apenas um filtro opcional dessa
 mesma lista.
+
+A conferência também deve listar as vendas cadastradas do dia pelo modelo da peça,
+inclusive fiado/A Receber, antes dos movimentos financeiros. O fechamento precisa
+permitir adicionar uma entrada ou saída sem fechar nem abandonar a tela.
