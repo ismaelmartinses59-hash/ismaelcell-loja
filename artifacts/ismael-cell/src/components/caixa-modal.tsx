@@ -866,6 +866,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                       onClick={() => {
                         setHistoricoMovimentos("dia");
                         void refetchHojeMov();
+                        void refetchVendasHoje();
                       }}
                       className={`flex w-full items-center gap-2 rounded-xl border-2 border-dashed px-3 py-2.5 text-left text-xs font-semibold transition-colors ${
                         historicoMovimentos
@@ -875,8 +876,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                     >
                       <History className="h-4 w-4 shrink-0" />
                       <span>
-                        Ver todos os lançamentos de hoje
-                        <span className="block text-[10px] font-normal">Entradas e saídas na mesma lista</span>
+                        Conferir vendas e lançamentos de hoje
+                        <span className="block text-[10px] font-normal">Veja as peças vendidas antes de fechar</span>
                       </span>
                     </button>
                     {historicoMovimentos && (
@@ -904,22 +905,79 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                             onClick={() => {
                               setHistoricoMovimentos("hora");
                               void refetchHojeMov();
+                              void refetchVendasHoje();
                             }}
                             className={`rounded-lg px-2 py-1.5 text-[10px] font-bold ${historicoMovimentos === "hora" ? "bg-indigo-600 text-white" : "bg-white text-slate-600 border border-slate-200"}`}
                           >
                             Última hora
                           </button>
                         </div>
-                        {hojeMovFetching && (
-                          <p className="py-2 text-center text-[11px] text-slate-500">Atualizando lançamentos...</p>
+                        {(hojeMovFetching || vendasHojeFetching) && (
+                          <p className="py-2 text-center text-[11px] text-slate-500">Atualizando vendas e lançamentos...</p>
                         )}
-                        {!hojeMovFetching && movimentosHistorico.length === 0 && (
-                          <p className="py-2 text-[11px] text-slate-500">
-                            Nenhuma entrada ou saída encontrada neste período.
-                          </p>
-                        )}
-                        {!hojeMovFetching && movimentosHistorico.length > 0 && (
-                          <div className="max-h-64 space-y-1.5 overflow-y-auto pr-0.5">
+                        {!hojeMovFetching && !vendasHojeFetching && (
+                          <div className="max-h-80 space-y-3 overflow-y-auto pr-0.5">
+                            <div>
+                              <div className="mb-1.5 flex items-center justify-between">
+                                <span className="text-[11px] font-bold uppercase tracking-wide text-indigo-700">
+                                  Vendas cadastradas
+                                </span>
+                                <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                                  {vendasHistorico.length}
+                                </span>
+                              </div>
+                              {vendasHistorico.length === 0 ? (
+                                <p className="rounded-lg bg-white px-2.5 py-2 text-[11px] text-slate-500">
+                                  Nenhuma venda cadastrada neste período.
+                                </p>
+                              ) : (
+                                <div className="space-y-1.5">
+                                  {vendasHistorico.map((v) => {
+                                    const reembolsada = v.tipo === "reembolsada" || !!v.reembolsoAt;
+                                    const situacao = reembolsada
+                                      ? "Reembolsada"
+                                      : v.tipo === "fiado"
+                                        ? "A Receber"
+                                        : v.tipo === "fiado_quitado"
+                                          ? "A Receber quitado"
+                                          : "Venda";
+                                    return (
+                                      <div key={v.id} className={`rounded-lg border bg-white px-2.5 py-2 ${reembolsada ? "border-red-200 opacity-70" : "border-indigo-100"}`}>
+                                        <div className="flex items-start justify-between gap-2 text-xs">
+                                          <div className="min-w-0">
+                                            <div className="font-bold text-slate-800">{v.modelo}</div>
+                                            <div className="text-[10px] text-slate-500">{v.qualidade}</div>
+                                          </div>
+                                          <span className={`shrink-0 font-bold ${reembolsada ? "text-red-600 line-through" : "text-indigo-700"}`}>
+                                            {formatMoney(parseMoney(v.valor))}
+                                          </span>
+                                        </div>
+                                        <div className="mt-1 flex items-center justify-between text-[10px]">
+                                          <span className={reembolsada ? "font-semibold text-red-600" : "text-slate-500"}>{situacao}</span>
+                                          <span className="text-slate-500">{formatHoraSP(v.createdAt)}</span>
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+
+                            <div className="border-t border-slate-200 pt-2">
+                              <div className="mb-1.5 flex items-center justify-between">
+                                <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">
+                                  Entradas e saídas do Caixa
+                                </span>
+                                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                  {movimentosHistorico.length}
+                                </span>
+                              </div>
+                              {movimentosHistorico.length === 0 ? (
+                                <p className="rounded-lg bg-white px-2.5 py-2 text-[11px] text-slate-500">
+                                  Nenhuma entrada ou saída encontrada neste período.
+                                </p>
+                              ) : (
+                                <div className="space-y-1.5">
                             {movimentosHistorico.map((m) => (
                               <div key={m.id} className="rounded-lg border border-white bg-white px-2.5 py-2">
                                 <div className="flex items-start justify-between gap-2 text-xs">
@@ -938,6 +996,9 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                                 </div>
                               </div>
                             ))}
+                                </div>
+                              )}
+                            </div>
                           </div>
                         )}
                       </div>
