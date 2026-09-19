@@ -177,7 +177,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [movimentoDetalhe, setMovimentoDetalhe] =
     useState<CaixaMovimentoComVenda | null>(null);
   const [mostrarFormasReembolso, setMostrarFormasReembolso] = useState(false);
-  const [historicoUltimaHora, setHistoricoUltimaHora] = useState<"entrada" | "saida" | null>(null);
+  const [historicoMovimentos, setHistoricoMovimentos] = useState<"dia" | "hora" | null>(null);
   const [nowTick, setNowTick] = useState(0);
 
   const { data: fechamentos = [] } = useQuery<CaixaSessao[]>({
@@ -254,12 +254,11 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     },
   });
   const movimentosHoje = hojeTravado ? [] : (hojeMovData?.movimentos ?? []);
-  const movimentosUltimaHora = historicoUltimaHora
+  const movimentosHistorico = historicoMovimentos
     ? movimentosHoje.filter((m) => {
+        if (historicoMovimentos === "dia") return true;
         const criadoEm = new Date(m.createdAt).getTime();
-        return Number.isFinite(criadoEm)
-          && criadoEm >= Date.now() - 60 * 60 * 1000
-          && m.tipo === historicoUltimaHora;
+        return Number.isFinite(criadoEm) && criadoEm >= Date.now() - 60 * 60 * 1000;
       })
     : [];
 
@@ -351,7 +350,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     if (!open) {
       setFecharAberto(false);
       setContadoValor("");
-      setHistoricoUltimaHora(null);
+      setHistoricoMovimentos(null);
     }
   }, [open]);
 
