@@ -7,6 +7,8 @@ Uma venda parcial deve gerar um único item no A Receber pelo valor total da ven
 
 Quando o pagamento inicial for misto, cada forma deve permanecer em um registro separado, com data e hora, e ter sua própria entrada no Caixa. Todos os registros iniciais pertencem à mesma venda.
 
+Quando o pagamento cobre ou supera o preço cadastrado, a venda é à vista e não exige nome nem data. Se superar o preço cadastrado, o valor recebido passa a ser o preço final negociado da venda, sem gerar saldo.
+
 **Why:** Esse modelo preserva o histórico completo (valor original, entrada e saldo), evita duplicar receita e permite conferir cada forma de pagamento mesmo depois da quitação.
 
 **How to apply:** Qualquer alteração em venda, A Receber, Caixa, exclusão ou reembolso deve tratar estoque, venda total, item, pagamentos iniciais e entradas do Caixa como uma única operação financeira atômica.
