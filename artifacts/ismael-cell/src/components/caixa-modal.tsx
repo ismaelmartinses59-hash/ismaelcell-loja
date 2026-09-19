@@ -1042,6 +1042,20 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 ) : (
                   <div className="px-3 pb-3">
                     <Button
+                      variant="outline"
+                      onClick={() => {
+                        setHistoricoMovimentos("dia");
+                        void refetchHojeMov();
+                        void refetchVendasHoje();
+                        setFecharAberto(true);
+                      }}
+                      disabled={sessaoBusy}
+                      className="mb-2 h-11 w-full rounded-xl border-indigo-300 text-indigo-700 hover:bg-indigo-50"
+                    >
+                      <History className="mr-2 h-4 w-4" />
+                      Conferir vendas e lançamentos antes de fechar
+                    </Button>
+                    <Button
                       onClick={() => {
                         setContadoValor("");
                         setFecharAberto(true);
