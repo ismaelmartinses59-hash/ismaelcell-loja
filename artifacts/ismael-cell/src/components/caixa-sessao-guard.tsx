@@ -17,11 +17,13 @@ import {
   Check,
   Plus,
   X,
+  History,
 } from "lucide-react";
 import {
   type FormaPagamento,
   type FormaCartao,
   TAXAS_CARTAO,
+  LABELS_FORMA,
   isCartaoForma,
 } from "../lib/formas-pagamento";
 
@@ -57,6 +59,25 @@ interface ContaResumo {
   valor: string;
   quantidade: number;
   setor: string;
+}
+
+interface HistoricoMovimento {
+  id: number;
+  tipo: "entrada" | "saida";
+  valor: string;
+  motivo: string;
+  formaPagamento?: string | null;
+  createdAt: string;
+}
+
+interface HistoricoVenda {
+  id: number;
+  modelo: string;
+  qualidade: string;
+  valor: string;
+  tipo: string | null;
+  createdAt: string;
+  reembolsoAt?: string | null;
 }
 
 interface CartaoItem {
@@ -103,6 +124,19 @@ function parseValor(raw: string): number {
   return parseFloat(raw.replace(/[^\d,.-]/g, "").replace(/\./g, "").replace(",", ".")) || 0;
 }
 
+function formatHoraSP(iso: string): string {
+  return new Date(iso).toLocaleTimeString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function labelFormaPagamento(forma: string | null | undefined): string {
+  if (!forma) return "Não informado";
+  return LABELS_FORMA[forma as FormaPagamento] ?? forma;
+}
+
 export function CaixaSessaoGuard() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -128,6 +162,7 @@ export function CaixaSessaoGuard() {
   const [sMotivo, setSMotivo] = useState("");
   const [sForma, setSForma] = useState<FormaPagamento>("dinheiro");
   const [sSubmitting, setSSubmitting] = useState(false);
+  const [historicoFiltro, setHistoricoFiltro] = useState<"dia" | "hora">("dia");
     // Fiado: anota a venda na conta de um devedor em vez de entrar no caixa
     const [vFiado, setVFiado] = useState(false);
     const [vAV, setVAV] = useState(false);
@@ -207,6 +242,51 @@ export function CaixaSessaoGuard() {
   const totalGeral = valFinal + pixLiquido;
   const cartao = status?.cartao ?? [];
   const totalCartaoLiquido = status?.totalCartaoLiquido ?? 0;
+
+  const {
+    data: historicoData,
+    isFetching: historicoFetching,
+    refetch: refetchHistorico,
+  } = useQuery<{
+    movimentos: HistoricoMovimento[];
+    vendas: HistoricoVenda[];
+  }>({
+    queryKey: ["caixa-sessao-fechamento-historico", data],
+    enabled: mode === "fechar",
+    queryFn: async () => {
+      const [movimentosResponse, vendasResponse] = await Promise.all([
+        fetch(`${BASE}/api/caixa?dia=${data}`),
+        fetch(`${BASE}/api/vendas?periodo=dia`),
+      ]);
+      if (!movimentosResponse.ok || !vendasResponse.ok) {
+        throw new Error("Não foi possível carregar o histórico do dia");
+      }
+      const movimentosJson = await movimentosResponse.json();
+      const vendasJson = await vendasResponse.json();
+      return {
+        movimentos: movimentosJson.movimentos ?? [],
+        vendas: vendasJson.vendas ?? [],
+      };
+    },
+  });
+
+  const movimentosHistorico = (historicoData?.movimentos ?? []).filter((movimento) =>
+    historicoFiltro === "dia"
+      ? true
+      : new Date(movimento.createdAt).getTime() >= Date.now() - 60 * 60 * 1000,
+  );
+  const vendasHistorico = (historicoData?.vendas ?? [])
+    .filter((venda) => {
+      const vendaDataSP = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "America/Sao_Paulo",
+      }).format(new Date(venda.createdAt));
+      return vendaDataSP === data && venda.tipo !== "uso_proprio";
+    })
+    .filter((venda) =>
+      historicoFiltro === "dia"
+        ? true
+        : new Date(venda.createdAt).getTime() >= Date.now() - 60 * 60 * 1000,
+    );
 
   // Pré-preenche o valor conferido com o esperado (até o usuário ajustar).
   useEffect(() => {
@@ -396,6 +476,7 @@ export function CaixaSessaoGuard() {
       await qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
       await qc.invalidateQueries({ queryKey: ["vendas"] });
       await refetch();
+      await refetchHistorico();
     } catch (e) {
       toast({
         title: "Erro ao registrar a venda",
@@ -431,6 +512,7 @@ export function CaixaSessaoGuard() {
         await qc.invalidateQueries({ queryKey: ["caixa-sessao-contas"] });
         await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
         await refetch();
+        await refetchHistorico();
       } catch (e) {
         toast({
           title: "Erro ao registrar o AV",
@@ -480,6 +562,7 @@ export function CaixaSessaoGuard() {
       await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
       await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
       await refetch();
+      await refetchHistorico();
     } catch (e) {
       toast({
         title: "Erro ao registrar a saída",
@@ -718,6 +801,154 @@ export function CaixaSessaoGuard() {
                   </div>
                 </div>
               )}
+              <div className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 text-sm font-bold text-indigo-900">
+                    <History className="h-4 w-4" />
+                    Histórico do dia
+                  </div>
+                  <span className="text-[11px] text-indigo-700">Antes de fechar</span>
+                </div>
+                <p className="text-xs text-indigo-700">
+                  Confira tudo que entrou e saiu da loja antes de confirmar o fechamento.
+                </p>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoricoFiltro("dia");
+                      void refetchHistorico();
+                    }}
+                    className={`rounded-lg px-2 py-2 text-xs font-bold ${
+                      historicoFiltro === "dia"
+                        ? "bg-indigo-600 text-white"
+                        : "border border-indigo-200 bg-white text-indigo-700"
+                    }`}
+                  >
+                    Dia inteiro
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoricoFiltro("hora");
+                      void refetchHistorico();
+                    }}
+                    className={`rounded-lg px-2 py-2 text-xs font-bold ${
+                      historicoFiltro === "hora"
+                        ? "bg-indigo-600 text-white"
+                        : "border border-indigo-200 bg-white text-indigo-700"
+                    }`}
+                  >
+                    Última hora
+                  </button>
+                </div>
+                {historicoFetching ? (
+                  <p className="rounded-lg bg-white px-3 py-3 text-center text-xs text-slate-500">
+                    Carregando histórico...
+                  </p>
+                ) : (
+                  <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                    <div>
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-indigo-700">
+                          Vendas cadastradas
+                        </span>
+                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                          {vendasHistorico.length}
+                        </span>
+                      </div>
+                      {vendasHistorico.length === 0 ? (
+                        <p className="rounded-lg bg-white px-3 py-2 text-[11px] text-slate-500">
+                          Nenhuma venda cadastrada neste período.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {vendasHistorico.map((venda) => {
+                            const reembolsada =
+                              venda.tipo === "reembolsada" || !!venda.reembolsoAt;
+                            const situacao = reembolsada
+                              ? "Reembolsada"
+                              : venda.tipo === "fiado"
+                                ? "A Receber"
+                                : venda.tipo === "fiado_quitado"
+                                  ? "A Receber quitado"
+                                  : "Venda";
+                            return (
+                              <div
+                                key={venda.id}
+                                className={`rounded-lg border bg-white px-3 py-2 ${
+                                  reembolsada
+                                    ? "border-red-200 opacity-70"
+                                    : "border-indigo-100"
+                                }`}
+                              >
+                                <div className="flex items-start justify-between gap-2 text-xs">
+                                  <div className="min-w-0">
+                                    <div className="font-bold text-slate-800">{venda.modelo}</div>
+                                    <div className="text-[10px] text-slate-500">{venda.qualidade}</div>
+                                  </div>
+                                  <span
+                                    className={`shrink-0 font-bold ${
+                                      reembolsada ? "text-red-600 line-through" : "text-indigo-700"
+                                    }`}
+                                  >
+                                    {formatMoney(parseValor(venda.valor))}
+                                  </span>
+                                </div>
+                                <div className="mt-1 flex items-center justify-between text-[10px]">
+                                  <span className={reembolsada ? "font-semibold text-red-600" : "text-slate-500"}>
+                                    {situacao}
+                                  </span>
+                                  <span className="text-slate-500">{formatHoraSP(venda.createdAt)}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-t border-indigo-200 pt-2">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-700">
+                          Entradas e saídas do Caixa
+                        </span>
+                        <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                          {movimentosHistorico.length}
+                        </span>
+                      </div>
+                      {movimentosHistorico.length === 0 ? (
+                        <p className="rounded-lg bg-white px-3 py-2 text-[11px] text-slate-500">
+                          Nenhuma entrada ou saída encontrada neste período.
+                        </p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {movimentosHistorico.map((movimento) => (
+                            <div key={movimento.id} className="rounded-lg border border-white bg-white px-3 py-2">
+                              <div className="flex items-start justify-between gap-2 text-xs">
+                                <div className="flex min-w-0 items-start gap-1.5">
+                                  {movimento.tipo === "entrada" ? (
+                                    <ArrowDownCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                                  ) : (
+                                    <ArrowUpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
+                                  )}
+                                  <span className="min-w-0 font-semibold text-slate-700">{movimento.motivo}</span>
+                                </div>
+                                <span className={`shrink-0 font-bold ${movimento.tipo === "entrada" ? "text-emerald-700" : "text-red-600"}`}>
+                                  {movimento.tipo === "entrada" ? "+" : "−"}
+                                  {formatMoney(parseValor(movimento.valor))}
+                                </span>
+                              </div>
+                              <div className="mt-0.5 pl-5 text-[10px] text-slate-500">
+                                {formatHoraSP(movimento.createdAt)} · {labelFormaPagamento(movimento.formaPagamento)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
               {!showVenda ? (
                 <button
                   type="button"
