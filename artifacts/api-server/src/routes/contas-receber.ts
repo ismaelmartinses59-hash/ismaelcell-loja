@@ -65,8 +65,8 @@ async function restaurarEstoqueDaVenda(
       .where(
         and(
           eq(pecasTable.setor, outroSetor),
-          sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${peca.modelo}))`,
-          sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${peca.qualidade}))`,
+          sql`regexp_replace(lower(trim(${pecasTable.modelo})), '[^a-z0-9]+', '', 'g') = regexp_replace(lower(trim(${peca.modelo})), '[^a-z0-9]+', '', 'g')`,
+          sql`regexp_replace(lower(trim(${pecasTable.qualidade})), '[^a-z0-9]+', '', 'g') = regexp_replace(lower(trim(${peca.qualidade})), '[^a-z0-9]+', '', 'g')`,
         ),
       );
   }
@@ -312,26 +312,14 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
         if (!baixada) throw new Error("Sem estoque disponível");
 
         const outroSetor = peca.setor === "cliente" ? "lojista" : "cliente";
-        let gemeas = await tx.select().from(pecasTable).where(
+        const gemeas = await tx.select().from(pecasTable).where(
           and(
             eq(pecasTable.setor, outroSetor),
-            sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${peca.modelo}))`,
-            sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${peca.qualidade}))`,
+            sql`regexp_replace(lower(trim(${pecasTable.modelo})), '[^a-z0-9]+', '', 'g') = regexp_replace(lower(trim(${peca.modelo})), '[^a-z0-9]+', '', 'g')`,
+            sql`regexp_replace(lower(trim(${pecasTable.qualidade})), '[^a-z0-9]+', '', 'g') = regexp_replace(lower(trim(${peca.qualidade})), '[^a-z0-9]+', '', 'g')`,
           ),
         );
-        // Estoques antigos podem ter apenas um lado do par. Recria o espelho
-        // com a quantidade anterior à baixa para manter os setores sincronizados.
-        if (gemeas.length === 0) {
-          const [gemeaCriada] = await tx.insert(pecasTable).values({
-            modelo: peca.modelo,
-            qualidade: peca.qualidade,
-            valor: peca.valor,
-            valorCusto: peca.valorCusto,
-            quantidade: peca.quantidade,
-            setor: outroSetor,
-          }).returning();
-          gemeas = [gemeaCriada];
-        }
+        if (gemeas.length === 0) throw new Error("Peça gêmea não encontrada no outro setor");
         for (const g of gemeas) {
           const [gemeaBaixada] = await tx
             .update(pecasTable)
