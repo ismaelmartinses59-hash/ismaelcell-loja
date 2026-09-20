@@ -687,7 +687,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Valor total inválido" });
     return;
   }
-  if (parcial && dataPrevistaRaw && !dataPrevista) {
+  if ((parcial || fiado) && dataPrevistaRaw && !dataPrevista) {
     res.status(400).json({ error: "Data prevista inválida" });
     return;
   }
@@ -749,7 +749,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
         modelo: atual.modelo,
         qualidade: atual.qualidade,
         valor: valorVendaCanonico,
-        tipo: parcial ? "fiado" : undefined,
+        tipo: (fiado || parcial) ? "fiado" : undefined,
       })
       .returning();
     if (fiado || parcial) {
@@ -760,7 +760,7 @@ router.post("/pecas/:id/vender", async (req, res): Promise<void> => {
         modelo: atual.modelo,
         qualidade: atual.qualidade,
         valor: valorVendaCanonico,
-        dataRecebimento: parcial ? dataPrevista : null,
+        dataRecebimento: (parcial || fiado) ? dataPrevista : null,
       });
       if (parcial) {
         for (const pagamento of pagamentosParciais) {
