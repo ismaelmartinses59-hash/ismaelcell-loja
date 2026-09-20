@@ -860,7 +860,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
 
               {/* Fechar caixa (inline form) */}
               {hoje.sessao.status !== "fechado" && (
-                fecharAberto ? (
+                (fecharAberto || historicoMovimentos) ? (
                   <div className="mx-3 mb-3 space-y-2 border-t border-emerald-100 pt-3">
                     <button
                       type="button"
@@ -1022,6 +1022,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         Adicionar saída
                       </button>
                     </div>
+                    {fecharAberto && (
+                      <>
                     <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
                       Segundo os lançamentos, deveria haver <b>{formatMoney(valorEsperadoGaveta)}</b> na gaveta.
                     </div>
@@ -1038,6 +1040,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                       <Button variant="outline" onClick={() => setFecharAberto(false)} disabled={sessaoBusy} className="flex-1">Cancelar</Button>
                       <Button onClick={fecharCaixa} disabled={sessaoBusy} className="flex-1 bg-indigo-600 hover:bg-indigo-700">{sessaoBusy ? "Fechando..." : "Confirmar"}</Button>
                     </div>
+                      </>
+                    )}
                   </div>
                 ) : (
                   <div className="px-3 pb-3">
@@ -1047,13 +1051,12 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         setHistoricoMovimentos("dia");
                         void refetchHojeMov();
                         void refetchVendasHoje();
-                        setFecharAberto(true);
                       }}
                       disabled={sessaoBusy}
                       className="mb-2 h-11 w-full rounded-xl border-indigo-300 text-indigo-700 hover:bg-indigo-50"
                     >
                       <History className="mr-2 h-4 w-4" />
-                      Conferir vendas e lançamentos antes de fechar
+                      Histórico do dia — conferir antes de fechar
                     </Button>
                     <Button
                       onClick={() => {
