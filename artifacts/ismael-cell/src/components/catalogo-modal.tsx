@@ -2055,17 +2055,24 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         .slice(0, 5);
     })();
 
-  // Mesmas sugestões para o fluxo de venda FIADO de peça
+  // Sugestões clicáveis para o fluxo de venda FIADO de peça.
+  // Ordena a conta com nome exato antes das parecidas e preserva o nome
+  // canônico salvo no banco quando o usuário escolhe uma sugestão.
   const fiadoNomeNorm = normNome(fiadoNome);
-  const contaExataFiado =
-    fiadoNome.trim().length >= 2
-      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === fiadoTipo && normNome(c.conta.nome) === fiadoNomeNorm)
-      : undefined;
-  const contaSugeridaFiado =
-    !contaExataFiado && fiadoNome.trim().length >= 2
-      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === fiadoTipo && nomeSimilar(fiadoNome, c.conta.nome))
-      : undefined;
-
+  const contasFiadoCorrespondentes = fiadoNome.trim().length >= 2
+    ? contas
+        .filter((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === fiadoTipo && nomeSimilar(fiadoNome, c.conta.nome))
+        .sort((a, b) => {
+          const aExata = normNome(a.conta.nome) === fiadoNomeNorm;
+          const bExata = normNome(b.conta.nome) === fiadoNomeNorm;
+          if (aExata !== bExata) return aExata ? -1 : 1;
+          return b.saldo - a.saldo;
+        })
+    : [];
+  const contaExataFiado = contasFiadoCorrespondentes.find((c) => normNome(c.conta.nome) === fiadoNomeNorm);
+  const contasSugeridasFiado = contasFiadoCorrespondentes
+    .filter((c) => normNome(c.conta.nome) !== fiadoNomeNorm)
+    .slice(0, 5);
   // Compartilhar extrato de débito como IMAGEM (cartão Ismael Cell, gerado dinamicamente)
   const handleShareExtrato = useCallback(async (c: ContaResumo) => {
     setGeneratingShare(true);
@@ -3800,7 +3807,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     }}
                   >
                     <HandCoins className="w-5 h-5" />
-                     <span className="font-bold text-xs">PARCIAL</span>
+                     <span className="font-bold text-xs">FIADO / PARCIAL</span>
                   </Button>
                   <Button
                     className="h-16 flex flex-col items-center justify-center bg-violet-600 hover:bg-violet-700 text-white gap-0.5"
@@ -4101,7 +4108,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 // Sem desconto, qualquer valor positivo pode ser o preço negociado.
                 // Assim, uma peça cadastrada por R$ 75 pode ser vendida por R$ 85.
                 // Quando o valor é menor que o preço, continua sendo venda parcial.
-                const valorValido = pago > 0 && (parcialQuitacaoComDesconto ? pago < total : true);
+                 const valorPagoVazio = parcialValorPago.trim() === "";
+                 const valorPagoZero = /^0+(?:[.,]0+)?$/.test(parcialValorPago.trim());
+                 const fiadoIntegral = !parcialQuitacaoComDesconto && temSaldo && (valorPagoVazio || valorPagoZero);
+                 const valorValido = parcialQuitacaoComDesconto
+                   ? pago > 0 && pago < total
+                   : fiadoIntegral || pago > 0;
                 const mistoPronto = parcialSplits.length > 0 && Math.abs(splitTotal - pago) < 0.01;
                 const formaLabel = (f: string) => LABELS_FORMA[f as FormaPagamento] ?? f;
                 const trocarTipoVenda = (tipo: "cliente" | "lojista") => {
@@ -4127,28 +4139,36 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     setParcialSplitValor("");
                   }
                 };
-                const confirmar = () => venderMutation.mutate(
-                  parcialQuitacaoComDesconto || !temSaldo
-                    ? {
-                        id: venderDialogPeca.id,
-                        fiado: false,
-                        valorCustom: parcialQuitacaoComDesconto || pago >= total ? parcialValorPago : venderDialogPeca.valor,
-                        formaPagamento: parcialMisto ? undefined : parcialForma,
-                        pagamentoMisto: parcialMisto,
-                        splits: parcialMisto ? parcialSplits : undefined,
-                      }
-                    : {
-                        id: venderDialogPeca.id,
-                        parcial: true,
-                        nomeDevedor: fiadoNome.trim(),
-                        tipoDevedor: fiadoTipo,
-                        valorPago: parcialValorPago,
-                        formaPagamento: parcialMisto ? undefined : parcialForma,
-                        pagamentoMisto: parcialMisto,
-                        splits: parcialMisto ? parcialSplits : undefined,
-                        dataPrevista: parcialDataPrevista,
-                      },
-                );
+                 const confirmar = () => venderMutation.mutate(
+                   fiadoIntegral
+                     ? {
+                         id: venderDialogPeca.id,
+                         fiado: true,
+                         nomeDevedor: fiadoNome.trim(),
+                         tipoDevedor: fiadoTipo,
+                         dataPrevista: parcialDataPrevista,
+                       }
+                     : parcialQuitacaoComDesconto || !temSaldo
+                       ? {
+                           id: venderDialogPeca.id,
+                           fiado: false,
+                           valorCustom: parcialQuitacaoComDesconto || pago >= total ? parcialValorPago : venderDialogPeca.valor,
+                           formaPagamento: parcialMisto ? undefined : parcialForma,
+                           pagamentoMisto: parcialMisto,
+                           splits: parcialMisto ? parcialSplits : undefined,
+                         }
+                       : {
+                           id: venderDialogPeca.id,
+                           parcial: true,
+                           nomeDevedor: fiadoNome.trim(),
+                           tipoDevedor: fiadoTipo,
+                           valorPago: parcialValorPago,
+                           formaPagamento: parcialMisto ? undefined : parcialForma,
+                           pagamentoMisto: parcialMisto,
+                           splits: parcialMisto ? parcialSplits : undefined,
+                           dataPrevista: parcialDataPrevista,
+                         },
+                 );
                 return (
                 <div className="space-y-2.5 pt-1">
                   <div className="grid grid-cols-2 gap-2">
@@ -4171,7 +4191,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   </label>
                   <Input
                     inputMode="decimal"
-                    placeholder={parcialQuitacaoComDesconto ? "Valor final da venda (ex.: 170,00)" : "Valor pago agora (R$)"}
+                    placeholder={parcialQuitacaoComDesconto ? "Valor final da venda (ex.: 170,00)" : "Valor pago agora (R$) — vazio = fiado"}
                     value={parcialValorPago}
                     onChange={(e) => { setParcialValorPago(e.target.value); setParcialSplits([]); }}
                   />
@@ -4210,20 +4230,25 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       ))}
                     </datalist>
                     {contaExataFiado && (
-                      <div className="mt-1.5 rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800">
-                        ✅ Vai entrar na conta aberta de <b>{contaExataFiado.conta.nome}</b> (saldo atual {fmtBRL(contaExataFiado.saldo)}). Tudo numa nota só.
-                      </div>
-                    )}
-                    {contaSugeridaFiado && (
                       <button
                         type="button"
-                        onClick={() => setFiadoNome(contaSugeridaFiado.conta.nome)}
-                        className="mt-1.5 w-full text-left rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-2 text-[11px] text-amber-900 hover:bg-amber-100"
+                        onClick={() => setFiadoNome(contaExataFiado.conta.nome)}
+                        className="w-full text-left rounded-lg bg-green-50 border border-green-300 px-2.5 py-2 text-[11px] text-green-900 hover:bg-green-100"
                       >
-                        💡 Já existe <b>{contaSugeridaFiado.conta.nome}</b> devendo {fmtBRL(contaSugeridaFiado.saldo)}. Toque para usar essa conta e juntar tudo numa nota só.
+                        ✅ Usar conta de <b>{contaExataFiado.conta.nome}</b> (saldo atual {fmtBRL(contaExataFiado.saldo)}). Toque para confirmar.
                       </button>
                     )}
-                    {!contaExataFiado && !contaSugeridaFiado && (
+                    {contasSugeridasFiado.map((conta) => (
+                      <button
+                        key={conta.conta.id}
+                        type="button"
+                        onClick={() => setFiadoNome(conta.conta.nome)}
+                        className="mt-1.5 w-full text-left rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-2 text-[11px] text-amber-900 hover:bg-amber-100"
+                      >
+                        💡 Usar <b>{conta.conta.nome}</b> — já deve {fmtBRL(conta.saldo)}. Toque para juntar nesta conta.
+                      </button>
+                    ))}
+                    {!contaExataFiado && contasSugeridasFiado.length === 0 && (
                       <div className="text-[10px] text-muted-foreground mt-1">
                         Se já existe uma conta aberta com esse nome, a peça vai entrar nela.
                       </div>
