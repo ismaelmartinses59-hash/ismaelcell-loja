@@ -4289,7 +4289,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       disabled={(!parcialQuitacaoComDesconto && temSaldo && !fiadoNome.trim()) || !valorValido || (parcialMisto && !mistoPronto) || venderMutation.isPending}
                       onClick={confirmar}
                     >
-                      {venderMutation.isPending ? "..." : parcialQuitacaoComDesconto ? "Confirmar com desconto" : temSaldo ? "Confirmar parcial" : "Confirmar venda"}
+                      {venderMutation.isPending ? "..." : parcialQuitacaoComDesconto ? "Confirmar com desconto" : fiadoIntegral ? "Confirmar fiado" : temSaldo ? "Confirmar parcial" : "Confirmar venda"}
                     </Button>
                   </div>
                 </div>
