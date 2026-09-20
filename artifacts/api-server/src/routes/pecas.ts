@@ -872,14 +872,26 @@ router.post("/pecas/:id/uso-proprio", async (req, res): Promise<void> => {
       if (!atualizada) throw new Error("Sem estoque disponível");
 
       const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
-      const gemeas = await tx.select().from(pecasTable).where(
+      let gemeas = await tx.select().from(pecasTable).where(
         and(
           eq(pecasTable.setor, outroSetor),
           sql`LOWER(TRIM(${pecasTable.modelo})) = LOWER(TRIM(${atual.modelo}))`,
           sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
         ),
       );
-      if (gemeas.length === 0) throw new Error("Peça gêmea não encontrada no outro setor");
+      // Estoques antigos podem ter apenas um lado do par. Recria o espelho
+      // com a quantidade anterior à baixa para manter os setores sincronizados.
+      if (gemeas.length === 0) {
+        const [gemeaCriada] = await tx.insert(pecasTable).values({
+          modelo: atual.modelo,
+          qualidade: atual.qualidade,
+          valor: atual.valor,
+          valorCusto: atual.valorCusto,
+          quantidade: atual.quantidade,
+          setor: outroSetor,
+        }).returning();
+        gemeas = [gemeaCriada];
+      }
       for (const g of gemeas) {
         const [gemeaBaixada] = await tx
           .update(pecasTable)
