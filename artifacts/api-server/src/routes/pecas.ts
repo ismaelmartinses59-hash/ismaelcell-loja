@@ -39,6 +39,60 @@ function expansaoModeloSegura(modeloAntigo: string, modeloNovo: string): boolean
   );
 }
 
+const PALAVRAS_IGNORADAS_ESTOQUE = new Set([
+  ...PALAVRAS_GENERICAS_PECA,
+  "DO", "DA", "DE", "DOS", "DAS", "E", "PARA",
+]);
+
+function chaveModeloCompartilhado(modelo: string): string {
+  return modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter((parte) => parte && !PALAVRAS_IGNORADAS_ESTOQUE.has(parte))
+    .sort()
+    .join("|");
+}
+
+function chaveQualidadeCompartilhada(qualidade: string): string {
+  return qualidade
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function mesmaPecaCompartilhada(a: { modelo: string; qualidade: string }, b: { modelo: string; qualidade: string }): boolean {
+  return chaveModeloCompartilhado(a.modelo) === chaveModeloCompartilhado(b.modelo)
+    && chaveQualidadeCompartilhada(a.qualidade) === chaveQualidadeCompartilhada(b.qualidade);
+}
+
+// Cliente e Lojista têm preços separados, mas representam o mesmo estoque físico.
+async function sincronizarQuantidadesCompartilhadas(): Promise<void> {
+  await db.transaction(async (tx) => {
+    const rows = await tx.select().from(pecasTable);
+    const grupos = new Map<string, Array<(typeof rows)[number]>>();
+
+    for (const row of rows) {
+      const chave = chaveModeloCompartilhado(row.modelo) + "::" + chaveQualidadeCompartilhada(row.qualidade);
+      const grupo = grupos.get(chave) ?? [];
+      grupo.push(row);
+      grupos.set(chave, grupo);
+    }
+
+    for (const grupo of grupos.values()) {
+      if (!grupo.some((row) => row.setor === "cliente") || !grupo.some((row) => row.setor === "lojista")) continue;
+      const quantidadeCompartilhada = Math.min(...grupo.map((row) => row.quantidade));
+      for (const row of grupo) {
+        if (row.quantidade !== quantidadeCompartilhada) {
+          await tx.update(pecasTable).set({ quantidade: quantidadeCompartilhada }).where(eq(pecasTable.id, row.id));
+        }
+      }
+    }
+  });
+}
+
 class ImportacaoInvalida extends Error {
   statusCode: number;
 
@@ -441,6 +495,8 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
 });
 
 router.get("/pecas", async (req, res): Promise<void> => {
+  // Corrige divergências antigas antes de entregar os dados às abas.
+  await sincronizarQuantidadesCompartilhadas();
   const search = req.query.search as string | undefined;
   const setor = (req.query.setor as string) || "lojista";
   const conditions = [eq(pecasTable.setor, setor)];
@@ -562,10 +618,11 @@ router.post("/pecas/:id/adicionar-estoque", async (req, res): Promise<void> => {
         .set({ quantidade: novaQtd, ...(valorCusto != null ? { valorCusto: String(valorCusto) } : {}) })
         .where(eq(pecasTable.id, id))
         .returning();
-      // Espelha na gêmea (twin invariant)
-      await tx
-        .update(pecasTable)
-        .set({ quantidade: novaQtd })
+      // Espelha a quantidade na gêmea, inclusive quando os cadastros
+      // antigos têm pequenas diferenças de escrita no modelo.
+      let gemeas = await tx
+        .select()
+        .from(pecasTable)
         .where(
           and(
             eq(pecasTable.setor, atual.setor === "cliente" ? "lojista" : "cliente"),
@@ -573,6 +630,19 @@ router.post("/pecas/:id/adicionar-estoque", async (req, res): Promise<void> => {
             sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
           ),
         );
+      if (gemeas.length === 0) {
+        const candidatas = await tx
+          .select()
+          .from(pecasTable)
+          .where(eq(pecasTable.setor, atual.setor === "cliente" ? "lojista" : "cliente"));
+        gemeas = candidatas.filter((candidata) => mesmaPecaCompartilhada(candidata, atual));
+      }
+      for (const gemea of gemeas) {
+        await tx
+          .update(pecasTable)
+          .set({ quantidade: novaQtd })
+          .where(eq(pecasTable.id, gemea.id));
+      }
       // Saída no caixa se o usuário escolheu forma de investimento
       const forma = formaInvestimentoSaida(formaInvestimento);
       const totalCusto = parseValorBR(valorCusto) * qtd;
@@ -621,17 +691,11 @@ router.put("/pecas/:id", async (req, res): Promise<void> => {
         .set(updates)
         .where(eq(pecasTable.id, id))
         .returning();
-      // Estoque compartilhado: espelha quantidade + modelo/qualidade na peça gêmea
-      // do outro setor (encontrada pelo modelo+qualidade ORIGINAIS), mantendo o par
-      // sincronizado e preservando o valor próprio de cada setor.
+      // Estoque compartilhado: espelha quantidade + modelo/qualidade na peça gêmea.
       const outroSetor = atual.setor === "cliente" ? "lojista" : "cliente";
-      await tx
-        .update(pecasTable)
-        .set({
-          quantidade: novaQuantidade,
-          modelo: String(modelo),
-          qualidade: String(qualidade),
-        })
+      let gemeas = await tx
+        .select()
+        .from(pecasTable)
         .where(
           and(
             eq(pecasTable.setor, outroSetor),
@@ -639,6 +703,23 @@ router.put("/pecas/:id", async (req, res): Promise<void> => {
             sql`LOWER(TRIM(${pecasTable.qualidade})) = LOWER(TRIM(${atual.qualidade}))`,
           ),
         );
+      if (gemeas.length === 0) {
+        const candidatas = await tx
+          .select()
+          .from(pecasTable)
+          .where(eq(pecasTable.setor, outroSetor));
+        gemeas = candidatas.filter((candidata) => mesmaPecaCompartilhada(candidata, atual));
+      }
+      for (const gemea of gemeas) {
+        await tx
+          .update(pecasTable)
+          .set({
+            quantidade: novaQuantidade,
+            modelo: String(modelo),
+            qualidade: String(qualidade),
+          })
+          .where(eq(pecasTable.id, gemea.id));
+      }
       return atualizada;
     });
     if (!peca) { res.status(404).json({ error: "Peça não encontrada" }); return; }
