@@ -39,8 +39,9 @@ function expansaoModeloSegura(modeloAntigo: string, modeloNovo: string): boolean
   );
 }
 
-const PALAVRAS_IGNORADAS_ESTOQUE = new Set([
-  ...PALAVRAS_GENERICAS_PECA,
+// Só removemos conectores da escrita. Mantemos "TELA", "BATERIA",
+// "PLACA" etc. para nunca cruzar estoques de tipos diferentes.
+const PALAVRAS_CONECTORES_ESTOQUE = new Set([
   "DO", "DA", "DE", "DOS", "DAS", "E", "PARA",
 ]);
 
@@ -50,7 +51,7 @@ function chaveModeloCompartilhado(modelo: string): string {
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
-    .filter((parte) => parte && !PALAVRAS_IGNORADAS_ESTOQUE.has(parte))
+    .filter((parte) => parte && !PALAVRAS_CONECTORES_ESTOQUE.has(parte))
     .sort()
     .join("|");
 }
