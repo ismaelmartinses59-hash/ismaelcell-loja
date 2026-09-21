@@ -4283,6 +4283,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <label className="text-xs font-semibold text-muted-foreground">Data prevista para receber (opcional)</label>
                     <Input type="date" value={parcialDataPrevista} onChange={(e) => setParcialDataPrevista(e.target.value)} />
                   </div>}
+                  {!fiadoIntegral && <>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-semibold text-muted-foreground">Forma de pagamento</span>
                     <button type="button" className="text-xs font-semibold text-violet-700" onClick={() => { setParcialMisto(!parcialMisto); setParcialSplits([]); }}>{parcialMisto ? "Usar uma forma" : "Pagamento misto"}</button>
@@ -4299,6 +4300,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       <div className="flex gap-1"><Input className="h-8 text-xs" inputMode="decimal" placeholder="Valor do split" value={parcialSplitValor} onChange={(e) => setParcialSplitValor(e.target.value)} /><Button size="sm" className="h-8" onClick={adicionarSplit} disabled={!valorValido}><Plus className="w-3 h-3" /></Button></div>
                     </div>
                   )}
+                  </>}
                   <div className="flex gap-2 pt-1">
                     <Button
                       variant="ghost"
