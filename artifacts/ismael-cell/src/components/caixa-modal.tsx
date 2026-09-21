@@ -671,7 +671,10 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         }
       }}
     >
-      <DialogContent className="max-w-lg w-full h-[95dvh] max-h-[95dvh] p-0 gap-0 flex flex-col overflow-y-auto overscroll-contain touch-pan-y [&>button:last-child]:hidden">
+      <DialogContent
+        className="max-w-lg w-full p-0 gap-0 block [&>button:last-child]:hidden"
+        style={{ display: "block", height: "95dvh", maxHeight: "95dvh", overflowY: "auto", touchAction: "pan-y" }}
+      >
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2">
@@ -706,7 +709,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────── */}
-        <div className="flex-none overflow-visible px-4 py-3 space-y-4">
+        <div className="px-4 py-3 space-y-4">
 
           {/* Avisos (NotificacoesToggle) */}
           <NotificacoesToggle />
