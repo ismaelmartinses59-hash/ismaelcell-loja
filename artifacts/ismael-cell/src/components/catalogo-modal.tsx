@@ -127,6 +127,15 @@ function nomeSimilar(a: string, b: string): boolean {
   return levenshtein(x, y) <= 2 && Math.min(x.length, y.length) >= 4;
 }
 
+// Busca incremental: cada palavra digitada precisa aparecer no nome salvo,
+// permitindo encontrar "Cachi" em "CACHIMBO" e "Giv" em "Givanildo".
+function nomeCombinaComBusca(busca: string, nome: string): boolean {
+  const q = normNome(busca);
+  const n = normNome(nome);
+  if (q.length < 2 || !n) return false;
+  return q.split(" ").filter(Boolean).every((palavra) => n.includes(palavra)) || nomeSimilar(q, n);
+}
+
 // ─── Peca Form ────────────────────────────────────────────────────────────────
 
 type FormaInvest = "dinheiro" | "pix";
@@ -2026,16 +2035,24 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const totalAReceber = contas.reduce((a, c) => a + (c.saldo > 0 ? c.saldo : 0), 0);
   const contasAbertas = contas.filter((c) => c.conta.closedAt === null);
 
-  // Sugestão de conta existente ao digitar o nome do devedor (juntar tudo numa nota só)
+  // Sugestões de contas abertas: a busca inclui Cliente e Lojista.
+  // Ao escolher uma conta, o tipo correto acompanha o nome selecionado.
   const servNomeNorm = normNome(servNome);
-  const contaExataServ =
-    servNome.trim().length >= 2
-      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === servTipo && normNome(c.conta.nome) === servNomeNorm)
-      : undefined;
-  const contaSugeridaServ =
-    !contaExataServ && servNome.trim().length >= 2
-      ? contas.find((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === servTipo && nomeSimilar(servNome, c.conta.nome))
-      : undefined;
+  const contasSugeridasServ = servNome.trim().length >= 2
+    ? contas
+        .filter((c) => c.conta.closedAt === null && c.saldo > 0 && nomeCombinaComBusca(servNome, c.conta.nome))
+        .sort((a, b) => {
+          const aExata = normNome(a.conta.nome) === servNomeNorm;
+          const bExata = normNome(b.conta.nome) === servNomeNorm;
+          if (aExata !== bExata) return aExata ? -1 : 1;
+          const aTipo = a.conta.tipo === servTipo;
+          const bTipo = b.conta.tipo === servTipo;
+          if (aTipo !== bTipo) return aTipo ? -1 : 1;
+          return b.saldo - a.saldo;
+        })
+        .slice(0, 5)
+    : [];
+  const contaExataServ = contasSugeridasServ.find((c) => normNome(c.conta.nome) === servNomeNorm);
 
     // Sugestões de peças do estoque ao digitar o serviço (ex: "tela do g24" acha "TELA G24")
     const normPecaBusca = (t: string) =>
@@ -2061,11 +2078,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const fiadoNomeNorm = normNome(fiadoNome);
   const contasFiadoCorrespondentes = fiadoNome.trim().length >= 2
     ? contas
-        .filter((c) => c.conta.closedAt === null && c.saldo > 0 && c.conta.tipo === fiadoTipo && nomeSimilar(fiadoNome, c.conta.nome))
+        .filter((c) => c.conta.closedAt === null && c.saldo > 0 && nomeCombinaComBusca(fiadoNome, c.conta.nome))
         .sort((a, b) => {
           const aExata = normNome(a.conta.nome) === fiadoNomeNorm;
           const bExata = normNome(b.conta.nome) === fiadoNomeNorm;
           if (aExata !== bExata) return aExata ? -1 : 1;
+          const aTipo = a.conta.tipo === fiadoTipo;
+          const bTipo = b.conta.tipo === fiadoTipo;
+          if (aTipo !== bTipo) return aTipo ? -1 : 1;
           return b.saldo - a.saldo;
         })
     : [];
@@ -2815,24 +2835,28 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     className="h-9 text-sm"
                   />
                   <datalist id="servico-nomes">
-                    {[...new Set(contas.filter((c) => c.conta.tipo === servTipo).map((c) => c.conta.nome))].map((n) => (
-                      <option key={n} value={n} />
-                    ))}
-                  </datalist>
+                     {[...new Set(contas.filter((c) => c.conta.closedAt === null && c.saldo > 0).map((c) => c.conta.nome))].map((n) => (
+                       <option key={n} value={n} />
+                     ))}
+                   </datalist>
                   {contaExataServ && (
                     <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800">
                       ✅ Vai somar na conta aberta de <b>{contaExataServ.conta.nome}</b> (saldo atual {fmtBRL(contaExataServ.saldo)}). Tudo numa nota só.
                     </div>
                   )}
-                  {contaSugeridaServ && (
-                    <button
-                      type="button"
-                      onClick={() => setServNome(contaSugeridaServ.conta.nome)}
-                      className="w-full text-left rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-2 text-[11px] text-amber-900 hover:bg-amber-100"
-                    >
-                      💡 Já existe <b>{contaSugeridaServ.conta.nome}</b> devendo {fmtBRL(contaSugeridaServ.saldo)}. Toque para usar essa conta e juntar tudo numa nota só.
-                    </button>
-                  )}
+                  {contasSugeridasServ.map((conta) => (
+                     <button
+                       key={conta.conta.id}
+                       type="button"
+                       onClick={() => {
+                         setServNome(conta.conta.nome);
+                         setServTipo(conta.conta.tipo === "lojista" ? "lojista" : "cliente");
+                       }}
+                       className="w-full text-left rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-2 text-[11px] text-amber-900 hover:bg-amber-100"
+                     >
+                       💡 Usar <b>{conta.conta.nome}</b> ({conta.conta.tipo === "lojista" ? "Lojista" : "Cliente"}) — já deve {fmtBRL(conta.saldo)}. Toque para juntar nesta conta.
+                     </button>
+                   ))}
                   <div className="relative">
                       <Input
                         placeholder="Serviço ou peça (ex: Tela G24)"
@@ -2888,11 +2912,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     onClick={() => {
                         if (servPecaSel) {
                           venderMutation.mutate(
-                            { id: servPecaSel.id, fiado: true, nomeDevedor: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipoDevedor: servTipo, valorCustom: servValor.trim() },
+                            { id: servPecaSel.id, fiado: true, nomeDevedor: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipoDevedor: contaExataServ ? (contaExataServ.conta.tipo === "lojista" ? "lojista" : "cliente") : servTipo, valorCustom: servValor.trim() },
                             { onSuccess: () => { setShowNovoServico(false); setServNome(""); setServDescricao(""); setServValor(""); setServJuro(""); setServData(""); setServPecaSel(null); } },
                           );
                         } else {
-                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: servTipo, descricao: servDescricao.trim(), valor: servValor.trim(), dataRecebimento: servData || undefined });
+                          novoServicoMutation.mutate({ nome: contaExataServ ? contaExataServ.conta.nome : servNome.trim(), tipo: contaExataServ ? (contaExataServ.conta.tipo === "lojista" ? "lojista" : "cliente") : servTipo, descricao: servDescricao.trim(), valor: servValor.trim(), dataRecebimento: servData || undefined });
                         }
                       }}
                   >
@@ -4225,14 +4249,14 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       className="h-10"
                     />
                     <datalist id="fiado-nomes">
-                      {[...new Set(contas.filter((c) => c.conta.tipo === fiadoTipo).map((c) => c.conta.nome))].map((n) => (
+                      {[...new Set(contas.filter((c) => c.conta.closedAt === null && c.saldo > 0).map((c) => c.conta.nome))].map((n) => (
                         <option key={n} value={n} />
                       ))}
                     </datalist>
                     {contaExataFiado && (
                       <button
                         type="button"
-                        onClick={() => setFiadoNome(contaExataFiado.conta.nome)}
+                        onClick={() => { setFiadoNome(contaExataFiado.conta.nome); setFiadoTipo(contaExataFiado.conta.tipo === "lojista" ? "lojista" : "cliente"); }}
                         className="w-full text-left rounded-lg bg-green-50 border border-green-300 px-2.5 py-2 text-[11px] text-green-900 hover:bg-green-100"
                       >
                         ✅ Usar conta de <b>{contaExataFiado.conta.nome}</b> (saldo atual {fmtBRL(contaExataFiado.saldo)}). Toque para confirmar.
@@ -4242,7 +4266,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                       <button
                         key={conta.conta.id}
                         type="button"
-                        onClick={() => setFiadoNome(conta.conta.nome)}
+                        onClick={() => { setFiadoNome(conta.conta.nome); setFiadoTipo(conta.conta.tipo === "lojista" ? "lojista" : "cliente"); }}
                         className="mt-1.5 w-full text-left rounded-lg bg-amber-50 border border-amber-300 px-2.5 py-2 text-[11px] text-amber-900 hover:bg-amber-100"
                       >
                         💡 Usar <b>{conta.conta.nome}</b> — já deve {fmtBRL(conta.saldo)}. Toque para juntar nesta conta.
