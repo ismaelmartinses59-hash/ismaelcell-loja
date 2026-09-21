@@ -821,6 +821,13 @@ interface ImportRow {
   modoNomeCompleto?: boolean;
 }
 
+interface ImportarNotaDraft {
+  rows: ImportRow[];
+  formaInvest: FormaInvest;
+  destino: Destino;
+  fornecedor: string;
+}
+
 interface PecaExistenteImport {
   id: number;
   gemeaId: number;
@@ -912,15 +919,20 @@ interface ImportarNotaDialogProps {
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
   onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
   onClose: () => void;
+  onCancel: () => void;
+  onDraftChange: (draft: ImportarNotaDraft) => void;
+  formaInvestInicial: FormaInvest;
+  destinoInicial: Destino;
+  fornecedorInicial: string;
   loading: boolean;
 }
 
-function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExistentes, onConfirm, onClose, loading }: ImportarNotaDialogProps) {
+function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExistentes, onConfirm, onClose, onCancel, onDraftChange, formaInvestInicial, destinoInicial, fornecedorInicial, loading }: ImportarNotaDialogProps) {
   const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
-  const [formaInvest, setFormaInvest] = useState<FormaInvest>("dinheiro");
-    // "Esse pedido chegou?" — estoque (já chegou) ou encomenda (a caminho)
-    const [destino, setDestino] = useState<Destino>("estoque");
-    const [fornecedor, setFornecedor] = useState("");
+  const [formaInvest, setFormaInvest] = useState<FormaInvest>(formaInvestInicial);
+  // "Esse pedido chegou?" — estoque (já chegou) ou encomenda (a caminho)
+  const [destino, setDestino] = useState<Destino>(destinoInicial);
+  const [fornecedor, setFornecedor] = useState(fornecedorInicial);
   const totalCusto = rows.reduce((s, r) => s + parsePtBR(r.valorCusto) * (parseInt(r.quantidade) || 0), 0);
 
   // Nomes de modelos já cadastrados (sem repetir) para o autocomplete.
@@ -992,9 +1004,20 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
     };
   }, [pecasExistentes, precosExistentes]);
 
+  // Inicializa somente na abertura; não reinicializa enquanto o usuário edita.
+  const abriuRef = useRef(false);
   useEffect(() => {
-    if (open) setRows(itensIniciais.map(comSugestaoCorrecao));
-  }, [open, itensIniciais, comSugestaoCorrecao]);
+    if (!open) {
+      abriuRef.current = false;
+      return;
+    }
+    if (abriuRef.current) return;
+    abriuRef.current = true;
+    setRows(itensIniciais.map(comSugestaoCorrecao));
+    setFormaInvest(formaInvestInicial);
+    setDestino(destinoInicial);
+    setFornecedor(fornecedorInicial);
+  }, [open]);
 
   const update = (i: number, patch: Partial<ImportRow>) => {
     setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
@@ -1039,7 +1062,12 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
   const faltando = rows.filter((r) => !rowValida(r)).length;
 
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o && !loading) onClose(); }}>
+    <Dialog open={open} onOpenChange={(o) => {
+      if (!o && !loading) {
+        onDraftChange({ rows, formaInvest, destino, fornecedor });
+        onClose();
+      }
+    }}>
       <DialogContent className="max-w-lg p-0 overflow-hidden flex flex-col max-h-[92vh]">
         <div className="bg-gradient-to-br from-emerald-600 to-teal-700 text-white px-5 py-4 shrink-0">
           <DialogHeader>
@@ -1319,7 +1347,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             </p>
           )}
           <div className="flex gap-2">
-            <Button variant="ghost" className="flex-1" onClick={onClose} disabled={loading}>
+            <Button variant="ghost" className="flex-1" onClick={onCancel} disabled={loading}>
               <X className="w-4 h-4 mr-1" /> Cancelar
             </Button>
             <Button
@@ -1593,7 +1621,17 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [importReading, setImportReading] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importFormaInvest, setImportFormaInvest] = useState<FormaInvest>("dinheiro");
+  const [importDestino, setImportDestino] = useState<Destino>("estoque");
+  const [importFornecedor, setImportFornecedor] = useState("");
   const [importSaving, setImportSaving] = useState(false);
+
+  const limparRascunhoImportacao = () => {
+    setImportRows([]);
+    setImportFormaInvest("dinheiro");
+    setImportDestino("estoque");
+    setImportFornecedor("");
+  };
 
   const handleNotaFile = async (file: File) => {
     setImportReading(true);
@@ -1630,6 +1668,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         };
       });
       setImportRows(rows);
+      setImportFormaInvest("dinheiro");
+      setImportDestino("estoque");
+      setImportFornecedor("");
       setImportOpen(true);
     } catch (error) {
       toast({
@@ -1663,7 +1704,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           });
           qc.invalidateQueries({ queryKey: ["encomendas"] });
           setImportOpen(false);
-          setImportRows([]);
+          limparRascunhoImportacao();
           toast({ title: "🚚 Encomenda criada!", description: `${rows.length} ${rows.length === 1 ? "peça" : "peças"} na aba A Caminho. Confirme quando chegar.` });
           return;
         }
@@ -1685,7 +1726,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       });
       invalidatePecas();
       setImportOpen(false);
-      setImportRows([]);
+      limparRascunhoImportacao();
       const criados = resp?.criados ?? (resp?.cadastrados ?? rows.length);
       const somados = resp?.somados ?? 0;
       const corrigidos = resp?.corrigidos ?? 0;
@@ -2356,7 +2397,17 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                 })}
                 precosExistentes={precosExistentes}
                 onConfirm={confirmImport}
-                onClose={() => { if (!importSaving) { setImportOpen(false); setImportRows([]); } }}
+                onClose={() => { if (!importSaving) setImportOpen(false); }}
+                onCancel={() => { if (!importSaving) { setImportOpen(false); limparRascunhoImportacao(); setImportFormaInvest("dinheiro"); setImportDestino("estoque"); setImportFornecedor(""); } }}
+                onDraftChange={({ rows, formaInvest, destino, fornecedor }) => {
+                  setImportRows(rows);
+                  setImportFormaInvest(formaInvest);
+                  setImportDestino(destino);
+                  setImportFornecedor(fornecedor);
+                }}
+                formaInvestInicial={importFormaInvest}
+                destinoInicial={importDestino}
+                fornecedorInicial={importFornecedor}
                 loading={importSaving}
               />
             </div>
