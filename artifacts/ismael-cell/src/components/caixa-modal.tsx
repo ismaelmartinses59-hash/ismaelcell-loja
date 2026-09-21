@@ -671,7 +671,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         }
       }}
     >
-      <DialogContent className="max-w-lg w-full h-[95dvh] max-h-[95dvh] p-0 gap-0 flex flex-col overflow-hidden [&>button:last-child]:hidden">
+      <DialogContent className="max-w-lg w-full h-[95dvh] max-h-[95dvh] p-0 gap-0 flex flex-col overflow-y-auto overscroll-contain touch-pan-y [&>button:last-child]:hidden">
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2">
@@ -706,7 +706,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         </div>
 
         {/* ── Scrollable body ─────────────────────────────────────────────── */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y px-4 py-3 space-y-4">
+        <div className="flex-none overflow-visible px-4 py-3 space-y-4">
 
           {/* Avisos (NotificacoesToggle) */}
           <NotificacoesToggle />
@@ -861,7 +861,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               {/* Fechar caixa (inline form) */}
               {hoje.sessao.status !== "fechado" && (
                 (fecharAberto || historicoMovimentos) ? (
-                  <div className="mx-3 mb-3 space-y-2 border-t border-emerald-100 pt-3">
+                  <div id="caixa-fechamento-form" className="mx-3 mb-3 space-y-2 border-t border-emerald-100 pt-3">
                     <button
                       type="button"
                       onClick={() => {
@@ -1405,6 +1405,25 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           </div>
 
         </div>
+
+        {hoje?.sessao && hoje.sessao.status !== "fechado" && !fecharAberto && (
+          <div className="sticky bottom-0 z-10 shrink-0 border-t border-slate-200 bg-white/95 px-4 py-3 shadow-[0_-4px_12px_rgba(15,23,42,0.08)] backdrop-blur">
+            <Button
+              onClick={() => {
+                setContadoValor("");
+                setFecharAberto(true);
+                requestAnimationFrame(() => {
+                  document.getElementById("caixa-fechamento-form")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                });
+              }}
+              disabled={sessaoBusy}
+              className="h-11 w-full rounded-xl bg-blue-600 text-sm font-semibold hover:bg-blue-700"
+            >
+              <Moon className="mr-2 h-4 w-4" />
+              Fechar caixa
+            </Button>
+          </div>
+        )}
       </DialogContent>
 
       {/* Detalhe de um dia do histórico */}
