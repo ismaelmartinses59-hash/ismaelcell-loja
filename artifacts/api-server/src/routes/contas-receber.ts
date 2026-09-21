@@ -18,6 +18,38 @@ function parseValor(s: string): number {
   return isNaN(n) ? 0 : n;
 }
 
+// Os dois setores podem ter pequenas diferenças de escrita no mesmo modelo
+// (por exemplo, "TELA DO A14 5G" e "TELA A14 5G").
+const PALAVRAS_IGNORADAS_MODELO = new Set([
+  "TELA", "DISPLAY", "LCD", "TOUCH", "FRONTAL", "MODULO", "PECA",
+  "BATERIA", "PLACA", "CONECTOR", "FLEX", "ARO",
+  "DO", "DA", "DE", "DOS", "DAS", "E", "PARA",
+]);
+
+function chaveModeloEstoque(modelo: string): string {
+  return modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter((parte) => parte && !PALAVRAS_IGNORADAS_MODELO.has(parte))
+    .sort()
+    .join("|");
+}
+
+function chaveQualidadeEstoque(qualidade: string): string {
+  return qualidade
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function mesmaPecaEstoque(a: { modelo: string; qualidade: string }, b: { modelo: string; qualidade: string }): boolean {
+  return chaveModeloEstoque(a.modelo) === chaveModeloEstoque(b.modelo)
+    && chaveQualidadeEstoque(a.qualidade) === chaveQualidadeEstoque(b.qualidade);
+}
+
 async function getContaResumo(contaId: number) {
   const [conta] = await db
     .select()
@@ -312,14 +344,36 @@ router.post("/contas-receber/:id/item", async (req, res): Promise<void> => {
         if (!baixada) throw new Error("Sem estoque disponível");
 
         const outroSetor = peca.setor === "cliente" ? "lojista" : "cliente";
-        const gemeas = await tx.select().from(pecasTable).where(
+        let gemeas = await tx.select().from(pecasTable).where(
           and(
             eq(pecasTable.setor, outroSetor),
             sql`regexp_replace(lower(trim(${pecasTable.modelo})), '[^a-z0-9]+', '', 'g') = regexp_replace(lower(trim(${peca.modelo})), '[^a-z0-9]+', '', 'g')`,
             sql`regexp_replace(lower(trim(${pecasTable.qualidade})), '[^a-z0-9]+', '', 'g') = regexp_replace(lower(trim(${peca.qualidade})), '[^a-z0-9]+', '', 'g')`,
           ),
         );
-        if (gemeas.length === 0) throw new Error("Peça gêmea não encontrada no outro setor");
+
+        // Fallback para pares antigos com variações de escrita (ex.: "DO").
+        if (gemeas.length === 0) {
+          const candidatas = await tx
+            .select()
+            .from(pecasTable)
+            .where(eq(pecasTable.setor, outroSetor));
+          gemeas = candidatas.filter((candidata) => mesmaPecaEstoque(candidata, peca));
+        }
+
+        // Se o cadastro legado tiver só um lado do par, recria o espelho com
+        // a quantidade anterior à baixa para manter os setores sincronizados.
+        if (gemeas.length === 0) {
+          const [gemeaCriada] = await tx.insert(pecasTable).values({
+            modelo: peca.modelo,
+            qualidade: peca.qualidade,
+            valor: peca.valor,
+            valorCusto: peca.valorCusto,
+            quantidade: peca.quantidade,
+            setor: outroSetor,
+          }).returning();
+          gemeas = [gemeaCriada];
+        }
         for (const g of gemeas) {
           const [gemeaBaixada] = await tx
             .update(pecasTable)
