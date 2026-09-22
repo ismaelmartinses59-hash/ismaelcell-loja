@@ -659,8 +659,11 @@ export function CaixaSessaoGuard() {
   const diferenca = contadoNum - valFinal;
 
   return (
-    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/95 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-3xl bg-white shadow-2xl overflow-hidden">
+    <div
+      className="fixed inset-0 z-[9999] flex items-start justify-center overflow-y-auto overscroll-contain bg-slate-900/95 px-4 pt-4 pb-[calc(5rem+env(safe-area-inset-bottom))] backdrop-blur-sm"
+      style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
+    >
+      <div className="w-full max-w-md shrink-0 rounded-3xl bg-white shadow-2xl overflow-hidden">
         {mode === "abrir" ? (
           <>
             <div className="bg-gradient-to-br from-amber-400 to-orange-500 px-6 py-7 text-center text-white">
@@ -847,7 +850,7 @@ export function CaixaSessaoGuard() {
                     Carregando histórico...
                   </p>
                 ) : (
-                  <div className="max-h-72 space-y-3 overflow-y-auto pr-1">
+                  <div className="space-y-3 pr-1">
                     <div>
                       <div className="mb-1.5 flex items-center justify-between">
                         <span className="text-[11px] font-bold uppercase tracking-wide text-indigo-700">
