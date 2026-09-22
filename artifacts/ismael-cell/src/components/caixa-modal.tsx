@@ -673,7 +673,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     >
       <DialogContent
         className="max-w-lg w-full p-0 gap-0 flex flex-col [&>button:last-child]:hidden"
-        style={{ display: "flex", flexDirection: "column", height: "100dvh", maxHeight: "100dvh", overflow: "hidden" }}
+        style={{ display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, transform: "none", width: "100%", maxWidth: "none", height: "100svh", maxHeight: "100svh", overflow: "hidden", borderRadius: 0 }}
       >
         {/* ── Header ──────────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
