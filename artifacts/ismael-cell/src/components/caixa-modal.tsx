@@ -676,39 +676,28 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         style={{ display: "flex", flexDirection: "column", position: "fixed", top: 0, left: 0, translate: "none", transform: "none", animation: "none", width: "100%", maxWidth: "none", height: "100svh", maxHeight: "100svh", overflow: "hidden", borderRadius: 0 }}
       >
         {/* ── Header ──────────────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 pt-4 pb-3 border-b border-gray-100 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-emerald-100 rounded-xl flex items-center justify-center">
-              <Wallet className="w-5 h-5 text-emerald-600" />
-            </div>
-            <span className="text-xl font-bold text-gray-800">Caixa</span>
-          </div>
-          <div className="flex items-center gap-2">
-            {hoje?.sessao && hoje.sessao.status !== "fechado" && !fecharAberto && (
-              <button
-                onClick={() => {
-                  setContadoValor("");
-                  setFecharAberto(true);
-                }}
-                disabled={sessaoBusy}
-                className="flex items-center gap-1.5 border border-blue-500 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
-              >
-                <Moon className="w-3.5 h-3.5" />
-                Fechar caixa
-              </button>
-            )}
-            <button
-              onClick={onClose}
-              className="flex items-center gap-1 px-3 py-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-gray-100 active:bg-gray-200 transition-colors text-sm font-semibold"
-              aria-label="Voltar"
+            <div
+              className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-100 px-4 pb-3"
+              style={{ paddingTop: "max(4rem, env(safe-area-inset-top, 0px))" }}
             >
-              <ChevronDown className="w-4 h-4 rotate-90" />
-              Voltar
-            </button>
-          </div>
-        </div>
+              <div className="flex min-w-0 items-center gap-2">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100">
+                  <Wallet className="h-5 w-5 text-emerald-600" />
+                </div>
+                <span className="truncate text-xl font-bold text-gray-800">Caixa</span>
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex h-11 shrink-0 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm active:bg-slate-100"
+                aria-label="Sair do Caixa"
+              >
+                <X className="h-4 w-4" />
+                Sair
+              </button>
+            </div>
 
-        {/* ── Scrollable body ─────────────────────────────────────────────── */}
+            {/* ── Scrollable body ─────────────────────────────────────────────── */}
         <div
            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4"
            style={{ WebkitOverflowScrolling: "touch", touchAction: "pan-y" }}
