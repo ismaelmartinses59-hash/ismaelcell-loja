@@ -26,6 +26,7 @@ import {
   LABELS_FORMA,
   isCartaoForma,
 } from "../lib/formas-pagamento";
+import { agruparMovimentosVenda, tituloVendaAgrupada } from "../lib/agrupar-movimentos-venda";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -63,6 +64,8 @@ interface ContaResumo {
 
 interface HistoricoMovimento {
   id: number;
+  vendaId?: number | null;
+  pagamentoId?: number | null;
   tipo: "entrada" | "saida";
   valor: string;
   motivo: string;
@@ -275,6 +278,7 @@ export function CaixaSessaoGuard() {
       ? true
       : new Date(movimento.createdAt).getTime() >= Date.now() - 60 * 60 * 1000,
   );
+  const gruposHistorico = agruparMovimentosVenda(movimentosHistorico);
   const vendasHistorico = (historicoData?.vendas ?? [])
     .filter((venda) => {
       const vendaDataSP = new Intl.DateTimeFormat("en-CA", {
@@ -916,7 +920,7 @@ export function CaixaSessaoGuard() {
                           Entradas e saídas do Caixa
                         </span>
                         <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                          {movimentosHistorico.length}
+                          {gruposHistorico.length}
                         </span>
                       </div>
                       {movimentosHistorico.length === 0 ? (
@@ -925,7 +929,7 @@ export function CaixaSessaoGuard() {
                         </p>
                       ) : (
                         <div className="space-y-1.5">
-                          {movimentosHistorico.map((movimento) => (
+                          {gruposHistorico.map(({ principal: movimento, partes }) => (
                             <div key={movimento.id} className="rounded-lg border border-white bg-white px-3 py-2">
                               <div className="flex items-start justify-between gap-2 text-xs">
                                 <div className="flex min-w-0 items-start gap-1.5">
@@ -934,16 +938,21 @@ export function CaixaSessaoGuard() {
                                   ) : (
                                     <ArrowUpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />
                                   )}
-                                  <span className="min-w-0 font-semibold text-slate-700">{movimento.motivo}</span>
+                                  <span className="min-w-0 font-semibold text-slate-700">{tituloVendaAgrupada({ principal: movimento, partes })}</span>
                                 </div>
                                 <span className={`shrink-0 font-bold ${movimento.tipo === "entrada" ? "text-emerald-700" : "text-red-600"}`}>
                                   {movimento.tipo === "entrada" ? "+" : "−"}
-                                  {formatMoney(parseValor(movimento.valor))}
+                                  {formatMoney(partes.reduce((sum, parte) => sum + parseValor(parte.valor), 0))}
                                 </span>
                               </div>
                               <div className="mt-0.5 pl-5 text-[10px] text-slate-500">
-                                {formatHoraSP(movimento.createdAt)} · {labelFormaPagamento(movimento.formaPagamento)}
+                                {formatHoraSP(movimento.createdAt)} · {partes.length > 1 ? "Misto" : labelFormaPagamento(movimento.formaPagamento)}
                               </div>
+                              {partes.length > 1 && (
+                                <div className="mt-1 pl-5 text-[10px] text-slate-600">
+                                  {partes.map((p) => `${labelFormaPagamento(p.formaPagamento)} ${formatMoney(parseValor(p.valor))}`).join(" + ")}
+                                </div>
+                              )}
                             </div>
                           ))}
                         </div>
