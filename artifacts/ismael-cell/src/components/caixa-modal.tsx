@@ -38,6 +38,7 @@ import {
   QrCode,
   X,
 } from "lucide-react";
+import { agruparMovimentosVenda, tituloVendaAgrupada } from "../lib/agrupar-movimentos-venda";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
@@ -186,6 +187,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [diaDetalhe, setDiaDetalhe] = useState<CaixaSessao | null>(null);
   const [movimentoDetalhe, setMovimentoDetalhe] =
     useState<CaixaMovimentoComVenda | null>(null);
+  const [detalhePartes, setDetalhePartes] = useState<CaixaMovimentoComVenda[]>([]);
   const [mostrarFormasReembolso, setMostrarFormasReembolso] = useState(false);
   const [historicoMovimentos, setHistoricoMovimentos] = useState<"dia" | "hora" | null>(null);
   const [nowTick, setNowTick] = useState(0);
@@ -264,6 +266,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     },
   });
   const movimentosHoje = hojeTravado ? [] : (hojeMovData?.movimentos ?? []);
+  const gruposHoje = agruparMovimentosVenda(movimentosHoje);
   const movimentosHistorico = historicoMovimentos
     ? movimentosHoje.filter((m) => {
         if (historicoMovimentos === "dia") return true;
@@ -271,6 +274,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         return Number.isFinite(criadoEm) && criadoEm >= Date.now() - 60 * 60 * 1000;
       })
     : [];
+
+  const gruposHistorico = agruparMovimentosVenda(movimentosHistorico);
 
   const { data: vendasHojeData, isFetching: vendasHojeFetching, refetch: refetchVendasHoje } = useQuery<{
     vendas: VendaDoFechamento[];
@@ -306,6 +311,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
       return r.json();
     },
   });
+
+  const gruposDetalhe = agruparMovimentosVenda(detalheData?.movimentos ?? []);
 
   const params: ListCaixaParams =
     periodo === "custom" && inicio && fim ? { inicio, fim } : { periodo: periodo === "custom" ? "30" : periodo };
@@ -965,7 +972,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                                   Entradas e saídas do Caixa
                                 </span>
                                 <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
-                                  {movimentosHistorico.length}
+                                  {gruposHistorico.length}
                                 </span>
                               </div>
                               {movimentosHistorico.length === 0 ? (
@@ -974,22 +981,27 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                                 </p>
                               ) : (
                                 <div className="space-y-1.5">
-                            {movimentosHistorico.map((m) => (
+                            {gruposHistorico.map(({ principal: m, partes }) => (
                               <div key={m.id} className="rounded-lg border border-white bg-white px-2.5 py-2">
                                 <div className="flex items-start justify-between gap-2 text-xs">
                                   <div className="flex min-w-0 items-start gap-1.5">
                                     {m.tipo === "entrada"
                                       ? <ArrowDownCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-600" />
                                       : <ArrowUpCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-500" />}
-                                    <span className="min-w-0 font-semibold text-slate-700">{m.motivo}</span>
+                                    <span className="min-w-0 font-semibold text-slate-700">{tituloVendaAgrupada({ principal: m, partes })}</span>
                                   </div>
                                   <span className={`shrink-0 font-bold ${m.tipo === "entrada" ? "text-emerald-700" : "text-red-600"}`}>
-                                    {m.tipo === "entrada" ? "+" : "−"}{formatMoney(parseMoney(m.valor))}
+                                    {m.tipo === "entrada" ? "+" : "−"}{formatMoney(partes.reduce((sum, parte) => sum + parseMoney(parte.valor), 0))}
                                   </span>
                                 </div>
                                 <div className="mt-0.5 pl-5 text-[10px] text-slate-500">
-                                  {formatHoraSP(m.createdAt)} · {labelFormaPagamento(m.formaPagamento, m.tipo)}
+                                  {formatHoraSP(m.createdAt)} · {partes.length > 1 ? "Misto" : labelFormaPagamento(m.formaPagamento, m.tipo)}
                                 </div>
+                                {partes.length > 1 && (
+                                  <div className="mt-1 pl-5 text-[10px] text-slate-600">
+                                    {partes.map((p) => `${labelFormaPagamento(p.formaPagamento, p.tipo)} ${formatMoney(parseMoney(p.valor))}`).join(" + ")}
+                                  </div>
+                                )}
                               </div>
                             ))}
                                 </div>
@@ -1286,7 +1298,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               <div className="text-center py-6 text-muted-foreground text-sm">Nenhuma movimentação hoje ainda.</div>
             ) : (
               <div className="space-y-1.5">
-                {movimentosHoje.map((m) => {
+                {gruposHoje.map(({ principal: m, partes }) => {
                   const isEntrada = m.tipo === "entrada";
                   return (
                     <div
@@ -1297,6 +1309,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         if (isEntrada) {
                           setMostrarFormasReembolso(false);
                           setMovimentoDetalhe(m);
+                          setDetalhePartes(partes);
                         }
                       }}
                       onKeyDown={(e) => {
@@ -1304,6 +1317,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                           e.preventDefault();
                           setMostrarFormasReembolso(false);
                           setMovimentoDetalhe(m);
+                          setDetalhePartes(partes);
                         }
                       }}
                       className={`rounded-2xl border bg-white px-3 py-2.5 ${isEntrada ? "cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-all" : ""}`}
@@ -1313,13 +1327,18 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                           {isEntrada ? <ArrowDownCircle className="w-4 h-4 text-emerald-600" /> : <ArrowUpCircle className="w-4 h-4 text-red-500" />}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-semibold text-slate-800 truncate">{m.motivo}</p>
+                          <p className="text-sm font-semibold text-slate-800 truncate">{tituloVendaAgrupada({ principal: m, partes })}</p>
                           <p className="text-[11px] text-slate-400">
                             {m.tipo === "entrada" && m.vendaId ? "Compra: " : m.vendaTipo === "reembolsada" ? "Reembolso: " : ""}
                             {formatDataHoraSP(m.createdAt)}
                             {m.modelo ? ` · ${m.modelo}` : ""}
-                            {` · ${labelFormaPagamento(m.formaPagamento, m.tipo)}`}
+                            {partes.length > 1 ? " · Misto" : ` · ${labelFormaPagamento(m.formaPagamento, m.tipo)}`}
                           </p>
+                          {partes.length > 1 && (
+                            <p className="text-[11px] font-medium text-slate-600">
+                              {partes.map((p) => `${labelFormaPagamento(p.formaPagamento, p.tipo)} ${formatMoney(parseMoney(p.valor))}`).join(" + ")}
+                            </p>
+                          )}
                           {m.tipo === "entrada" && m.vendaTipo === "reembolsada" && m.vendaReembolsoAt && (
                             <p className="text-[11px] font-semibold text-red-600">
                               Reembolso: {formatDataHoraSP(m.vendaReembolsoAt)}
@@ -1327,11 +1346,11 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                           )}
                         </div>
                         <span className={`text-sm font-bold shrink-0 ${isEntrada ? "text-emerald-700" : "text-red-600"}`}>
-                          {isEntrada ? "+" : "−"}{formatMoney(parseMoney(m.valor))}
+                          {isEntrada ? "+" : "−"}{formatMoney(partes.reduce((sum, parte) => sum + parseMoney(parte.valor), 0))}
                         </span>
-                        <button onClick={(e) => { e.stopPropagation(); onDelete(m); }} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Excluir">
+                        {partes.length === 1 && <button onClick={(e) => { e.stopPropagation(); onDelete(m); }} className="text-slate-300 hover:text-red-500 transition-colors shrink-0" title="Excluir">
                           <Trash2 className="w-4 h-4" />
-                        </button>
+                        </button>}
                       </div>
                       {renderReembolsoStatus(m)}
                     </div>
@@ -1493,7 +1512,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             </div>
           ) : (
             <div className="space-y-2">
-              {detalheData.movimentos.map((m) => {
+              {gruposDetalhe.map(({ principal: m, partes }) => {
                 const isEntrada = m.tipo === "entrada";
                 return (
                   <div
@@ -1504,6 +1523,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                       if (isEntrada) {
                         setMostrarFormasReembolso(false);
                         setMovimentoDetalhe(m);
+                        setDetalhePartes(partes);
                       }
                     }}
                     onKeyDown={(e) => {
@@ -1511,6 +1531,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         e.preventDefault();
                         setMostrarFormasReembolso(false);
                         setMovimentoDetalhe(m);
+                        setDetalhePartes(partes);
                       }
                     }}
                     className={`rounded-lg border bg-white px-3 py-2 ${isEntrada ? "cursor-pointer hover:bg-slate-50 active:scale-[0.99] transition-all" : ""}`}
@@ -1523,7 +1544,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                       )}
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-foreground truncate">
-                          {m.motivo}
+                          {tituloVendaAgrupada({ principal: m, partes })}
                         </p>
                         <p className="text-[11px] text-muted-foreground">
                           {m.tipo === "entrada" && m.vendaId ? "Compra: " : m.vendaTipo === "reembolsada" ? "Reembolso: " : ""}
@@ -1541,7 +1562,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                             {isEntrada ? (m.vendaId ? "Venda" : "Entrada") : "Saída"}
                           </span>
                           <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">
-                            {labelFormaPagamento(m.formaPagamento, m.tipo)}
+                            {partes.length > 1 ? "Misto" : labelFormaPagamento(m.formaPagamento, m.tipo)}
                           </span>
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
                             {formatDataHoraSP(m.createdAt)}
@@ -1557,9 +1578,14 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                         className={`text-sm font-bold shrink-0 ${isEntrada ? "text-green-700" : "text-red-700"}`}
                       >
                         {isEntrada ? "+" : "−"}
-                        {formatMoney(parseMoney(m.valor))}
+                        {formatMoney(partes.reduce((sum, parte) => sum + parseMoney(parte.valor), 0))}
                       </span>
                     </div>
+                    {partes.length > 1 && (
+                      <p className="mt-1 text-[11px] text-slate-600">
+                        {partes.map((p) => `${labelFormaPagamento(p.formaPagamento, p.tipo)} ${formatMoney(parseMoney(p.valor))}`).join(" + ")}
+                      </p>
+                    )}
                     {renderReembolsoStatus(m)}
                   </div>
                 );
@@ -1574,6 +1600,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         onOpenChange={(v) => {
           if (!v) {
             setMovimentoDetalhe(null);
+            setDetalhePartes([]);
             setMostrarFormasReembolso(false);
           }
         }}
@@ -1586,14 +1613,19 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
             <div className="space-y-4">
               <div className="rounded-xl border bg-slate-50 p-3">
                 <p className="font-semibold text-slate-800">
-                  {movimentoDetalhe.motivo}
+                  {tituloVendaAgrupada({ principal: movimentoDetalhe, partes: detalhePartes.length ? detalhePartes : [movimentoDetalhe] })}
                 </p>
                 <p className="mt-1 text-sm text-slate-500">
                   {formatDataHoraSP(movimentoDetalhe.createdAt)}
                 </p>
                 <p className="mt-2 text-xl font-bold text-emerald-700">
-                  {formatMoney(parseMoney(movimentoDetalhe.valor))}
+                  {formatMoney((detalhePartes.length ? detalhePartes : [movimentoDetalhe]).reduce((sum, parte) => sum + parseMoney(parte.valor), 0))}
                 </p>
+                {detalhePartes.length > 1 && (
+                  <p className="mt-1 text-sm text-slate-600">
+                    {detalhePartes.map((parte) => `${labelFormaPagamento(parte.formaPagamento, parte.tipo)} ${formatMoney(parseMoney(parte.valor))}`).join(" + ")}
+                  </p>
+                )}
               </div>
 
               {movimentoDetalhe.vendaReembolsoAt ||
