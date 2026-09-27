@@ -23,6 +23,7 @@ import { DivisaoLucro } from "./divisao-lucro";
 import { FinanceAiModal } from "./finance-ai-modal";
 import {
   Wallet,
+  Sparkles,
   ArrowDownCircle,
   ArrowUpCircle,
   Trash2,
@@ -700,7 +701,6 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </div>
                 <span className="truncate text-xl font-bold text-gray-800">Caixa</span>
               </div>
-              <button data-testid="button-abrir-ia-financeira" type="button" onClick={() => setFinanceOpen(true)} className="h-11 shrink-0 rounded-xl bg-blue-600 px-3 text-xs font-bold text-white">IA Financeira</button>
               <button
                 type="button"
                 onClick={onClose}
@@ -711,6 +711,21 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 Sair
               </button>
             </div>
+
+            {/* Atalho da IA acima da navegação e da barra de fechamento */}
+            <button
+              data-testid="button-abrir-ia-financeira"
+              type="button"
+              onClick={() => setFinanceOpen(true)}
+              aria-label="Abrir IA Financeira"
+              aria-haspopup="dialog"
+              aria-expanded={financeOpen}
+              title="Abrir IA Financeira"
+              className="absolute bottom-[calc(8rem+env(safe-area-inset-bottom,0px))] right-6 z-20 flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-full bg-blue-600 text-white shadow-[0_8px_24px_rgba(37,99,235,0.35)] transition-transform hover:bg-blue-700 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+            >
+              <Sparkles aria-hidden="true" className="h-5 w-5" />
+              <span aria-hidden="true" className="text-[10px] font-extrabold leading-none tracking-wide">IA</span>
+            </button>
 
             {/* ── Scrollable body ─────────────────────────────────────────────── */}
         <div
