@@ -24,9 +24,11 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 import { fetchWithSession as fetch } from "@/lib/api-fetch";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Orders() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -106,12 +108,14 @@ export default function Orders() {
 
   const handleLogout = async () => {
     try {
-      await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/auth/logout`, { method: "POST", credentials: "same-origin" });
-    } finally {
+      const response = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/auth/logout`, { method: "POST" });
+      if (!response.ok) throw new Error("Logout failed");
       queryClient.clear();
       localStorage.removeItem("isLoggedIn");
       localStorage.removeItem("userEmail");
       setLocation("/");
+    } catch {
+      toast({ title: "Não foi possível sair", description: "Tente novamente quando a conexão voltar.", variant: "destructive" });
     }
   };
 
