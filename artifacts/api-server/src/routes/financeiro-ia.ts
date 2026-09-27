@@ -143,6 +143,8 @@ async function snapshot() {
   const purchaseRows = recent.filter(row => row.tipo === "saida" &&
     classificar(row.categoria, row.motivo) === "pecas" &&
     dayIndex(row.createdAt) >= today - 56);
+  const biggestExpense = recent.filter(row => row.tipo === "saida")
+    .sort((a, b) => cents(b.valor) - cents(a.valor))[0];
   const byWeek = new Map<number, number>();
   const byDay = new Map<number, number>();
   for (const row of purchaseRows) {
@@ -240,6 +242,12 @@ async function snapshot() {
       semanasRegistradas: purchaseValues.length,
     },
     categorias: Object.fromEntries(Object.entries(week.categorias).map(([key, v]) => [key, money(v)])),
+    maiorDespesa: biggestExpense ? {
+      valor: money(cents(biggestExpense.valor)),
+      motivo: biggestExpense.motivo,
+      data: daySP(biggestExpense.createdAt),
+      categoria: classificar(biggestExpense.categoria, biggestExpense.motivo) ?? "não classificada",
+    } : null,
     estoqueBaixo: stockLow,
     despesasPrevistas: { total: money(expensesTotal), contas: expenses.map(e => ({ ...e, valor: money(e.valor) })) },
     projecao7Dias: projected === null ? null : money(projected),
@@ -328,15 +336,23 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
     } else if (/reserva|disponivel|caixa/.test(q)) {
       answer = saldo.total === null ? insufficient
         : `Dinheiro físico: ${reais(Math.round(saldo.dinheiro! * 100))}; PIX líquido registrado: ${reais(Math.round(saldo.pix * 100))}; total: ${reais(Math.round(saldo.total * 100))}; reserva ${saldo.protecaoAtiva ? "protegida" : "desativada"}: ${reais(Math.round(saldo.reserva * 100))}; disponível sem usar reserva: ${reais(Math.round(saldo.disponivel! * 100))}. ${saldo.base}`;
-    } else if (/maior despesa|gasto.*mais|gastando demais/.test(q)) {
+    } else if (/maior despesa/.test(q)) {
+      answer = s.maiorDespesa
+        ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`
+        : insufficient;
+    } else if (/(preciso|falta).*fatur.*compra|quanto.*(proxima|pr[oó]xima) compra/.test(q)) {
+      const goal = s.metaCompra > 0 ? s.metaCompra : s.compras.mediaSemanal;
+      answer = saldo.disponivel === null || goal === null ? insufficient
+        : `Para a ${s.metaCompra > 0 ? "meta planejada" : "média semanal registrada"} de ${reais(Math.round(goal * 100))}, faltam ${reais(Math.max(0, Math.round((goal - saldo.disponivel) * 100)))} em caixa operacional. Isso não é uma meta de faturamento bruto: somente entradas efetivamente recebidas em dinheiro/PIX, líquidas de saídas, aumentam o disponível.`;
+    } else if (/gasto.*mais|gastando demais/.test(q)) {
       const categories = Object.entries(s.categorias).sort((a, b) => b[1] - a[1]);
       answer = categories.length ? `Nesta semana, a maior categoria registrada foi ${categories[0][0]}: ${reais(Math.round(categories[0][1] * 100))}. Saídas da semana: ${reais(Math.round(s.semana.saidas * 100))}; semana anterior: ${reais(Math.round(s.comparacao.semanaAnterior.saidas * 100))}. Despesas antigas sem categoria não entram na classificação.`
         : insufficient;
     } else if (/fatur|melhorando|evolu/.test(q)) {
-      answer = s.semana.registros ? `Entradas nesta semana: ${reais(Math.round(s.semana.entradas * 100))}; semana anterior: ${reais(Math.round(s.comparacao.semanaAnterior.entradas * 100))}. Nos últimos 30 dias: ${reais(Math.round(s.mes.entradas * 100))}; 30 dias anteriores: ${reais(Math.round(s.comparacao.periodoAnterior.entradas * 100))}. A semana atual está em andamento; faturamento sozinho não mede lucro.`
+      answer = s.semana.registros ? `Entradas hoje: ${reais(Math.round(s.dia.entradas * 100))}; nesta semana: ${reais(Math.round(s.semana.entradas * 100))}; semana anterior: ${reais(Math.round(s.comparacao.semanaAnterior.entradas * 100))}. Nos últimos 30 dias: ${reais(Math.round(s.mes.entradas * 100))}; 30 dias anteriores: ${reais(Math.round(s.comparacao.periodoAnterior.entradas * 100))}. A semana atual está em andamento; faturamento sozinho não mede lucro.`
         : insufficient;
     } else if (/lucro/.test(q)) {
-      answer = s.semana.lucro === null ? insufficient
+      answer = s.semana.registros === 0 || s.semana.lucro === null ? insufficient
         : `Lucro estimado da semana: ${reais(Math.round(s.semana.lucro * 100))}. Entradas ${reais(Math.round(s.semana.entradas * 100))} menos custo das peças vendidas e despesas operacionais registradas; compras de estoque e retiradas não são descontadas duas vezes. Custos de serviços não registrados não entram.`;
     } else if (/peca|estoque|compra/.test(q)) {
       answer = s.compras.mediaSemanal === null ? insufficient

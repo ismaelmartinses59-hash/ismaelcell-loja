@@ -120,7 +120,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     if (!window.confirm(`Confirmar retirada de R$ ${amount} em ${payment === "pix" ? "PIX" : "dinheiro"}? Esta ação fará uma saída real no Caixa.`)) return;
     setSending(true);
     try {
-      await api("/financeiro-ia/retiradas", {
+      const result = await api<{ resumo: FinanceSnapshot }>("/financeiro-ia/retiradas", {
         method: "POST",
         body: JSON.stringify({ valor: amount, motivo: reason, observacao: note, data: date, formaPagamento: payment }),
       });
@@ -132,7 +132,14 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
         qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] }),
         qc.invalidateQueries({ queryKey: ["caixa-hoje"] }),
       ]);
-      toast({ title: "Retirada registrada no Caixa" });
+      const before = data?.saldos.disponivel;
+      const after = result.resumo.saldos.disponivel;
+      toast({
+        title: "Retirada registrada no Caixa",
+        description: before !== null && before !== undefined && after !== null
+          ? `Disponível operacional: ${fmt(before)} → ${fmt(after)}.`
+          : "Confira o saldo físico e o PIX registrados.",
+      });
     } catch (e) {
       toast({ title: "Retirada não registrada", description: String(e instanceof Error ? e.message : e), variant: "destructive" });
     } finally { setSending(false); }
