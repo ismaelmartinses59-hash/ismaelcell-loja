@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { requestMicrophone, turnOffMicrophone, useMicrophoneActive } from "@/lib/microphone";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-const DASHBOARD_HIDDEN_AT = "finance-ai-dashboard-hidden-at";
+const DASHBOARD_HIDDEN_AT = "finance-ai-warnings-hidden-after-message-at";
 const fmt = (n: number | null) => n === null
   ? "Sem dados" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const todaySP = () => new Intl.DateTimeFormat("en-CA", {
@@ -433,11 +433,11 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
 
               <section id="conversa-financeira" className="scroll-mt-20 space-y-3" aria-label="Conversa com assistente financeiro">
                 <h3 className="flex items-center gap-2 font-bold text-slate-800"><MessageCircle className="h-4 w-4" /> Pergunte sobre suas finanças</h3>
-                {!dashboardHidden && <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2">
                   {["Como está meu caixa?", "Quanto posso gastar hoje?", "Posso comprar R$ 1.500 em peças?", "Quanto faturei essa semana?"].map(q => (
                     <button data-testid={`button-pergunta-${q.length}`} key={q} type="button" onClick={() => void ask(q)} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-800 hover:bg-blue-100">{q}</button>
                   ))}
-                </div>}
+                </div>
                 {messages.map((message, i) => <div key={i} className="space-y-1 text-sm">
                   <p className="ml-6 rounded-xl bg-slate-100 p-2 text-slate-800">{message.pergunta}</p>
                   <div className="mr-6 rounded-xl bg-blue-50 p-3 text-blue-950">
@@ -446,7 +446,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   </div>
                 </div>)}
                 <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex items-center gap-2">
-                  <Input data-testid="input-pergunta-financeira" className="min-w-0 flex-1" value={question} maxLength={400} onChange={e => { setQuestion(e.target.value); if (e.target.value.length > 0) hideDashboard(); }} placeholder="Pergunte sobre seu Caixa..." aria-label="Sua pergunta" />
+                  <Input data-testid="input-pergunta-financeira" className="min-w-0 flex-1" value={question} maxLength={400} onChange={e => setQuestion(e.target.value)} placeholder="Pergunte sobre seu Caixa..." aria-label="Sua pergunta" />
                   <Button
                     data-testid="button-falar-ia-financeira"
                     type="button"
