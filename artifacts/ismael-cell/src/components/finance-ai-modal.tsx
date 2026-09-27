@@ -429,45 +429,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 <p className="text-xs text-slate-600">Contas previstas (7 dias): {fmt(data.despesasPrevistas.total)} · Projeção do saldo (7 dias): {fmt(data.projecao7Dias)} <span className="text-slate-500">(estimativa)</span></p>
                 {data.estoqueBaixo.length > 0 && <p className="text-xs text-amber-700">Estoque baixo: {data.estoqueBaixo.map(p => `${p.modelo} (${p.quantidade})`).join(", ")}</p>}
               </section>
-
-              <section className="rounded-xl border p-3" aria-label="Configuração financeira">
-                <h3 className="font-bold text-slate-800">Metas e reserva</h3>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <label className="text-xs text-slate-600">Reserva atual (R$)
-                    <Input data-testid="input-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={reserva} onChange={e => setReserva(e.target.value)} />
-                  </label>
-                  <label className="text-xs text-slate-600">Meta máxima da reserva (R$)
-                    <Input data-testid="input-meta-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={metaReserva} onChange={e => setMetaReserva(e.target.value)} />
-                  </label>
-                  <label className="col-span-2 text-xs text-slate-600">Valor para a próxima compra (R$)
-                    <Input data-testid="input-meta-compra" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={meta} onChange={e => setMeta(e.target.value)} />
-                  </label>
-                </div>
-                <p className="mt-2 text-xs text-slate-500">O aumento automático nunca passa da meta e pode voltar a subir após um ajuste manual se houver saldo suficiente.</p>
-                <label className="mt-3 flex items-center gap-2 text-sm">
-                  <input data-testid="toggle-protecao-reserva" type="checkbox" checked={proteger} onChange={e => setProteger(e.target.checked)} />
-                  Proteger a reserva e permitir aumentos automáticos
-                </label>
-                <Button data-testid="button-salvar-financas" className="mt-3 w-full" disabled={saving} onClick={() => void saveConfig()}>{saving ? "Salvando..." : "Salvar configuração"}</Button>
-              </section>
-
-              <section className="rounded-xl border p-3" aria-label="Registrar retirada">
-                <Button data-testid="button-registrar-retirada" variant="outline" className="w-full" onClick={() => setWithdraw(v => !v)}>
-                  <ArrowDownRight className="mr-2 h-4 w-4" /> Registrar retirada
-                </Button>
-                {withdraw && <div className="mt-3 space-y-2">
-                  <label className="block text-xs text-slate-600">Valor (R$)<Input data-testid="input-retirada-valor" type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></label>
-                  <label className="block text-xs text-slate-600">Motivo<Input data-testid="input-retirada-motivo" value={reason} maxLength={120} onChange={e => setReason(e.target.value)} /></label>
-                  <label className="block text-xs text-slate-600">Data<Input data-testid="input-retirada-data" type="date" max={todaySP()} value={date} onChange={e => setDate(e.target.value)} /></label>
-                  <label className="block text-xs text-slate-600">Forma
-                    <select data-testid="select-retirada-forma" value={payment} onChange={e => setPayment(e.target.value as "dinheiro" | "pix")} className="mt-1 h-10 w-full rounded-md border bg-white px-2">
-                      <option value="dinheiro">Dinheiro</option><option value="pix">PIX</option>
-                    </select>
-                  </label>
-                  <label className="block text-xs text-slate-600">Observação (opcional)<Input data-testid="input-retirada-observacao" value={note} maxLength={500} onChange={e => setNote(e.target.value)} /></label>
-                  <Button data-testid="button-confirmar-retirada" variant="destructive" disabled={sending} className="w-full" onClick={() => void registerWithdrawal()}>{sending ? "Registrando..." : "Confirmar saída no Caixa"}</Button>
-                </div>}
-              </section>
               </>}
 
               <section id="conversa-financeira" className="scroll-mt-20 space-y-3" aria-label="Conversa com assistente financeiro">
@@ -536,6 +497,43 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   </div>
                 )}
                 {thinking && <p className="text-xs text-slate-500">Conferindo os registros...</p>}
+              </section>
+              <section className="rounded-xl border p-3" aria-label="Configuração financeira">
+                <h3 className="font-bold text-slate-800">Metas e reserva</h3>
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <label className="text-xs text-slate-600">Reserva atual (R$)
+                    <Input data-testid="input-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={reserva} onChange={e => setReserva(e.target.value)} />
+                  </label>
+                  <label className="text-xs text-slate-600">Meta máxima da reserva (R$)
+                    <Input data-testid="input-meta-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={metaReserva} onChange={e => setMetaReserva(e.target.value)} />
+                  </label>
+                  <label className="col-span-2 text-xs text-slate-600">Valor para a próxima compra (R$)
+                    <Input data-testid="input-meta-compra" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={meta} onChange={e => setMeta(e.target.value)} />
+                  </label>
+                </div>
+                <p className="mt-2 text-xs text-slate-500">O aumento automático nunca passa da meta e pode voltar a subir após um ajuste manual se houver saldo suficiente.</p>
+                <label className="mt-3 flex items-center gap-2 text-sm">
+                  <input data-testid="toggle-protecao-reserva" type="checkbox" checked={proteger} onChange={e => setProteger(e.target.checked)} />
+                  Proteger a reserva e permitir aumentos automáticos
+                </label>
+                <Button data-testid="button-salvar-financas" className="mt-3 w-full" disabled={saving} onClick={() => void saveConfig()}>{saving ? "Salvando..." : "Salvar configuração"}</Button>
+              </section>
+              <section className="rounded-xl border p-3" aria-label="Registrar retirada">
+                <Button data-testid="button-registrar-retirada" variant="outline" className="w-full" onClick={() => setWithdraw(v => !v)}>
+                  <ArrowDownRight className="mr-2 h-4 w-4" /> Registrar retirada
+                </Button>
+                {withdraw && <div className="mt-3 space-y-2">
+                  <label className="block text-xs text-slate-600">Valor (R$)<Input data-testid="input-retirada-valor" type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></label>
+                  <label className="block text-xs text-slate-600">Motivo<Input data-testid="input-retirada-motivo" value={reason} maxLength={120} onChange={e => setReason(e.target.value)} /></label>
+                  <label className="block text-xs text-slate-600">Data<Input data-testid="input-retirada-data" type="date" max={todaySP()} value={date} onChange={e => setDate(e.target.value)} /></label>
+                  <label className="block text-xs text-slate-600">Forma
+                    <select data-testid="select-retirada-forma" value={payment} onChange={e => setPayment(e.target.value as "dinheiro" | "pix")} className="mt-1 h-10 w-full rounded-md border bg-white px-2">
+                      <option value="dinheiro">Dinheiro</option><option value="pix">PIX</option>
+                    </select>
+                  </label>
+                  <label className="block text-xs text-slate-600">Observação (opcional)<Input data-testid="input-retirada-observacao" value={note} maxLength={500} onChange={e => setNote(e.target.value)} /></label>
+                  <Button data-testid="button-confirmar-retirada" variant="destructive" disabled={sending} className="w-full" onClick={() => void registerWithdrawal()}>{sending ? "Registrando..." : "Confirmar saída no Caixa"}</Button>
+                </div>}
               </section>
               {!dashboardHidden && <div className="border-t pt-3 text-[11px] leading-relaxed text-slate-500">
                 {data.avisos.map((notice, i) => <p key={i}>{notice}</p>)}
