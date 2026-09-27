@@ -488,7 +488,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 )}
                 {thinking && <p className="text-xs text-slate-500">Conferindo os registros...</p>}
               </section>
-              </section>
               <section className="rounded-xl border p-3" aria-label="Registrar retirada">
                 <Button data-testid="button-registrar-retirada" variant="outline" className="w-full" onClick={() => setWithdraw(v => !v)}>
                   <ArrowDownRight className="mr-2 h-4 w-4" /> Registrar retirada
