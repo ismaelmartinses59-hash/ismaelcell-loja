@@ -715,6 +715,24 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               </button>
             </div>
 
+            {!financeOpen && (
+              <button
+                data-testid="button-abrir-ia-financeira"
+                type="button"
+                onClick={() => setFinanceOpen(true)}
+                className="fixed z-[70] flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl ring-2 ring-white transition-transform hover:scale-105 hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300 active:scale-95"
+                style={{
+                  right: "max(1rem, calc(env(safe-area-inset-right, 0px) + 1rem))",
+                  bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
+                }}
+                aria-label="Abrir IA Financeira"
+                aria-haspopup="dialog"
+                title="IA Financeira"
+              >
+                <Bot className="h-6 w-6" aria-hidden="true" />
+              </button>
+            )}
+
             {/* ── Scrollable body ─────────────────────────────────────────────── */}
         <div
            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4"
@@ -1610,23 +1628,6 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 );
               })}
             </div>
-          )}
-          {!financeOpen && (
-            <button
-              data-testid="button-abrir-ia-financeira"
-              type="button"
-              onClick={() => setFinanceOpen(true)}
-              className="fixed z-[70] flex h-14 w-14 items-center justify-center rounded-full bg-blue-600 text-white shadow-xl ring-2 ring-white transition-transform hover:scale-105 hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-300 active:scale-95"
-              style={{
-                right: "max(1rem, calc(env(safe-area-inset-right, 0px) + 1rem))",
-                bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)",
-              }}
-              aria-label="Abrir IA Financeira"
-              aria-haspopup="dialog"
-              title="IA Financeira"
-            >
-              <Bot className="h-6 w-6" aria-hidden="true" />
-            </button>
           )}
         </DialogContent>
       </Dialog>
