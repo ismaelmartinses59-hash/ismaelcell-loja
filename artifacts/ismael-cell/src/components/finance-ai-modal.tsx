@@ -23,6 +23,11 @@ type FinanceSnapshot = {
     podeGastar: number | null; base: string;
   };
   metaCompra: number;
+  reservaAutomatica: {
+    meta: number; falta: number; aporte: number; percentual: 30 | 45 | 60;
+    entradas7Dias: number; compraProtegida: number; contasProtegidas: number;
+    estado: "pausada" | "sem_saldo" | "sem_entradas" | "concluida" | "acumulando";
+  };
   faltamMeta: number | null;
   semana: { entradas: number; saidas: number; retiradas: number; compras: number; lucro: number | null; custoAusente: boolean };
   mes: { entradas: number; saidas: number; lucro: number | null };
@@ -62,6 +67,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     queryFn: () => api("/financeiro-ia"),
   });
   const [reserva, setReserva] = useState("0");
+  const [metaReserva, setMetaReserva] = useState("1500");
   const [meta, setMeta] = useState("0");
   const [proteger, setProteger] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -92,9 +98,10 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   useEffect(() => {
     if (!data) return;
     setReserva(String(data.saldos.reserva.toFixed(2)));
+    setMetaReserva(String(data.reservaAutomatica.meta.toFixed(2)));
     setMeta(String(data.metaCompra.toFixed(2)));
     setProteger(data.saldos.protecaoAtiva);
-  }, [data?.saldos.reserva, data?.metaCompra, data?.saldos.protecaoAtiva]);
+  }, [data?.saldos.reserva, data?.reservaAutomatica.meta, data?.metaCompra, data?.saldos.protecaoAtiva]);
 
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -213,7 +220,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     try {
       await api("/financeiro-ia/config", {
         method: "PUT",
-        body: JSON.stringify({ reserva, metaCompra: meta, protecaoAtiva: proteger }),
+        body: JSON.stringify({ reserva, metaReserva, metaCompra: meta, protecaoAtiva: proteger }),
       });
       await qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
       toast({ title: "Configuração financeira salva" });
@@ -334,12 +341,34 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     <p className="text-[11px] text-slate-500">Dinheiro {fmt(summary.dinheiro)} · PIX {fmt(summary.pix)}</p>
                   </div>
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Reserva {summary.protecaoAtiva ? "protegida" : "desativada"}</p>
+                    <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Reserva atual {summary.protecaoAtiva ? "protegida" : "desativada"}</p>
                     <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
-                    <p className="text-[11px] text-blue-700">{summary.protecaoAtiva ? "Fora do disponível" : "Sem proteção ativa"}</p>
+                    <p className="text-[11px] text-blue-700">Meta máxima: {fmt(data.reservaAutomatica.meta)} · {summary.protecaoAtiva ? "fora do disponível" : "sem proteção ativa"}</p>
                   </div>
                 </div>
                 <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{summary.base}</p>
+              </section>
+
+              <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-sm" aria-label="Reserva gradual">
+                <h3 className="flex items-center gap-2 font-bold text-blue-900"><LockKeyhole className="h-4 w-4" /> Reserva gradual</h3>
+                <p className="mt-1 text-slate-700">
+                  Protegido: <strong>{fmt(summary.reserva)}</strong> de {fmt(data.reservaAutomatica.meta)}.
+                  {data.reservaAutomatica.falta > 0 && <> Faltam {fmt(data.reservaAutomatica.falta)} para o teto.</>}
+                </p>
+                {data.reservaAutomatica.aporte > 0 && (
+                  <p data-testid="text-aporte-reserva" className="mt-1 font-semibold text-emerald-700">
+                    A reserva aumentou {fmt(data.reservaAutomatica.aporte)} nesta atualização.
+                  </p>
+                )}
+                {data.reservaAutomatica.estado === "pausada" && <p className="mt-1 text-amber-700">Aumento automático pausado: ative a proteção da reserva abaixo.</p>}
+                {data.reservaAutomatica.estado === "sem_saldo" && <p className="mt-1 text-amber-700">Sem sessão da gaveta, não é seguro aumentar a reserva.</p>}
+                {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Sem entradas recentes em dinheiro ou PIX; a reserva atual permanece protegida.</p>}
+                {data.reservaAutomatica.estado === "concluida" && <p className="mt-1 text-emerald-700">Meta atingida. Novas entradas ficam para a operação e os pedidos.</p>}
+                {summary.reserva > data.reservaAutomatica.meta && <p className="mt-1 text-amber-700">O valor já protegido ultrapassa a nova meta. Ele não será reduzido sem seu ajuste manual.</p>}
+                <p className="mt-2 text-xs leading-relaxed text-slate-600">
+                  A IA separa até {data.reservaAutomatica.percentual}% do saldo registrado, conforme as entradas em dinheiro/PIX da semana ({fmt(data.reservaAutomatica.entradas7Dias)}), sem ultrapassar a meta e preservando {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas e {fmt(data.reservaAutomatica.compraProtegida)} para compras. Com histórico comparável: semana fraca 30%, normal 45%, forte 60%; sem histórico, 45%.
+                </p>
+                <p className="mt-1 text-xs text-slate-500">É uma proteção no cálculo do app, não uma transferência ou saída do Caixa. Gastos e transferências não registrados podem alterar o saldo real.</p>
               </section>
 
               <section className="space-y-2" aria-label="Próxima compra">
@@ -391,18 +420,22 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
               </section>
 
               <section className="rounded-xl border p-3" aria-label="Configuração financeira">
-                <h3 className="font-bold text-slate-800">Reserva e meta</h3>
+                <h3 className="font-bold text-slate-800">Metas e reserva</h3>
                 <div className="mt-3 grid grid-cols-2 gap-3">
-                  <label className="text-xs text-slate-600">Reserva (R$)
+                  <label className="text-xs text-slate-600">Reserva atual (R$)
                     <Input data-testid="input-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={reserva} onChange={e => setReserva(e.target.value)} />
                   </label>
-                  <label className="text-xs text-slate-600">Compra planejada (R$)
+                  <label className="text-xs text-slate-600">Meta máxima da reserva (R$)
+                    <Input data-testid="input-meta-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={metaReserva} onChange={e => setMetaReserva(e.target.value)} />
+                  </label>
+                  <label className="col-span-2 text-xs text-slate-600">Valor para a próxima compra (R$)
                     <Input data-testid="input-meta-compra" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={meta} onChange={e => setMeta(e.target.value)} />
                   </label>
                 </div>
+                <p className="mt-2 text-xs text-slate-500">O aumento automático nunca passa da meta e pode voltar a subir após um ajuste manual se houver saldo suficiente.</p>
                 <label className="mt-3 flex items-center gap-2 text-sm">
                   <input data-testid="toggle-protecao-reserva" type="checkbox" checked={proteger} onChange={e => setProteger(e.target.checked)} />
-                  Proteger a reserva no cálculo do disponível
+                  Proteger a reserva e permitir aumentos automáticos
                 </label>
                 <Button data-testid="button-salvar-financas" className="mt-3 w-full" disabled={saving} onClick={() => void saveConfig()}>{saving ? "Salvando..." : "Salvar configuração"}</Button>
               </section>

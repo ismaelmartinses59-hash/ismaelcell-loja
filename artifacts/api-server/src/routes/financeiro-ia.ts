@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db, appConfigTable, caixaTable, caixaSessoesTable, pecasTable } from "@workspace/db";
 import { requireFinanceSession } from "./auth";
 import { ai } from "@workspace/integrations-gemini-ai";
-import { calcularDisponibilidade, mediaDasSemanasComCompra } from "./financeiro-ia-calculos.js";
+import { calcularDisponibilidade, calcularReservaGradual, mediaDasSemanasComCompra, percentualReserva } from "./financeiro-ia-calculos.js";
 
 const router: IRouter = Router();
 router.use(requireFinanceSession);
@@ -14,7 +14,9 @@ const keys = {
   reserva: "ia_fin_reserva_valor",
   proteger: "ia_fin_reserva_ativa",
   meta: "ia_fin_meta_compra",
+  metaReserva: "ia_fin_meta_reserva",
 };
+const META_RESERVA_PADRAO = 150000;
 const categorias = [
   "pecas", "frete", "aluguel", "energia", "internet", "agua",
   "combustivel", "ferramentas", "alimentacao", "retirada pessoal",
@@ -60,9 +62,44 @@ async function readConfig() {
   return {
     rows: config,
     reserva: cents(config.get(keys.reserva) ?? "0"),
-    proteger: config.get(keys.proteger) === "true",
+    proteger: config.get(keys.proteger) !== "false",
     meta: cents(config.get(keys.meta) ?? "0"),
+    metaReserva: cents(config.get(keys.metaReserva) ?? "1500"),
   };
+}
+
+async function atualizarReservaGradual(
+  total: number | null,
+  reserva: number,
+  metaReserva: number,
+  compraPlanejada: number,
+  contasPrevistas: number,
+  entradas7Dias: number,
+  percentual: number,
+) {
+  if (total === null || entradas7Dias <= 0) {
+    return { reserva, metaReserva, aporte: 0, compraPlanejada, protecaoAtiva: null as boolean | null };
+  }
+  return db.transaction(async tx => {
+    // Duas consultas simultâneas não devem registrar o mesmo aumento duas vezes.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
+    const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
+    const atual = cents(config.get(keys.reserva) ?? "0");
+    const teto = cents(config.get(keys.metaReserva) ?? String(META_RESERVA_PADRAO / 100));
+    const ativa = config.get(keys.proteger) !== "false";
+    const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
+    const novo = ativa
+      ? calcularReservaGradual(total, atual, teto, contasPrevistas, compra, percentual)
+      : atual;
+    if (novo > atual) {
+      await tx.insert(appConfigTable).values({ key: keys.reserva, value: (novo / 100).toFixed(2) })
+        .onConflictDoUpdate({
+          target: appConfigTable.key,
+          set: { value: (novo / 100).toFixed(2), updatedAt: new Date() },
+        });
+    }
+    return { reserva: novo, metaReserva: teto, aporte: novo - atual, compraPlanejada: compra, protecaoAtiva: ativa };
+  });
 }
 
 async function snapshot() {
@@ -95,10 +132,6 @@ async function snapshot() {
     }, 0) : null;
   const pix = pixRows.reduce((sum, row) =>
     sum + (row.tipo === "entrada" ? 1 : -1) * cents(row.valor), 0);
-  const saldos = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, 0, 0);
-  const total = saldos.total;
-  const disponivel = saldos.disponivel;
-
   const weekStart = today - ((new Date(`${todayString}T12:00:00Z`).getUTCDay() + 6) % 7);
   const totalPeriod = (min: number, max: number) => {
     const rows = recent.filter(row => {
@@ -188,6 +221,38 @@ async function snapshot() {
     }
   } catch { /* configuração legada inválida: não inventar vencimentos */ }
   const expensesTotal = expenses.reduce((sum, e) => sum + e.valor, 0);
+  const entradasLiquidas = (min: number, max: number) =>
+    recent.filter(row => {
+      const date = dayIndex(row.createdAt);
+      return date >= min && date <= max && row.tipo === "entrada" &&
+        (!row.formaPagamento || row.formaPagamento === "dinheiro" || row.formaPagamento === "pix");
+    }).reduce((sum, row) => sum + cents(row.valor), 0);
+  const entradas7Dias = entradasLiquidas(today - 6, today);
+  const periodosAnteriores = [1, 2, 3, 4].map(i => {
+    const min = today - 6 - i * 7, max = today - i * 7;
+    return {
+      entradas: entradasLiquidas(min, max),
+      comRegistros: recent.some(row => {
+        const date = dayIndex(row.createdAt);
+        return date >= min && date <= max;
+      }),
+    };
+  });
+  const mediaEntradas = periodosAnteriores.every(periodo => periodo.comRegistros)
+    ? Math.round(periodosAnteriores.reduce((sum, periodo) => sum + periodo.entradas, 0) / 4)
+    : null;
+  const taxaReserva = percentualReserva(entradas7Dias, mediaEntradas);
+  const total = dinheiro === null ? null : dinheiro + pix;
+  const reservaAutomatica = await atualizarReservaGradual(
+    total, config.reserva, config.metaReserva,
+    config.meta > 0 ? config.meta : purchaseAverage ?? 0,
+    expensesTotal, entradas7Dias, taxaReserva,
+  );
+  config.reserva = reservaAutomatica.reserva;
+  config.metaReserva = reservaAutomatica.metaReserva;
+  if (reservaAutomatica.protecaoAtiva !== null) config.proteger = reservaAutomatica.protecaoAtiva;
+  const saldos = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, 0, 0);
+  const disponivel = saldos.disponivel;
   const spending = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, expensesTotal, config.meta);
   const safeToSpend = spending.podeGastar;
   const recentDays = totalPeriod(today - 27, today);
@@ -293,6 +358,18 @@ async function snapshot() {
       base: sessao ? `Dinheiro: ${sessao.status === "aberto" ? "abertura" : "último fechamento"} da gaveta e movimentos posteriores. PIX: saldo líquido dos lançamentos registrados desde o início; transferências fora do sistema não estão incluídas.` : "Sem sessão do Caixa registrada: saldo físico e disponibilidade não calculáveis.",
     },
     metaCompra: money(config.meta),
+    reservaAutomatica: {
+      meta: money(config.metaReserva),
+      falta: money(Math.max(0, config.metaReserva - config.reserva)),
+      aporte: money(reservaAutomatica.aporte),
+      percentual: taxaReserva,
+      entradas7Dias: money(entradas7Dias),
+      compraProtegida: money(reservaAutomatica.compraPlanejada),
+      contasProtegidas: money(expensesTotal),
+      estado: !config.proteger ? "pausada" : total === null ? "sem_saldo"
+        : config.reserva >= config.metaReserva ? "concluida"
+        : entradas7Dias <= 0 ? "sem_entradas" : "acumulando",
+    },
     faltamMeta: spending.faltaMeta === null ? null : money(spending.faltaMeta),
     dia: { entradas: money(dia.entradas), saidas: money(dia.saidas), retiradas: money(dia.retiradas) },
     semana: {
@@ -340,16 +417,20 @@ router.get("/financeiro-ia", async (_req, res) => {
 router.put("/financeiro-ia/config", async (req, res) => {
   const reserva = inputMoney(req.body?.reserva);
   const meta = inputMoney(req.body?.metaCompra);
+  const metaReserva = req.body?.metaReserva === undefined ? null : inputMoney(req.body.metaReserva);
   const proteger = req.body?.protecaoAtiva;
-  if (reserva === null || meta === null || typeof proteger !== "boolean") {
-    res.status(400).json({ error: "Informe reserva, meta e proteção válidas." }); return;
+  if (reserva === null || meta === null || typeof proteger !== "boolean" ||
+    (req.body?.metaReserva !== undefined && (metaReserva === null || reserva > metaReserva))) {
+    res.status(400).json({ error: "Informe uma reserva atual que não ultrapasse a meta, a compra planejada e a proteção." }); return;
   }
   try {
     await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
       for (const [key, value] of [
         [keys.reserva, (reserva / 100).toFixed(2)],
         [keys.meta, (meta / 100).toFixed(2)],
         [keys.proteger, String(proteger)],
+        ...(metaReserva !== null ? [[keys.metaReserva, (metaReserva / 100).toFixed(2)]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
     });
@@ -478,7 +559,7 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
         : `Limite conservador registrado: ${reais(Math.round(saldo.podeGastar * 100))}. Cálculo: ${reais(Math.round(saldo.disponivel! * 100))} disponível − ${reais(Math.round(s.despesasPrevistas.total * 100))} em contas previstas nos próximos 7 dias − ${reais(Math.round(s.metaCompra * 100))} da meta de compra. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
       answer = saldo.total === null ? insufficient
-        : `Dinheiro físico: ${reais(Math.round(saldo.dinheiro! * 100))}; PIX líquido registrado: ${reais(Math.round(saldo.pix * 100))}; total: ${reais(Math.round(saldo.total * 100))}; reserva ${saldo.protecaoAtiva ? "protegida" : "desativada"}: ${reais(Math.round(saldo.reserva * 100))}; disponível sem usar reserva: ${reais(Math.round(saldo.disponivel! * 100))}. ${saldo.base}${s.observacoes.find(a => a.titulo === "Reserva abaixo da meta") ? `\n${formatConcern(s.observacoes.find(a => a.titulo === "Reserva abaixo da meta")!)}` : ""}`;
+        : `Dinheiro físico: ${reais(Math.round(saldo.dinheiro! * 100))}; PIX líquido registrado: ${reais(Math.round(saldo.pix * 100))}; total: ${reais(Math.round(saldo.total * 100))}; reserva ${saldo.protecaoAtiva ? "protegida" : "desativada"}: ${reais(Math.round(saldo.reserva * 100))} de uma meta máxima de ${reais(Math.round(s.reservaAutomatica.meta * 100))}; disponível sem usar reserva: ${reais(Math.round(saldo.disponivel! * 100))}. A reserva cresce gradualmente conforme entradas em dinheiro/PIX e a margem após contas previstas e compras planejadas; nesta análise, a taxa foi ${s.reservaAutomatica.percentual}%. É uma proteção no cálculo do app, não uma transferência bancária. ${saldo.base}${s.observacoes.find(a => a.titulo === "Reserva abaixo da meta") ? `\n${formatConcern(s.observacoes.find(a => a.titulo === "Reserva abaixo da meta")!)}` : ""}`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

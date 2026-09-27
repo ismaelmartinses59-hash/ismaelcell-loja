@@ -24,3 +24,25 @@ export function mediaDasSemanasComCompra(valoresCentavos: number[]): number | nu
     ? Math.round(valoresCentavos.reduce((soma, valor) => soma + valor, 0) / valoresCentavos.length)
     : null;
 }
+
+export function percentualReserva(entradas7Dias: number, mediaSemanal: number | null): 30 | 45 | 60 {
+  if (mediaSemanal === null || mediaSemanal <= 0) return 45;
+  if (entradas7Dias < mediaSemanal * 0.7) return 30;
+  if (entradas7Dias > mediaSemanal * 1.3) return 60;
+  return 45;
+}
+
+export function calcularReservaGradual(
+  total: number | null,
+  atual: number,
+  meta: number,
+  contasPrevistas: number,
+  compraPlanejada: number,
+  percentual: number,
+): number {
+  if (total === null) return atual;
+  const limiteSeguro = Math.max(0, total - contasPrevistas - compraPlanejada);
+  const proximo = Math.min(meta, Math.floor(Math.max(0, total) * percentual / 100), limiteSeguro);
+  // Uma semana ruim não desfaz a proteção já registrada.
+  return Math.max(atual, proximo);
+}

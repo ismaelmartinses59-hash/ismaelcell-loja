@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calcularDisponibilidade, mediaDasSemanasComCompra } from "./financeiro-ia-calculos.ts";
+import { calcularDisponibilidade, calcularReservaGradual, mediaDasSemanasComCompra, percentualReserva } from "./financeiro-ia-calculos.ts";
 
 test("reserva protege R$ 2.000 dos R$ 2.550 em dinheiro e PIX", () => {
   assert.deepEqual(calcularDisponibilidade(155000, 100000, 200000, true, 0, 130000), {
@@ -32,4 +32,21 @@ test("contas e meta reduzem apenas o gasto prudente, não o disponível", () => 
 test("média de compras usa somente semanas com compras registradas", () => {
   assert.equal(mediaDasSemanasComCompra([120000, 130000, 150000, 125000]), 131250);
   assert.equal(mediaDasSemanasComCompra([]), null);
+});
+test("reserva cresce em etapas, sem ultrapassar R$ 1.500", () => {
+  assert.equal(calcularReservaGradual(100000, 0, 150000, 0, 0, 30), 30000);
+  assert.equal(calcularReservaGradual(150000, 30000, 150000, 0, 0, 60), 90000);
+  assert.equal(calcularReservaGradual(200000, 90000, 150000, 0, 0, 60), 120000);
+  assert.equal(calcularReservaGradual(350000, 120000, 150000, 0, 0, 45), 150000);
+});
+test("pedidos e contas têm prioridade; reserva existente não é reduzida", () => {
+  assert.equal(calcularReservaGradual(150000, 20000, 150000, 15000, 100000, 60), 35000);
+  assert.equal(calcularReservaGradual(100000, 45000, 150000, 15000, 60000, 30), 45000);
+  assert.equal(calcularReservaGradual(null, 45000, 150000, 0, 0, 60), 45000);
+});
+test("semanas fracas e fortes mudam a taxa, sem inventar comparação sem histórico", () => {
+  assert.equal(percentualReserva(60000, 100000), 30);
+  assert.equal(percentualReserva(100000, 100000), 45);
+  assert.equal(percentualReserva(150000, 100000), 60);
+  assert.equal(percentualReserva(100000, null), 45);
 });
