@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownRight, Bot, LockKeyhole, MessageCircle, Mic, Package, Send, Square, Volume2, VolumeX, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, Bot, LockKeyhole, MessageCircle, Mic, Package, Send, Square, Volume2, VolumeX, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -84,10 +84,11 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const [transcribing, setTranscribing] = useState(false);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
   const [selectedVoice, setSelectedVoice] = useState(() => window.localStorage.getItem("finance-voice") ?? "");
-  const [readAloud, setReadAloud] = useState(true);
+  const [readAloud, setReadAloud] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const microphoneActive = useMicrophoneActive();
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const latestMessageRef = useRef<HTMLDivElement | null>(null);
   const startingVoiceRef = useRef(false);
   const chunksRef = useRef<Blob[]>([]);
   const timeoutRef = useRef<number | null>(null);
@@ -103,6 +104,14 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const lastClosedAt = data?.ultimoFechamentoCaixa ? Date.parse(data.ultimoFechamentoCaixa) : NaN;
   const dashboardHidden = dashboardHiddenAt !== null &&
     (!Number.isFinite(lastClosedAt) || lastClosedAt <= dashboardHiddenAt);
+
+  useEffect(() => {
+    if (!open || messages.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      latestMessageRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, open]);
 
   function hideDashboard() {
     if (dashboardHiddenAt !== null) return;
@@ -311,11 +320,17 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   };
   return (
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
-      <DialogContent className="w-[calc(100vw-16px)] max-w-2xl max-h-[94dvh] overflow-y-auto p-0 gap-0 rounded-2xl">
+      <DialogContent className="w-[calc(100vw-16px)] max-w-2xl max-h-[94dvh] overflow-y-auto p-0 gap-0 rounded-2xl [&>button:last-child]:hidden">
         <DialogHeader className="sticky top-0 z-10 border-b bg-white px-4 py-4">
-          <DialogTitle className="flex items-center gap-2 text-lg text-slate-900">
-            <Bot className="h-5 w-5 text-blue-600" /> IA Financeira
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-3">
+            <DialogTitle className="flex min-w-0 items-center gap-2 text-lg text-slate-900">
+              <Bot className="h-5 w-5 shrink-0 text-blue-600" /> IA Financeira
+            </DialogTitle>
+            <Button data-testid="button-fechar-ia-financeira" type="button" variant="ghost" className="h-9 shrink-0 gap-1 px-2 text-xs text-slate-700 hover:bg-slate-100" onClick={onClose} aria-label="Fechar IA Financeira" title="Fechar IA Financeira">
+              <X className="h-4 w-4" aria-hidden="true" />
+              Fechar
+            </Button>
+          </div>
         </DialogHeader>
         <div className="space-y-5 p-4 pb-8">
           {isLoading && !data && <div className="py-12 text-center text-sm text-slate-500">Analisando os dados do Caixa...</div>}
@@ -433,16 +448,18 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
 
               <section id="conversa-financeira" className="scroll-mt-20 space-y-3" aria-label="Conversa com assistente financeiro">
                 <h3 className="flex items-center gap-2 font-bold text-slate-800"><MessageCircle className="h-4 w-4" /> Pergunte sobre suas finanças</h3>
+                <p className="text-xs text-slate-500">As respostas ficam escritas na conversa. A leitura em voz alta é opcional.</p>
                 <div className="flex flex-wrap gap-2">
                   {["Como está meu caixa?", "Quanto posso gastar hoje?", "Posso comprar R$ 1.500 em peças?", "Quanto faturei essa semana?"].map(q => (
                     <button data-testid={`button-pergunta-${q.length}`} key={q} type="button" onClick={() => void ask(q)} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-800 hover:bg-blue-100">{q}</button>
                   ))}
                 </div>
-                {messages.map((message, i) => <div key={i} className="space-y-1 text-sm">
+                {messages.map((message, i) => <div key={i} ref={i === messages.length - 1 ? latestMessageRef : undefined} className="space-y-1 text-sm">
                   <p className="ml-6 rounded-xl bg-slate-100 p-2 text-slate-800">{message.pergunta}</p>
-                  <div className="mr-6 rounded-xl bg-blue-50 p-3 text-blue-950">
+                  <div aria-label="Resposta por escrito da IA" aria-live="polite" className="mr-6 rounded-xl bg-blue-50 p-3 text-blue-950">
+                    <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">Resposta por escrito</p>
                     <p className="whitespace-pre-line leading-relaxed">{message.resposta}</p>
-                    <button data-testid={`button-ouvir-resposta-${i}`} type="button" onClick={() => speak(message.resposta)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><Volume2 className="h-3.5 w-3.5" /> Ouvir de novo</button>
+                    <button data-testid={`button-ouvir-resposta-${i}`} type="button" onClick={() => speak(message.resposta)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><Volume2 className="h-3.5 w-3.5" /> Ouvir em voz alta</button>
                   </div>
                 </div>)}
                 <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex items-center gap-2">
@@ -484,8 +501,8 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                       </select>
                     </label>
                     <label className="flex items-center gap-1.5">
-                      <input data-testid="checkbox-ler-resposta-ia" type="checkbox" checked={readAloud} onChange={e => setReadAloud(e.target.checked)} />
-                      Ler respostas
+                      <input data-testid="checkbox-ler-resposta-ia" aria-label="Ler respostas automaticamente em voz alta" type="checkbox" checked={readAloud} onChange={e => setReadAloud(e.target.checked)} />
+                      Ler respostas automaticamente
                     </label>
                   </div>
                   <p className="mt-2 text-[11px] text-slate-500">O trecho gravado é enviado para transcrição. Você pode desligar o microfone quando quiser.</p>
