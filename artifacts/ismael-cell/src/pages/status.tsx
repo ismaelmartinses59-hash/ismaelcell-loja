@@ -1,5 +1,5 @@
 import { useParams } from "wouter";
-import { useListOrders, getListOrdersQueryKey } from "@workspace/api-client-react";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -33,15 +33,23 @@ export default function Status() {
   const params = useParams();
   const codigo = params.codigo;
 
-  const { data: orders, isLoading } = useListOrders(
-    { search: codigo },
-    { 
-      query: { 
-        enabled: !!codigo,
-        queryKey: getListOrdersQueryKey({ search: codigo })
-      } 
-    }
-  );
+  const { data: order, isLoading } = useQuery<{
+    codigo: string; status: string; modelo: string; servico: string;
+    tempo: string; createdAt: string;
+  } | null>({
+    queryKey: ["public-status", codigo],
+    enabled: !!codigo,
+    queryFn: async () => {
+      const response = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/status/${encodeURIComponent(codigo!)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error("Não foi possível consultar o reparo.");
+      return response.json();
+    },
+    retry: false,
+  });
 
   if (isLoading) {
     return (
@@ -52,8 +60,6 @@ export default function Status() {
       </div>
     );
   }
-
-  const order = orders && orders.length > 0 ? orders.find(o => o.codigo === codigo) : null;
 
   if (!order) {
     return (

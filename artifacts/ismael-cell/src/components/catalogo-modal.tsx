@@ -9,6 +9,7 @@ import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liqu
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { generateExtratoBlob } from "@/lib/extrato-image";
+import { fetchWithSession as fetch } from "@/lib/api-fetch";
 import { EncomendasTab, FORNECEDORES } from "@/components/encomendas-tab";
 import { PedidosTab } from "@/components/pedidos-tab";
 

@@ -2,6 +2,8 @@ import { Router, type IRouter } from "express";
 import healthRouter from "./health";
 import ordersRouter from "./orders";
 import authRouter from "./auth";
+import { requireFinanceSession } from "./auth";
+import publicStatusRouter from "./public-status";
 import pecasRouter from "./pecas";
 import garantiasPecaRouter from "./garantias-peca";
 import vendasRouter from "./vendas";
@@ -19,8 +21,12 @@ import pedidosRouter from "./pedidos";
 const router: IRouter = Router();
 
 router.use(healthRouter);
-router.use(ordersRouter);
 router.use(authRouter);
+router.use(publicStatusRouter);
+// Every business route, including reads and inventory-changing operations,
+// requires the same server-issued session as the finance assistant.
+router.use(requireFinanceSession);
+router.use(ordersRouter);
 router.use(pecasRouter);
 router.use(garantiasPecaRouter);
 router.use(vendasRouter);

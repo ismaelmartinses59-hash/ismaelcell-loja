@@ -17,6 +17,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { fetchWithSession as fetch } from "@/lib/api-fetch";
 import { NotificacoesToggle } from "./notificacoes-toggle";
 import { DivisaoLucro } from "./divisao-lucro";
 import { FinanceAiModal } from "./finance-ai-modal";

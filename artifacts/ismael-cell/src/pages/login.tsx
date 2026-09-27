@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { Wrench } from "lucide-react";
+import { fetchWithSession } from "@/lib/api-fetch";
 
 const loginSchema = z.object({
   email: z.string().email("E-mail inválido"),
@@ -27,23 +28,45 @@ export default function Login() {
 
   const onSubmit = async (data: LoginForm) => {
     try {
-      const res = await fetch("/api/auth/login", {
+      const res = await fetchWithSession(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data),
       });
+      const result = await res.json().catch(() => ({}));
       if (!res.ok) {
         toast({
           title: "Credenciais inválidas",
-          description: "Verifique e-mail e senha.",
+          description: result.error ?? "Verifique e-mail e senha.",
           variant: "destructive",
         });
         return;
       }
-      localStorage.setItem("isLoggedIn", "true");
-      localStorage.setItem("userEmail", data.email);
+      if (result.success !== true) {
+        toast({
+          title: "Erro ao fazer login",
+          description: "O servidor não confirmou a sessão. Tente novamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      const sessionResponse = await fetchWithSession(
+        `${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/auth/session`,
+        { cache: "no-store" },
+      );
+      const session = await sessionResponse.json().catch(() => ({}));
+      if (!sessionResponse.ok || session.authenticated !== true) {
+        toast({
+          title: "Sessão não confirmada",
+          description: "O servidor não confirmou uma sessão ativa. Tente entrar novamente.",
+          variant: "destructive",
+        });
+        return;
+      }
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("userEmail");
       setLocation("/ordens");
-    } catch (error) {
+    } catch {
       toast({
         title: "Erro ao fazer login",
         description: "Tente novamente.",

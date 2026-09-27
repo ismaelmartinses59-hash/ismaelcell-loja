@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetOrderStats, useListOrders, getListOrdersQueryKey, getGetOrderStatsQueryKey,
@@ -21,11 +21,13 @@ import {
   Truck, Timer, Home, ClipboardList, MoreHorizontal, Bell, ChevronRight,
   Smartphone, ShieldAlert, Undo2, ShoppingCart
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
+import { fetchWithSession as fetch } from "@/lib/api-fetch";
 
 export default function Orders() {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
@@ -77,10 +79,6 @@ export default function Orders() {
   });
   const garantiasPendentes = garantiaItems.filter((g) => g.status === "pendente");
 
-  useEffect(() => {
-    if (localStorage.getItem("isLoggedIn") !== "true") setLocation("/");
-  }, [setLocation]);
-
   const handleTipoChange = (newTipo: OrderTipo) => {
     setTipo(newTipo);
     setSearch("");
@@ -110,6 +108,7 @@ export default function Orders() {
     try {
       await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/auth/logout`, { method: "POST", credentials: "same-origin" });
     } finally {
+      queryClient.clear();
       localStorage.removeItem("isLoggedIn");
       localStorage.removeItem("userEmail");
       setLocation("/");

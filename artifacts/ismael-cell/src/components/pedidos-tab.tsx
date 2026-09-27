@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { fetchWithSession as fetch } from "@/lib/api-fetch";
 import { Mic, Square, Plus, Trash2, Check, Share2, Pencil, ShoppingCart, Loader2, ArrowLeft, PackageCheck } from "lucide-react";
 import { FORNECEDORES } from "./encomendas-tab";
 

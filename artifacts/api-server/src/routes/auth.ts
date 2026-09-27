@@ -6,6 +6,22 @@ const router: IRouter = Router();
 
 const COOKIE = "finance_session";
 const secret = () => process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD;
+export function requireSameOrigin(req: Request, res: Response, next: NextFunction): void {
+  const origin = req.headers.origin;
+  if (origin) {
+    try {
+      const parsed = new URL(origin);
+      if (!["http:", "https:"].includes(parsed.protocol) ||
+        parsed.host !== req.headers.host ||
+        (process.env.NODE_ENV === "production" && parsed.protocol !== "https:")) {
+        res.status(403).json({ error: "Origem não permitida." }); return;
+      }
+    } catch {
+      res.status(403).json({ error: "Origem não permitida." }); return;
+    }
+  }
+  next();
+}
 function issueFinanceSession(res: Response, email: string) {
   const key = secret();
   if (!key) return;
@@ -30,21 +46,19 @@ export function requireFinanceSession(req: Request, res: Response, next: NextFun
     if (a.length !== b.length || !timingSafeEqual(a, b) ||
       typeof value.email !== "string" || typeof value.exp !== "number" || value.exp <= Date.now())
       throw new Error("invalid session");
-    if (req.method !== "GET") {
-      const origin = req.headers.origin;
-      const host = req.headers["x-forwarded-host"] ?? req.headers.host;
-      if (origin && new URL(origin).host !== host) { res.status(403).json({ error: "Origem não permitida." }); return; }
-    }
-    next();
+    requireSameOrigin(req, res, next);
   } catch { res.status(401).json({ error: "Sua sessão financeira expirou. Entre novamente." }); }
 }
-router.post("/auth/logout", (_req, res) => {
+router.post("/auth/logout", requireSameOrigin, (_req, res) => {
   res.clearCookie(COOKIE, { path: "/api" });
   res.json({ success: true });
 });
 
+router.get("/auth/session", requireFinanceSession, (_req, res) => {
+  res.json({ authenticated: true });
+});
 
-router.post("/auth/login", async (req, res): Promise<void> => {
+router.post("/auth/login", requireSameOrigin, async (req, res): Promise<void> => {
   const { email, password } = req.body as { email?: string; password?: string };
 
   if (!email || !password) {
@@ -56,10 +70,6 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   const adminPassword = process.env.ADMIN_PASSWORD;
 
   if (!adminEmail || !adminPassword) {
-    if (process.env.NODE_ENV !== "production") {
-      res.json({ success: true, email: email.trim().toLowerCase(), development: true });
-      return;
-    }
     res.status(500).json({ error: "Credenciais do sistema não configuradas" });
     return;
   }

@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { TrendingUp, TrendingDown, Wallet, CreditCard, Calendar, ChevronDown, ChevronRight } from "lucide-react";
 import { format, subDays, subMonths, startOfMonth, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { fetchWithSession as fetch } from "@/lib/api-fetch";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 

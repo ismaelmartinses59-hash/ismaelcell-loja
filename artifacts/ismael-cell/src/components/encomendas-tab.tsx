@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
+import { fetchWithSession as fetch } from "@/lib/api-fetch";
 import { Truck, Check, X, Trash2, PackageCheck, Clock, Undo2, AlertTriangle, HelpCircle } from "lucide-react";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
