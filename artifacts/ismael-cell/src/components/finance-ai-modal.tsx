@@ -366,7 +366,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 {data.reservaAutomatica.estado === "concluida" && <p className="mt-1 text-emerald-700">Meta atingida. Novas entradas ficam para a operação e os pedidos.</p>}
                 {summary.reserva > data.reservaAutomatica.meta && <p className="mt-1 text-amber-700">O valor já protegido ultrapassa a nova meta. Ele não será reduzido sem seu ajuste manual.</p>}
                 <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                  A IA separa até {data.reservaAutomatica.percentual}% do saldo registrado, conforme as entradas em dinheiro/PIX da semana ({fmt(data.reservaAutomatica.entradas7Dias)}), sem ultrapassar a meta e preservando {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas e {fmt(data.reservaAutomatica.compraProtegida)} para compras. Com histórico comparável: semana fraca 30%, normal 45%, forte 60%; sem histórico, 45%.
+                  A IA separa até {data.reservaAutomatica.percentual}% do saldo após considerar {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas, conforme as entradas em dinheiro/PIX da semana ({fmt(data.reservaAutomatica.entradas7Dias)}). Sem ultrapassar a meta, deixa até {fmt(data.reservaAutomatica.compraProtegida)} para pedidos agora. Se a compra planejada inteira não couber, preserva a parte viável. Com histórico comparável: semana fraca 30%, normal 45%, forte 60%; sem histórico, 45%.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">É uma proteção no cálculo do app, não uma transferência ou saída do Caixa. Gastos e transferências não registrados podem alterar o saldo real.</p>
               </section>

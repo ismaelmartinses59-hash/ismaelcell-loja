@@ -78,7 +78,9 @@ async function atualizarReservaGradual(
   percentual: number,
 ) {
   if (total === null || entradas7Dias <= 0) {
-    return { reserva, metaReserva, aporte: 0, compraPlanejada, protecaoAtiva: null as boolean | null };
+    const aposContas = Math.max(0, (total ?? 0) - contasPrevistas);
+    const pedidosPreservados = Math.min(compraPlanejada, Math.ceil(aposContas * (100 - percentual) / 100));
+    return { reserva, metaReserva, aporte: 0, compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - reserva)), protecaoAtiva: null as boolean | null };
   }
   return db.transaction(async tx => {
     // Duas consultas simultâneas não devem registrar o mesmo aumento duas vezes.
@@ -88,6 +90,8 @@ async function atualizarReservaGradual(
     const teto = cents(config.get(keys.metaReserva) ?? String(META_RESERVA_PADRAO / 100));
     const ativa = config.get(keys.proteger) !== "false";
     const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
+    const aposContas = Math.max(0, total - contasPrevistas);
+    const pedidosPreservados = Math.min(compra, Math.ceil(aposContas * (100 - percentual) / 100));
     const novo = ativa
       ? calcularReservaGradual(total, atual, teto, contasPrevistas, compra, percentual)
       : atual;
@@ -98,7 +102,7 @@ async function atualizarReservaGradual(
           set: { value: (novo / 100).toFixed(2), updatedAt: new Date() },
         });
     }
-    return { reserva: novo, metaReserva: teto, aporte: novo - atual, compraPlanejada: compra, protecaoAtiva: ativa };
+    return { reserva: novo, metaReserva: teto, aporte: novo - atual, compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)), protecaoAtiva: ativa };
   });
 }
 

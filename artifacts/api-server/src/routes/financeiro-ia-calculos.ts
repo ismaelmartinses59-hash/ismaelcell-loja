@@ -41,8 +41,11 @@ export function calcularReservaGradual(
   percentual: number,
 ): number {
   if (total === null) return atual;
-  const limiteSeguro = Math.max(0, total - contasPrevistas - compraPlanejada);
-  const proximo = Math.min(meta, Math.floor(Math.max(0, total) * percentual / 100), limiteSeguro);
+  const aposContas = Math.max(0, total - contasPrevistas);
+  // Se a compra planejada não couber inteira, ainda deixa uma parte viável
+  // para pedidos, em vez de impedir qualquer avanço da reserva.
+  const pedidos = Math.min(compraPlanejada, Math.ceil(aposContas * (100 - percentual) / 100));
+  const proximo = Math.min(meta, Math.floor(aposContas * percentual / 100), aposContas - pedidos);
   // Uma semana ruim não desfaz a proteção já registrada.
   return Math.max(atual, proximo);
 }
