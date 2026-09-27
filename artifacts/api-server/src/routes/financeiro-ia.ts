@@ -1,9 +1,9 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gte, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, sql } from "drizzle-orm";
 import { db, appConfigTable, caixaTable, caixaSessoesTable, pecasTable } from "@workspace/db";
 import { requireFinanceSession } from "./auth";
 import { ai } from "@workspace/integrations-gemini-ai";
-import { calcularDisponibilidade, calcularReservaGradual, mediaDasSemanasComCompra, percentualReserva } from "./financeiro-ia-calculos.js";
+import { calcularDisponibilidade, calcularReservaGradual, mediaDasSemanasComCompra, percentualReserva, somarEntradasNovas } from "./financeiro-ia-calculos.js";
 
 const router: IRouter = Router();
 router.use(requireFinanceSession);
@@ -15,6 +15,7 @@ const keys = {
   proteger: "ia_fin_reserva_ativa",
   meta: "ia_fin_meta_compra",
   metaReserva: "ia_fin_meta_reserva",
+  ultimoLancamentoReserva: "ia_fin_reserva_ultimo_lancamento",
 };
 const META_RESERVA_PADRAO = 150000;
 const categorias = [
@@ -74,27 +75,67 @@ async function atualizarReservaGradual(
   metaReserva: number,
   compraPlanejada: number,
   contasPrevistas: number,
-  entradas7Dias: number,
   percentual: number,
 ) {
-  if (total === null || entradas7Dias <= 0) {
+  if (total === null) {
     const aposContas = Math.max(0, (total ?? 0) - contasPrevistas);
     const pedidosPreservados = Math.min(compraPlanejada, Math.ceil(aposContas * (100 - percentual) / 100));
-    return { reserva, metaReserva, aporte: 0, compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - reserva)), protecaoAtiva: null as boolean | null };
+    return { reserva, metaReserva, aporte: 0, entradaNova: 0, inicioAgora: false, compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - reserva)), protecaoAtiva: null as boolean | null, saldosAtuais: null as { dinheiro: number; pix: number } | null };
   }
   return db.transaction(async tx => {
-    // Duas consultas simultâneas não devem registrar o mesmo aumento duas vezes.
+    // Avança o marcador e a reserva juntos: repetir a consulta não duplica o aporte.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
     const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
     const atual = cents(config.get(keys.reserva) ?? "0");
     const teto = cents(config.get(keys.metaReserva) ?? String(META_RESERVA_PADRAO / 100));
     const ativa = config.get(keys.proteger) !== "false";
     const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
-    const aposContas = Math.max(0, total - contasPrevistas);
+    const marcador = config.get(keys.ultimoLancamentoReserva);
+    if (marcador === undefined) {
+      // Ao ativar o rastreamento, não reaproveita entradas antigas como se
+      // tivessem acabado de ser recebidas.
+      const [ultimo] = await tx.select({ id: caixaTable.id }).from(caixaTable).orderBy(desc(caixaTable.id)).limit(1);
+      await tx.insert(appConfigTable).values({ key: keys.ultimoLancamentoReserva, value: String(ultimo?.id ?? 0) })
+        .onConflictDoUpdate({ target: appConfigTable.key, set: { value: String(ultimo?.id ?? 0), updatedAt: new Date() } });
+      const aposContas = Math.max(0, total - contasPrevistas);
+      const pedidos = Math.min(compra, Math.ceil(aposContas * (100 - percentual) / 100));
+      return { reserva: atual, metaReserva: teto, aporte: 0, entradaNova: 0, inicioAgora: true, compraPlanejada: Math.min(pedidos, Math.max(0, aposContas - atual)), protecaoAtiva: ativa, saldosAtuais: null as { dinheiro: number; pix: number } | null };
+    }
+    const cursor = Number(marcador);
+    if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Marcador da reserva inválido");
+    const novos = await tx.select({
+      id: caixaTable.id, tipo: caixaTable.tipo, valor: caixaTable.valor, formaPagamento: caixaTable.formaPagamento,
+    }).from(caixaTable).where(gt(caixaTable.id, cursor)).orderBy(caixaTable.id);
+    const entradaNova = somarEntradasNovas(
+      novos.map(row => ({ ...row, valorCentavos: cents(row.valor) })), cursor,
+    );
+    let dinheiroAtual: number | null = null;
+    let pixAtual = 0;
+    let novo = atual;
+    if (entradaNova > 0 && ativa) {
+      // Consulta o saldo depois de ver a entrada confirmada no Caixa.
+      const [sessao] = await tx.select().from(caixaSessoesTable).orderBy(desc(caixaSessoesTable.aberturaAt)).limit(1);
+      const dataBase = sessao?.fechamentoAt ?? sessao?.aberturaAt ?? null;
+      if (dataBase) {
+        const saldoBase = sessao.fechamentoAt
+          ? cents(sessao.valorContado ?? sessao.valorFinal ?? sessao.valorInicial)
+          : cents(sessao.valorInicial);
+        const movimentos = await tx.select().from(caixaTable).where(gte(caixaTable.createdAt, dataBase));
+        dinheiroAtual = saldoBase + movimentos.reduce((soma, row) => {
+          if (row.formaPagamento && row.formaPagamento !== "dinheiro") return soma;
+          return soma + (row.tipo === "entrada" ? 1 : -1) * cents(row.valor);
+        }, 0);
+        const pixRegistrados = await tx.select({ tipo: caixaTable.tipo, valor: caixaTable.valor })
+          .from(caixaTable).where(eq(caixaTable.formaPagamento, "pix"));
+        pixAtual = pixRegistrados.reduce((soma, row) =>
+          soma + (row.tipo === "entrada" ? 1 : -1) * cents(row.valor), 0);
+        novo = calcularReservaGradual(
+          dinheiroAtual + pixAtual, atual, teto, contasPrevistas, compra, percentual, entradaNova,
+        );
+      }
+    }
+    const aposContas = Math.max(0, (dinheiroAtual === null ? total : dinheiroAtual + pixAtual) - contasPrevistas);
     const pedidosPreservados = Math.min(compra, Math.ceil(aposContas * (100 - percentual) / 100));
-    const novo = ativa
-      ? calcularReservaGradual(total, atual, teto, contasPrevistas, compra, percentual)
-      : atual;
     if (novo > atual) {
       await tx.insert(appConfigTable).values({ key: keys.reserva, value: (novo / 100).toFixed(2) })
         .onConflictDoUpdate({
@@ -102,7 +143,21 @@ async function atualizarReservaGradual(
           set: { value: (novo / 100).toFixed(2), updatedAt: new Date() },
         });
     }
-    return { reserva: novo, metaReserva: teto, aporte: novo - atual, compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)), protecaoAtiva: ativa };
+    // Sem base física, não consome a entrada; tenta novamente após abrir a gaveta.
+    if (novos.length && (entradaNova === 0 || !ativa || dinheiroAtual !== null)) {
+      await tx.insert(appConfigTable).values({ key: keys.ultimoLancamentoReserva, value: String(novos.at(-1)!.id) })
+        .onConflictDoUpdate({
+          target: appConfigTable.key,
+          set: { value: String(novos.at(-1)!.id), updatedAt: new Date() },
+        });
+    }
+    return {
+      reserva: novo, metaReserva: teto, aporte: novo - atual,
+      entradaNova: dinheiroAtual === null ? 0 : entradaNova, inicioAgora: false,
+      compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)),
+      protecaoAtiva: ativa,
+      saldosAtuais: dinheiroAtual === null ? null : { dinheiro: dinheiroAtual, pix: pixAtual },
+    };
   });
 }
 
@@ -129,12 +184,12 @@ async function snapshot() {
   const movimentosGaveta = dataBase
     ? await db.select().from(caixaTable).where(gte(caixaTable.createdAt, dataBase))
     : [];
-  const dinheiro = dataBase
+  let dinheiro = dataBase
     ? saldoBase + movimentosGaveta.reduce((sum, row) => {
       if (row.formaPagamento && row.formaPagamento !== "dinheiro") return sum;
       return sum + (row.tipo === "entrada" ? 1 : -1) * cents(row.valor);
     }, 0) : null;
-  const pix = pixRows.reduce((sum, row) =>
+  let pix = pixRows.reduce((sum, row) =>
     sum + (row.tipo === "entrada" ? 1 : -1) * cents(row.valor), 0);
   const weekStart = today - ((new Date(`${todayString}T12:00:00Z`).getUTCDay() + 6) % 7);
   const totalPeriod = (min: number, max: number) => {
@@ -246,12 +301,16 @@ async function snapshot() {
     ? Math.round(periodosAnteriores.reduce((sum, periodo) => sum + periodo.entradas, 0) / 4)
     : null;
   const taxaReserva = percentualReserva(entradas7Dias, mediaEntradas);
-  const total = dinheiro === null ? null : dinheiro + pix;
   const reservaAutomatica = await atualizarReservaGradual(
-    total, config.reserva, config.metaReserva,
+    dinheiro === null ? null : dinheiro + pix, config.reserva, config.metaReserva,
     config.meta > 0 ? config.meta : purchaseAverage ?? 0,
-    expensesTotal, entradas7Dias, taxaReserva,
+    expensesTotal, taxaReserva,
   );
+  if (reservaAutomatica.saldosAtuais) {
+    dinheiro = reservaAutomatica.saldosAtuais.dinheiro;
+    pix = reservaAutomatica.saldosAtuais.pix;
+  }
+  const total = dinheiro === null ? null : dinheiro + pix;
   config.reserva = reservaAutomatica.reserva;
   config.metaReserva = reservaAutomatica.metaReserva;
   if (reservaAutomatica.protecaoAtiva !== null) config.proteger = reservaAutomatica.protecaoAtiva;
@@ -366,13 +425,16 @@ async function snapshot() {
       meta: money(config.metaReserva),
       falta: money(Math.max(0, config.metaReserva - config.reserva)),
       aporte: money(reservaAutomatica.aporte),
+      entradaNova: money(reservaAutomatica.entradaNova),
       percentual: taxaReserva,
       entradas7Dias: money(entradas7Dias),
       compraProtegida: money(reservaAutomatica.compraPlanejada),
       contasProtegidas: money(expensesTotal),
       estado: !config.proteger ? "pausada" : total === null ? "sem_saldo"
         : config.reserva >= config.metaReserva ? "concluida"
-        : entradas7Dias <= 0 ? "sem_entradas" : "acumulando",
+        : reservaAutomatica.inicioAgora ? "iniciando"
+        : reservaAutomatica.entradaNova <= 0 ? "sem_entradas"
+        : reservaAutomatica.aporte <= 0 ? "sem_margem" : "acumulando",
     },
     faltamMeta: spending.faltaMeta === null ? null : money(spending.faltaMeta),
     dia: { entradas: money(dia.entradas), saidas: money(dia.saidas), retiradas: money(dia.retiradas) },
@@ -563,7 +625,7 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
         : `Limite conservador registrado: ${reais(Math.round(saldo.podeGastar * 100))}. Cálculo: ${reais(Math.round(saldo.disponivel! * 100))} disponível − ${reais(Math.round(s.despesasPrevistas.total * 100))} em contas previstas nos próximos 7 dias − ${reais(Math.round(s.metaCompra * 100))} da meta de compra. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
       answer = saldo.total === null ? insufficient
-        : `Dinheiro físico: ${reais(Math.round(saldo.dinheiro! * 100))}; PIX líquido registrado: ${reais(Math.round(saldo.pix * 100))}; total: ${reais(Math.round(saldo.total * 100))}; reserva ${saldo.protecaoAtiva ? "protegida" : "desativada"}: ${reais(Math.round(saldo.reserva * 100))} de uma meta máxima de ${reais(Math.round(s.reservaAutomatica.meta * 100))}; disponível sem usar reserva: ${reais(Math.round(saldo.disponivel! * 100))}. A reserva cresce gradualmente conforme entradas em dinheiro/PIX e a margem após contas previstas e compras planejadas; nesta análise, a taxa foi ${s.reservaAutomatica.percentual}%. É uma proteção no cálculo do app, não uma transferência bancária. ${saldo.base}${s.observacoes.find(a => a.titulo === "Reserva abaixo da meta") ? `\n${formatConcern(s.observacoes.find(a => a.titulo === "Reserva abaixo da meta")!)}` : ""}`;
+        : `Dinheiro físico: ${reais(Math.round(saldo.dinheiro! * 100))}; PIX líquido registrado: ${reais(Math.round(saldo.pix * 100))}; total: ${reais(Math.round(saldo.total * 100))}; reserva ${saldo.protecaoAtiva ? "protegida" : "desativada"}: ${reais(Math.round(saldo.reserva * 100))} de uma meta máxima de ${reais(Math.round(s.reservaAutomatica.meta * 100))}; disponível sem usar reserva: ${reais(Math.round(saldo.disponivel! * 100))}. Primeiro a entrada em dinheiro/PIX é registrada no saldo do Caixa; só depois uma parte da nova entrada pode aumentar a reserva, respeitando contas e pedidos. Nesta análise, a taxa foi ${s.reservaAutomatica.percentual}%. É uma proteção no cálculo do app, não uma transferência bancária. ${saldo.base}${s.observacoes.find(a => a.titulo === "Reserva abaixo da meta") ? `\n${formatConcern(s.observacoes.find(a => a.titulo === "Reserva abaixo da meta")!)}` : ""}`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

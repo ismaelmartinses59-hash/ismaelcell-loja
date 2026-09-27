@@ -24,9 +24,9 @@ type FinanceSnapshot = {
   };
   metaCompra: number;
   reservaAutomatica: {
-    meta: number; falta: number; aporte: number; percentual: 30 | 45 | 60;
+    meta: number; falta: number; aporte: number; entradaNova: number; percentual: 30 | 45 | 60;
     entradas7Dias: number; compraProtegida: number; contasProtegidas: number;
-    estado: "pausada" | "sem_saldo" | "sem_entradas" | "concluida" | "acumulando";
+    estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_margem" | "concluida" | "acumulando";
   };
   faltamMeta: number | null;
   semana: { entradas: number; saidas: number; retiradas: number; compras: number; lucro: number | null; custoAusente: boolean };
@@ -355,6 +355,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   Protegido: <strong>{fmt(summary.reserva)}</strong> de {fmt(data.reservaAutomatica.meta)}.
                   {data.reservaAutomatica.falta > 0 && <> Faltam {fmt(data.reservaAutomatica.falta)} para o teto.</>}
                 </p>
+                {data.reservaAutomatica.entradaNova > 0 && (
+                  <p className="mt-1 text-slate-700">Nova entrada no Caixa: <strong>{fmt(data.reservaAutomatica.entradaNova)}</strong>. Só depois de ela compor o saldo a reserva é recalculada.</p>
+                )}
                 {data.reservaAutomatica.aporte > 0 && (
                   <p data-testid="text-aporte-reserva" className="mt-1 font-semibold text-emerald-700">
                     A reserva aumentou {fmt(data.reservaAutomatica.aporte)} nesta atualização.
@@ -362,11 +365,13 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 )}
                 {data.reservaAutomatica.estado === "pausada" && <p className="mt-1 text-amber-700">Aumento automático pausado: ative a proteção da reserva abaixo.</p>}
                 {data.reservaAutomatica.estado === "sem_saldo" && <p className="mt-1 text-amber-700">Sem sessão da gaveta, não é seguro aumentar a reserva.</p>}
-                {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Sem entradas recentes em dinheiro ou PIX; a reserva atual permanece protegida.</p>}
+                {data.reservaAutomatica.estado === "iniciando" && <p className="mt-1 text-slate-600">Acompanhamento iniciado agora. As entradas anteriores já estão no saldo; só as próximas entradas poderão gerar novos aumentos.</p>}
+                {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma nova entrada em dinheiro ou PIX desde o último cálculo; o saldo antigo sozinho não aumenta a reserva.</p>}
+                {data.reservaAutomatica.estado === "sem_margem" && <p className="mt-1 text-amber-700">A entrada já compõe o saldo, mas não há margem para aumentar a reserva sem comprometer contas ou pedidos.</p>}
                 {data.reservaAutomatica.estado === "concluida" && <p className="mt-1 text-emerald-700">Meta atingida. Novas entradas ficam para a operação e os pedidos.</p>}
                 {summary.reserva > data.reservaAutomatica.meta && <p className="mt-1 text-amber-700">O valor já protegido ultrapassa a nova meta. Ele não será reduzido sem seu ajuste manual.</p>}
                 <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                  A IA separa até {data.reservaAutomatica.percentual}% do saldo após considerar {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas, conforme as entradas em dinheiro/PIX da semana ({fmt(data.reservaAutomatica.entradas7Dias)}). Sem ultrapassar a meta, deixa até {fmt(data.reservaAutomatica.compraProtegida)} para pedidos agora. Se a compra planejada inteira não couber, preserva a parte viável. Com histórico comparável: semana fraca 30%, normal 45%, forte 60%; sem histórico, 45%.
+                  Depois de uma nova entrada aparecer no saldo, a IA pode separar até {data.reservaAutomatica.percentual}% desse valor, considerando {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas e até {fmt(data.reservaAutomatica.compraProtegida)} para pedidos agora. A taxa compara as entradas em dinheiro/PIX da semana ({fmt(data.reservaAutomatica.entradas7Dias)}) com o histórico: semana fraca 30%, normal 45%, forte 60%; sem histórico, 45%.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">É uma proteção no cálculo do app, não uma transferência ou saída do Caixa. Gastos e transferências não registrados podem alterar o saldo real.</p>
               </section>

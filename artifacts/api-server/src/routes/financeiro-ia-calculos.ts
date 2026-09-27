@@ -32,6 +32,16 @@ export function percentualReserva(entradas7Dias: number, mediaSemanal: number | 
   return 45;
 }
 
+export function somarEntradasNovas(
+  lancamentos: { id: number; tipo: string; formaPagamento: string | null; valorCentavos: number }[],
+  ultimoId: number,
+): number {
+  return lancamentos.reduce((soma, lancamento) =>
+    soma + (lancamento.id > ultimoId && lancamento.tipo === "entrada" &&
+      (!lancamento.formaPagamento || lancamento.formaPagamento === "dinheiro" || lancamento.formaPagamento === "pix")
+      ? lancamento.valorCentavos : 0), 0);
+}
+
 export function calcularReservaGradual(
   total: number | null,
   atual: number,
@@ -39,13 +49,14 @@ export function calcularReservaGradual(
   contasPrevistas: number,
   compraPlanejada: number,
   percentual: number,
+  entradaNova: number,
 ): number {
-  if (total === null) return atual;
+  if (total === null || entradaNova <= 0) return atual;
   const aposContas = Math.max(0, total - contasPrevistas);
   // Se a compra planejada não couber inteira, ainda deixa uma parte viável
   // para pedidos, em vez de impedir qualquer avanço da reserva.
   const pedidos = Math.min(compraPlanejada, Math.ceil(aposContas * (100 - percentual) / 100));
-  const proximo = Math.min(meta, Math.floor(aposContas * percentual / 100), aposContas - pedidos);
+  const proximo = Math.min(meta, atual + Math.floor(entradaNova * percentual / 100), aposContas - pedidos);
   // Uma semana ruim não desfaz a proteção já registrada.
   return Math.max(atual, proximo);
 }

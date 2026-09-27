@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calcularDisponibilidade, calcularReservaGradual, mediaDasSemanasComCompra, percentualReserva } from "./financeiro-ia-calculos.ts";
+import { calcularDisponibilidade, calcularReservaGradual, mediaDasSemanasComCompra, percentualReserva, somarEntradasNovas } from "./financeiro-ia-calculos.ts";
 
 test("reserva protege R$ 2.000 dos R$ 2.550 em dinheiro e PIX", () => {
   assert.deepEqual(calcularDisponibilidade(155000, 100000, 200000, true, 0, 130000), {
@@ -34,18 +34,34 @@ test("média de compras usa somente semanas com compras registradas", () => {
   assert.equal(mediaDasSemanasComCompra([]), null);
 });
 test("reserva cresce em etapas, sem ultrapassar R$ 1.500", () => {
-  assert.equal(calcularReservaGradual(100000, 0, 150000, 0, 0, 30), 30000);
-  assert.equal(calcularReservaGradual(150000, 30000, 150000, 0, 0, 60), 90000);
-  assert.equal(calcularReservaGradual(200000, 90000, 150000, 0, 0, 60), 120000);
-  assert.equal(calcularReservaGradual(350000, 120000, 150000, 0, 0, 45), 150000);
+  assert.equal(calcularReservaGradual(100000, 0, 150000, 0, 0, 30, 100000), 30000);
+  assert.equal(calcularReservaGradual(150000, 30000, 150000, 0, 0, 60, 50000), 60000);
+  assert.equal(calcularReservaGradual(200000, 60000, 150000, 0, 0, 60, 50000), 90000);
+  assert.equal(calcularReservaGradual(350000, 90000, 150000, 0, 0, 45, 150000), 150000);
 });
 test("pedidos e contas têm prioridade; reserva existente não é reduzida", () => {
-  assert.equal(calcularReservaGradual(150000, 20000, 150000, 15000, 100000, 60), 81000);
-  assert.equal(calcularReservaGradual(100000, 45000, 150000, 15000, 60000, 30), 45000);
-  assert.equal(calcularReservaGradual(null, 45000, 150000, 0, 0, 60), 45000);
-  assert.equal(calcularReservaGradual(100000, 0, 150000, 0, 100000, 30), 30000);
-  assert.equal(calcularReservaGradual(200000, 0, 150000, 0, 150000, 60), 120000);
-  assert.equal(calcularReservaGradual(350000, 0, 150000, 0, 200000, 45), 150000);
+  assert.equal(calcularReservaGradual(150000, 20000, 150000, 15000, 100000, 60, 100000), 80000);
+  assert.equal(calcularReservaGradual(100000, 45000, 150000, 15000, 60000, 30, 10000), 45000);
+  assert.equal(calcularReservaGradual(null, 45000, 150000, 0, 0, 60, 10000), 45000);
+  assert.equal(calcularReservaGradual(100000, 0, 150000, 0, 100000, 30, 100000), 30000);
+  assert.equal(calcularReservaGradual(200000, 0, 150000, 0, 150000, 60, 200000), 120000);
+  assert.equal(calcularReservaGradual(350000, 0, 150000, 0, 200000, 45, 350000), 150000);
+});
+test("saldo antigo sozinho não cria aporte; a entrada deve existir antes", () => {
+  assert.equal(calcularReservaGradual(200000, 0, 150000, 0, 0, 60, 0), 0);
+  assert.equal(calcularReservaGradual(200000, 0, 150000, 0, 0, 60, 200000), 120000);
+  assert.equal(calcularReservaGradual(200000, 120000, 150000, 0, 0, 60, 0), 120000);
+});
+test("só entradas novas recebidas em dinheiro ou PIX alimentam o aporte", () => {
+  const rows = [
+    { id: 9, tipo: "entrada", formaPagamento: "pix", valorCentavos: 200000 },
+    { id: 10, tipo: "entrada", formaPagamento: "cartao", valorCentavos: 50000 },
+    { id: 11, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 20000 },
+    { id: 12, tipo: "entrada", formaPagamento: "pix", valorCentavos: 120000 },
+    { id: 13, tipo: "entrada", formaPagamento: "dinheiro", valorCentavos: 80000 },
+  ];
+  assert.equal(somarEntradasNovas(rows, 11), 200000);
+  assert.equal(somarEntradasNovas(rows, 13), 0);
 });
 test("semanas fracas e fortes mudam a taxa, sem inventar comparação sem histórico", () => {
   assert.equal(percentualReserva(60000, 100000), 30);
