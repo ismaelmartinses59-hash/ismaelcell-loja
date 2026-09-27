@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { requestMicrophone, turnOffMicrophone, useMicrophoneActive } from "@/lib/microphone";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
+const DASHBOARD_HIDDEN_AT = "finance-ai-dashboard-hidden-at";
 const fmt = (n: number | null) => n === null
   ? "Sem dados" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const todaySP = () => new Intl.DateTimeFormat("en-CA", {
@@ -17,6 +18,7 @@ const todaySP = () => new Intl.DateTimeFormat("en-CA", {
 type Alert = { nivel: "risco" | "atencao" | "positivo"; titulo: string; texto: string; aconteceu: string; dado: string; impacto: string; continuidade: string; sugestao: string };
 type FinanceSnapshot = {
   atualizadoEm: string;
+  ultimoFechamentoCaixa: string | null;
   saldos: {
     dinheiro: number | null; pix: number; total: number | null;
     reserva: number; protecaoAtiva: boolean; disponivel: number | null;
@@ -62,7 +64,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const { data, isLoading, error, refetch } = useQuery<FinanceSnapshot>({
     queryKey: ["financeiro-ia"],
     enabled: open,
-    staleTime: 30000,
+    staleTime: 0,
     refetchInterval: open ? 60000 : false,
     queryFn: () => api("/financeiro-ia"),
   });
@@ -72,6 +74,10 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const [proteger, setProteger] = useState(false);
   const [saving, setSaving] = useState(false);
   const [question, setQuestion] = useState("");
+  const [dashboardHiddenAt, setDashboardHiddenAt] = useState<number | null>(() => {
+    const saved = Number(window.localStorage.getItem(DASHBOARD_HIDDEN_AT));
+    return Number.isFinite(saved) && saved > 0 ? saved : null;
+  });
   const [messages, setMessages] = useState<{ pergunta: string; resposta: string }[]>([]);
   const [thinking, setThinking] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -94,6 +100,22 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const [date, setDate] = useState(todaySP);
   const [payment, setPayment] = useState<"dinheiro" | "pix">("dinheiro");
   const [sending, setSending] = useState(false);
+  const lastClosedAt = data?.ultimoFechamentoCaixa ? Date.parse(data.ultimoFechamentoCaixa) : NaN;
+  const dashboardHidden = dashboardHiddenAt !== null &&
+    (!Number.isFinite(lastClosedAt) || lastClosedAt <= dashboardHiddenAt);
+
+  function hideDashboard() {
+    if (dashboardHiddenAt !== null) return;
+    const now = Date.now();
+    window.localStorage.setItem(DASHBOARD_HIDDEN_AT, String(now));
+    setDashboardHiddenAt(now);
+  }
+
+  useEffect(() => {
+    if (dashboardHiddenAt === null || !Number.isFinite(lastClosedAt) || lastClosedAt <= dashboardHiddenAt) return;
+    window.localStorage.removeItem(DASHBOARD_HIDDEN_AT);
+    setDashboardHiddenAt(null);
+  }, [dashboardHiddenAt, lastClosedAt]);
 
   useEffect(() => {
     if (!data) return;
@@ -232,6 +254,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   async function ask(text = question) {
     const pergunta = text.trim();
     if (!pergunta || thinking) return;
+    hideDashboard();
     setQuestion("");
     setThinking(true);
     try {
@@ -290,27 +313,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent className="w-[calc(100vw-16px)] max-w-2xl max-h-[94dvh] overflow-y-auto p-0 gap-0 rounded-2xl">
         <DialogHeader className="sticky top-0 z-10 border-b bg-white px-4 py-4">
-          <div className="flex items-center justify-between gap-2 pr-8">
-            <DialogTitle className="flex items-center gap-2 text-lg text-slate-900">
-              <Bot className="h-5 w-5 text-blue-600" /> IA Financeira
-            </DialogTitle>
-            <Button
-              data-testid="button-voz-ia-cabecalho"
-              type="button"
-              size="sm"
-              variant={recording ? "destructive" : "outline"}
-              disabled={thinking || transcribing}
-              onClick={() => {
-                document.getElementById("conversa-financeira")?.scrollIntoView({ behavior: "smooth", block: "start" });
-                if (recording) stopVoice();
-                else void startVoice();
-              }}
-              className="shrink-0"
-            >
-              {recording ? <Square className="mr-1.5 h-4 w-4" /> : <Mic className="mr-1.5 h-4 w-4" />}
-              {recording ? "Enviar" : "Falar"}
-            </Button>
-          </div>
+          <DialogTitle className="flex items-center gap-2 text-lg text-slate-900">
+            <Bot className="h-5 w-5 text-blue-600" /> IA Financeira
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-5 p-4 pb-8">
           {isLoading && !data && <div className="py-12 text-center text-sm text-slate-500">Analisando os dados do Caixa...</div>}
@@ -322,6 +327,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
           )}
           {data && summary && (
             <>
+              {!dashboardHidden && <>
               <section aria-label="Disponibilidade financeira">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="font-bold text-slate-800">O que posso usar agora?</h3>
@@ -391,11 +397,11 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 <h3 className="font-bold text-slate-800">Observações baseadas nos registros</h3>
                 {data.observacoes.length === 0 && <p className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">Nenhuma condição gerou alerta agora. Comparações de tendência exigem registros nas quatro semanas anteriores; continue categorizando saídas e compras.</p>}
                 {data.observacoes.map((item, i) => (
-                  <div key={`${item.titulo}-${i}`} className={`rounded-xl border p-3 text-sm ${severities[item.nivel]}`}>
+                  <div key={`${item.titulo}-${i}`} className={`min-w-0 rounded-xl border p-3 text-sm ${severities[item.nivel]}`}>
                     <p className="flex items-center gap-1 font-bold"><AlertTriangle className="h-4 w-4" /> {item.titulo}</p>
-                    <dl className="mt-2 space-y-2 leading-relaxed">
+                    <dl className="mt-2 divide-y divide-current/10 leading-relaxed">
                       {[["O que aconteceu?", item.aconteceu], ["Qual dado provocou o alerta?", item.dado], ["Como isso afetou o caixa?", item.impacto], ["O que pode acontecer se continuar?", item.continuidade], ["Qual ação considerar?", item.sugestao]].map(([label, description]) => (
-                        <div key={label}><dt className="text-xs font-bold">{label}</dt><dd className="mt-0.5 text-sm">{description}</dd></div>
+                        <div key={label} className="py-2 first:pt-0 last:pb-0"><dt className="text-xs font-bold">{label}</dt><dd className="mt-0.5 break-words text-sm">{description}</dd></div>
                       ))}
                     </dl>
                   </div>
@@ -462,25 +468,44 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   <Button data-testid="button-confirmar-retirada" variant="destructive" disabled={sending} className="w-full" onClick={() => void registerWithdrawal()}>{sending ? "Registrando..." : "Confirmar saída no Caixa"}</Button>
                 </div>}
               </section>
+              </>}
 
               <section id="conversa-financeira" className="scroll-mt-20 space-y-3" aria-label="Conversa com assistente financeiro">
                 <h3 className="flex items-center gap-2 font-bold text-slate-800"><MessageCircle className="h-4 w-4" /> Pergunte sobre suas finanças</h3>
-                <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      data-testid="button-falar-ia-financeira"
-                      type="button"
-                      variant={recording ? "destructive" : "default"}
-                      onClick={() => recording ? stopVoice() : void startVoice()}
-                      disabled={transcribing || thinking}
-                      className="min-h-11"
-                    >
-                      {recording ? <Square className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
-                      {recording ? "Parar e enviar" : transcribing ? "Transcrevendo..." : "Falar com a IA"}
-                    </Button>
-                    {speaking && <Button data-testid="button-parar-voz-ia" variant="outline" type="button" onClick={() => { window.speechSynthesis.cancel(); setSpeaking(false); }}><VolumeX className="mr-2 h-4 w-4" /> Parar leitura</Button>}
+                {!dashboardHidden && <div className="flex flex-wrap gap-2">
+                  {["Como está meu caixa?", "Quanto posso gastar hoje?", "Posso comprar R$ 1.500 em peças?", "Quanto faturei essa semana?"].map(q => (
+                    <button data-testid={`button-pergunta-${q.length}`} key={q} type="button" onClick={() => void ask(q)} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-800 hover:bg-blue-100">{q}</button>
+                  ))}
+                </div>}
+                {messages.map((message, i) => <div key={i} className="space-y-1 text-sm">
+                  <p className="ml-6 rounded-xl bg-slate-100 p-2 text-slate-800">{message.pergunta}</p>
+                  <div className="mr-6 rounded-xl bg-blue-50 p-3 text-blue-950">
+                    <p className="whitespace-pre-line leading-relaxed">{message.resposta}</p>
+                    <button data-testid={`button-ouvir-resposta-${i}`} type="button" onClick={() => speak(message.resposta)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><Volume2 className="h-3.5 w-3.5" /> Ouvir de novo</button>
                   </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-700">
+                </div>)}
+                <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex items-center gap-2">
+                  <Input data-testid="input-pergunta-financeira" className="min-w-0 flex-1" value={question} maxLength={400} onChange={e => { setQuestion(e.target.value); if (e.target.value.length > 0) hideDashboard(); }} placeholder="Pergunte sobre seu Caixa..." aria-label="Sua pergunta" />
+                  <Button
+                    data-testid="button-falar-ia-financeira"
+                    type="button"
+                    size="icon"
+                    variant={recording ? "destructive" : "outline"}
+                    onClick={() => recording ? stopVoice() : void startVoice()}
+                    disabled={transcribing || thinking}
+                    className="h-10 w-10 shrink-0"
+                    aria-label={recording ? "Parar e enviar gravação" : transcribing ? "Transcrevendo pergunta" : "Gravar pergunta por voz"}
+                    title={recording ? "Parar e enviar gravação" : "Gravar pergunta por voz"}
+                  >
+                    {recording ? <Square className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                  </Button>
+                  <Button data-testid="button-enviar-pergunta" className="h-10 w-10 shrink-0" disabled={thinking || !question.trim()} type="submit" aria-label="Enviar pergunta"><Send className="h-4 w-4" /></Button>
+                </form>
+                {(recording || transcribing) && <p role="status" className="text-xs text-blue-700">{recording ? "Gravando. Toque no microfone para parar e enviar." : "Transcrevendo sua pergunta..."}</p>}
+                {speaking && <Button data-testid="button-parar-voz-ia" variant="outline" type="button" onClick={() => { window.speechSynthesis.cancel(); setSpeaking(false); }}><VolumeX className="mr-2 h-4 w-4" /> Parar leitura</Button>}
+                <details className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                  <summary className="cursor-pointer font-medium text-slate-700">Opções de voz</summary>
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-slate-700">
                     <label className="flex items-center gap-2">
                       Voz
                       <select
@@ -502,36 +527,20 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                       Ler respostas
                     </label>
                   </div>
-                  {microphoneActive && (
-                    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
-                      <span data-testid="status-microfone-ia">Microfone ativo neste acesso ao app. Só gravamos ao tocar em “Falar”.</span>
-                      <button data-testid="button-desativar-microfone-ia" type="button" disabled={recording || transcribing} onClick={turnOffMicrophone} className="shrink-0 font-semibold text-blue-700 underline disabled:opacity-50">Desativar</button>
-                    </div>
-                  )}
                   <p className="mt-2 text-[11px] text-slate-500">O trecho gravado é enviado para transcrição. Você pode desligar o microfone quando quiser.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {["Como está meu caixa?", "Quanto posso gastar hoje?", "Posso comprar R$ 1.500 em peças?", "Quanto faturei essa semana?"].map(q => (
-                    <button data-testid={`button-pergunta-${q.length}`} key={q} type="button" onClick={() => void ask(q)} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-800 hover:bg-blue-100">{q}</button>
-                  ))}
-                </div>
-                {messages.map((message, i) => <div key={i} className="space-y-1 text-sm">
-                  <p className="ml-6 rounded-xl bg-slate-100 p-2 text-slate-800">{message.pergunta}</p>
-                  <div className="mr-6 rounded-xl bg-blue-50 p-3 text-blue-950">
-                    <p className="whitespace-pre-line leading-relaxed">{message.resposta}</p>
-                    <button data-testid={`button-ouvir-resposta-${i}`} type="button" onClick={() => speak(message.resposta)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><Volume2 className="h-3.5 w-3.5" /> Ouvir de novo</button>
+                </details>
+                {microphoneActive && (
+                  <div className="flex items-center justify-between gap-2 text-xs text-slate-600">
+                    <span data-testid="status-microfone-ia">Microfone ativo neste acesso ao app. Só gravamos ao tocar no microfone.</span>
+                    <button data-testid="button-desativar-microfone-ia" type="button" disabled={recording || transcribing} onClick={turnOffMicrophone} className="shrink-0 font-semibold text-blue-700 underline disabled:opacity-50">Desativar</button>
                   </div>
-                </div>)}
-                <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex gap-2">
-                  <Input data-testid="input-pergunta-financeira" value={question} maxLength={400} onChange={e => setQuestion(e.target.value)} placeholder="Pergunte sobre seu Caixa..." aria-label="Sua pergunta" />
-                  <Button data-testid="button-enviar-pergunta" disabled={thinking || !question.trim()} type="submit" aria-label="Enviar pergunta"><Send className="h-4 w-4" /></Button>
-                </form>
+                )}
                 {thinking && <p className="text-xs text-slate-500">Conferindo os registros...</p>}
               </section>
-              <div className="border-t pt-3 text-[11px] leading-relaxed text-slate-500">
+              {!dashboardHidden && <div className="border-t pt-3 text-[11px] leading-relaxed text-slate-500">
                 {data.avisos.map((notice, i) => <p key={i}>{notice}</p>)}
                 <p className="mt-2">Atualizado em {new Date(data.atualizadoEm).toLocaleString("pt-BR")}. Nenhuma sugestão altera seu Caixa automaticamente.</p>
-              </div>
+              </div>}
             </>
           )}
         </div>

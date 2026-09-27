@@ -643,6 +643,7 @@ export function CaixaSessaoGuard() {
       void qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
       void qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
       void qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+      void qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
     } catch (e) {
       toast({
         title: "Erro ao fechar o caixa",
