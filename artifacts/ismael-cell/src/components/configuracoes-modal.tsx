@@ -7,6 +7,7 @@ import {
 } from "@/components/ui/dialog";
 import { Settings } from "lucide-react";
 import { ConfigFinanceiro } from "./divisao-lucro";
+import { MetasReservaConfig } from "./metas-reserva-config";
 
 interface ConfiguracoesModalProps {
   open: boolean;
@@ -14,9 +15,8 @@ interface ConfiguracoesModalProps {
 }
 
 /**
- * Tela de Configurações do app. Hoje contém só o ajuste de salário e contas
- * fixas (usado na divisão do lucro), tirado de dentro do modal do Caixa para
- * ficar num lugar próprio de configuração.
+ * Tela de configurações financeiras do app: contas fixas, metas de compra e
+ * reserva protegida.
  */
 export function ConfiguracoesModal({ open, onClose }: ConfiguracoesModalProps) {
   return (
@@ -28,11 +28,14 @@ export function ConfiguracoesModal({ open, onClose }: ConfiguracoesModalProps) {
             Configurações
           </DialogTitle>
           <DialogDescription>
-            Ajuste o salário e as contas fixas usados no cálculo da divisão do
-            lucro no fechamento do caixa.
+            Ajuste contas, metas de compra e a reserva protegida. A reserva pode
+            continuar aumentando automaticamente após novas entradas no Caixa.
           </DialogDescription>
         </DialogHeader>
-        <ConfigFinanceiro defaultOpen />
+        <div className="space-y-3">
+          <ConfigFinanceiro defaultOpen />
+          <MetasReservaConfig open={open} defaultOpen />
+        </div>
       </DialogContent>
     </Dialog>
   );

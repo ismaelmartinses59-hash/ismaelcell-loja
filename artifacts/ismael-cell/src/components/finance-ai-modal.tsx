@@ -68,11 +68,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     refetchInterval: open ? 60000 : false,
     queryFn: () => api("/financeiro-ia"),
   });
-  const [reserva, setReserva] = useState("0");
-  const [metaReserva, setMetaReserva] = useState("1500");
-  const [meta, setMeta] = useState("0");
-  const [proteger, setProteger] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [question, setQuestion] = useState("");
   const [dashboardHiddenAt, setDashboardHiddenAt] = useState<number | null>(() => {
     const saved = Number(window.localStorage.getItem(DASHBOARD_HIDDEN_AT));
@@ -125,14 +120,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     window.localStorage.removeItem(DASHBOARD_HIDDEN_AT);
     setDashboardHiddenAt(null);
   }, [dashboardHiddenAt, lastClosedAt]);
-
-  useEffect(() => {
-    if (!data) return;
-    setReserva(String(data.saldos.reserva.toFixed(2)));
-    setMetaReserva(String(data.reservaAutomatica.meta.toFixed(2)));
-    setMeta(String(data.metaCompra.toFixed(2)));
-    setProteger(data.saldos.protecaoAtiva);
-  }, [data?.saldos.reserva, data?.reservaAutomatica.meta, data?.metaCompra, data?.saldos.protecaoAtiva]);
 
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -244,20 +231,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     } finally {
       startingVoiceRef.current = false;
     }
-  }
-
-  async function saveConfig() {
-    setSaving(true);
-    try {
-      await api("/financeiro-ia/config", {
-        method: "PUT",
-        body: JSON.stringify({ reserva, metaReserva, metaCompra: meta, protecaoAtiva: proteger }),
-      });
-      await qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
-      toast({ title: "Configuração financeira salva" });
-    } catch (e) {
-      toast({ title: "Não foi possível salvar", description: String(e instanceof Error ? e.message : e), variant: "destructive" });
-    } finally { setSaving(false); }
   }
 
   async function ask(text = question) {
@@ -515,25 +488,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 )}
                 {thinking && <p className="text-xs text-slate-500">Conferindo os registros...</p>}
               </section>
-              <section className="rounded-xl border p-3" aria-label="Configuração financeira">
-                <h3 className="font-bold text-slate-800">Metas e reserva</h3>
-                <div className="mt-3 grid grid-cols-2 gap-3">
-                  <label className="text-xs text-slate-600">Reserva atual (R$)
-                    <Input data-testid="input-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={reserva} onChange={e => setReserva(e.target.value)} />
-                  </label>
-                  <label className="text-xs text-slate-600">Meta máxima da reserva (R$)
-                    <Input data-testid="input-meta-reserva" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={metaReserva} onChange={e => setMetaReserva(e.target.value)} />
-                  </label>
-                  <label className="col-span-2 text-xs text-slate-600">Valor para a próxima compra (R$)
-                    <Input data-testid="input-meta-compra" type="number" inputMode="decimal" min="0" step="0.01" className="mt-1" value={meta} onChange={e => setMeta(e.target.value)} />
-                  </label>
-                </div>
-                <p className="mt-2 text-xs text-slate-500">O aumento automático nunca passa da meta e pode voltar a subir após um ajuste manual se houver saldo suficiente.</p>
-                <label className="mt-3 flex items-center gap-2 text-sm">
-                  <input data-testid="toggle-protecao-reserva" type="checkbox" checked={proteger} onChange={e => setProteger(e.target.checked)} />
-                  Proteger a reserva e permitir aumentos automáticos
-                </label>
-                <Button data-testid="button-salvar-financas" className="mt-3 w-full" disabled={saving} onClick={() => void saveConfig()}>{saving ? "Salvando..." : "Salvar configuração"}</Button>
               </section>
               <section className="rounded-xl border p-3" aria-label="Registrar retirada">
                 <Button data-testid="button-registrar-retirada" variant="outline" className="w-full" onClick={() => setWithdraw(v => !v)}>
