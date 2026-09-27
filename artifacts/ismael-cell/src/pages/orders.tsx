@@ -106,10 +106,14 @@ export default function Orders() {
   const showOnlyActive = statusFilter === "all" && search.length === 0;
   const displayOrders = showOnlyActive ? orders.filter((o) => o.status !== "concluido" && o.status !== "encerrado") : orders;
 
-  const handleLogout = () => {
-    localStorage.removeItem("isLoggedIn");
-    localStorage.removeItem("userEmail");
-    setLocation("/");
+  const handleLogout = async () => {
+    try {
+      await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/auth/logout`, { method: "POST", credentials: "same-origin" });
+    } finally {
+      localStorage.removeItem("isLoggedIn");
+      localStorage.removeItem("userEmail");
+      setLocation("/");
+    }
   };
 
   const isCliente = tipo === OrderTipo.cliente;

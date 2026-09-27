@@ -198,6 +198,12 @@ async function ensureSchema(): Promise<void> {
   await runStatement("caixa.pagamento_id", db.execute(
     sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS pagamento_id integer`,
   ));
+  await runStatement("caixa.categoria", db.execute(
+    sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS categoria text`,
+  ));
+  await runStatement("caixa.observacao", db.execute(
+    sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS observacao text`,
+  ));
   await runStatement("caixa.forma_pagamento", db.execute(
     sql`ALTER TABLE caixa ADD COLUMN IF NOT EXISTS forma_pagamento text`,
   ));

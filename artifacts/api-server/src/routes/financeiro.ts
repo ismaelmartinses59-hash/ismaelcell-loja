@@ -233,6 +233,7 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
           tipo: "saida",
           valor: valorFmt,
           motivo: CONTA_LABEL[conta],
+          categoria: conta,
           formaPagamento: "dinheiro",
         });
       }
@@ -275,6 +276,7 @@ router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
           tipo: "saida",
           valor: valorFmt,
           motivo: extra.nome,
+          categoria: "outros",
           formaPagamento: "dinheiro",
         });
       }

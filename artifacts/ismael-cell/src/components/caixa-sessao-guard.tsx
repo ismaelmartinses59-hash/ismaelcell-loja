@@ -163,6 +163,7 @@ export function CaixaSessaoGuard() {
   const [showSaida, setShowSaida] = useState(false);
   const [sValor, setSValor] = useState("");
   const [sMotivo, setSMotivo] = useState("");
+  const [sCategoria, setSCategoria] = useState("outros");
   const [sForma, setSForma] = useState<FormaPagamento>("dinheiro");
   const [sSubmitting, setSSubmitting] = useState(false);
   const [historicoFiltro, setHistoricoFiltro] = useState<"dia" | "hora">("dia");
@@ -531,6 +532,7 @@ export function CaixaSessaoGuard() {
   const resetSaida = () => {
     setSValor("");
     setSMotivo("");
+    setSCategoria("outros");
     setSForma("dinheiro");
     setShowSaida(false);
   };
@@ -553,6 +555,7 @@ export function CaixaSessaoGuard() {
           tipo: "saida",
           valor: sValor.trim(),
           motivo: sMotivo.trim(),
+          categoria: sCategoria,
           formaPagamento: sForma,
         }),
       });
@@ -561,6 +564,7 @@ export function CaixaSessaoGuard() {
         throw new Error(j.error || "Erro ao registrar");
       }
       toast({ title: "Saída registrada! ✅" });
+      await qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
       resetSaida();
       setContadoTouched(false);
       await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
@@ -1366,6 +1370,11 @@ export function CaixaSessaoGuard() {
                     />
                   </div>
 
+                  <label className="block text-xs text-slate-600">Categoria da despesa
+                    <select data-testid="select-categoria-saida-fechamento" value={sCategoria} onChange={e => setSCategoria(e.target.value)} className="mt-1 h-11 w-full rounded-lg border bg-white px-2 text-sm">
+                      {[["pecas", "Peças / estoque"], ["frete", "Frete"], ["aluguel", "Aluguel"], ["energia", "Energia"], ["internet", "Internet"], ["agua", "Água"], ["combustivel", "Combustível"], ["ferramentas", "Ferramentas"], ["alimentacao", "Alimentação"], ["retirada pessoal", "Retirada pessoal"], ["parcelas", "Parcelas"], ["outros", "Outros"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                    </select>
+                  </label>
                   <Button
                     className="h-11 w-full font-bold bg-red-600 hover:bg-red-700"
                     onClick={registrarSaida}

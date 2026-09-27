@@ -5,6 +5,8 @@ export const caixaTable = pgTable("caixa", {
   tipo: text("tipo").notNull(),
   valor: text("valor").notNull(),
   motivo: text("motivo").notNull(),
+  categoria: text("categoria"),
+  observacao: text("observacao"),
   pecaId: integer("peca_id"),
   vendaId: integer("venda_id"),
   pagamentoId: integer("pagamento_id"),

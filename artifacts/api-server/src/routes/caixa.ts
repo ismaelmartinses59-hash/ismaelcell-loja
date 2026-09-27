@@ -181,6 +181,9 @@ router.post("/caixa", async (req, res): Promise<void> => {
         : null;
   const valor = String(req.body?.valor ?? "").trim();
   const motivo = String(req.body?.motivo ?? "").trim();
+  const categorias = ["pecas", "frete", "aluguel", "energia", "internet", "agua", "combustivel", "ferramentas", "alimentacao", "retirada pessoal", "parcelas", "outros"];
+  const categoria = tipo === "saida" ? String(req.body?.categoria ?? "outros").trim() : null;
+  if (categoria !== null && !categorias.includes(categoria)) { res.status(400).json({ error: "Categoria inválida" }); return; }
   const pecaIdRaw = req.body?.pecaId;
   // Forma de pagamento: entrada aceita todas (dinheiro/pix/cartão); saída só
   // aceita dinheiro ou PIX (cartão não faz sentido numa saída de caixa).
@@ -279,6 +282,7 @@ router.post("/caixa", async (req, res): Promise<void> => {
           tipo,
           valor,
           motivo,
+          categoria,
           pecaId,
           vendaId,
           modelo,

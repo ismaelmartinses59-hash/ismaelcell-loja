@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { NotificacoesToggle } from "./notificacoes-toggle";
 import { DivisaoLucro } from "./divisao-lucro";
+import { FinanceAiModal } from "./finance-ai-modal";
 import {
   Wallet,
   ArrowDownCircle,
@@ -184,6 +185,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [inicio, setInicio] = useState("");
   const [fim, setFim] = useState("");
   const [showHistorico, setShowHistorico] = useState(false);
+  const [financeOpen, setFinanceOpen] = useState(false);
   const [diaDetalhe, setDiaDetalhe] = useState<CaixaSessao | null>(null);
   const [movimentoDetalhe, setMovimentoDetalhe] =
     useState<CaixaMovimentoComVenda | null>(null);
@@ -324,6 +326,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [tipo, setTipo] = useState<"entrada" | "saida">("entrada");
   const [valor, setValor] = useState("");
   const [motivo, setMotivo] = useState("");
+  const [categoria, setCategoria] = useState("outros");
   const [formaPagto, setFormaPagto] = useState<FormaPagamento>("dinheiro");
   const [vincularPeca, setVincularPeca] = useState(false);
   const [modeloBusca, setModeloBusca] = useState("");
@@ -537,6 +540,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const resetForm = () => {
     setValor("");
     setMotivo("");
+    setCategoria("outros");
     setFormaPagto("dinheiro");
     setVincularPeca(false);
     setModeloBusca("");
@@ -548,6 +552,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     qc.invalidateQueries({ queryKey: ["caixa-hoje"] });
     qc.invalidateQueries({ queryKey: ["caixa-dia"] });
     qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
+    qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
     qc.invalidateQueries({ queryKey: ["caixa-historico"] });
     qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
     qc.invalidateQueries({ queryKey: ["pecas"] });
@@ -582,6 +587,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           tipo,
           valor: valor.trim(),
           motivo: motivo.trim(),
+          categoria: tipo === "saida" ? categoria : undefined,
           formaPagamento:
             tipo === "entrada"
               ? formaPagto
@@ -590,7 +596,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 : "dinheiro",
           pecaId:
             tipo === "entrada" && vincularPeca && pecaSel ? pecaSel.id : null,
-        },
+        } as any,
       },
       {
         onSuccess: () => {
@@ -693,6 +699,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </div>
                 <span className="truncate text-xl font-bold text-gray-800">Caixa</span>
               </div>
+              <button data-testid="button-abrir-ia-financeira" type="button" onClick={() => setFinanceOpen(true)} className="h-11 shrink-0 rounded-xl bg-blue-600 px-3 text-xs font-bold text-white">IA Financeira</button>
               <button
                 type="button"
                 onClick={onClose}
@@ -1210,6 +1217,14 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                 </div>
               </div>
 
+              {tipo === "saida" && (
+                <label className="block text-xs font-semibold text-slate-600">Categoria da despesa
+                  <select data-testid="select-categoria-saida" value={categoria} onChange={e => setCategoria(e.target.value)} className="mt-1 h-10 w-full rounded-lg border bg-white px-2 text-sm">
+                    {[["pecas", "Peças / estoque"], ["frete", "Frete"], ["aluguel", "Aluguel"], ["energia", "Energia"], ["internet", "Internet"], ["agua", "Água"], ["combustivel", "Combustível"], ["ferramentas", "Ferramentas"], ["alimentacao", "Alimentação"], ["retirada pessoal", "Retirada pessoal"], ["parcelas", "Parcelas"], ["outros", "Outros"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                  </select>
+                </label>
+              )}
+
               {/* Forma de pagamento */}
               <div>
                 <label className="text-xs font-semibold text-slate-500 mb-1.5 block">Forma de pagamento</label>
@@ -1717,6 +1732,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
           )}
         </DialogContent>
       </Dialog>
+      <FinanceAiModal open={open && financeOpen} onClose={() => setFinanceOpen(false)} />
     </Dialog>
   );
 }
