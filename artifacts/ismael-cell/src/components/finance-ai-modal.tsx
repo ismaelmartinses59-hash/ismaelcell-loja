@@ -13,7 +13,7 @@ const todaySP = () => new Intl.DateTimeFormat("en-CA", {
   timeZone: "America/Sao_Paulo",
 }).format(new Date());
 
-type Alert = { nivel: "risco" | "atencao" | "positivo"; titulo: string; texto: string };
+type Alert = { nivel: "risco" | "atencao" | "positivo"; titulo: string; texto: string; aconteceu: string; dado: string; impacto: string; continuidade: string; sugestao: string };
 type FinanceSnapshot = {
   atualizadoEm: string;
   saldos: {
@@ -30,7 +30,7 @@ type FinanceSnapshot = {
   estoqueBaixo: { id: number; modelo: string; quantidade: number }[];
   despesasPrevistas: { total: number; contas: { nome: string; valor: number; vencimento: string }[] };
   projecao7Dias: number | null;
-  situacao: "risco" | "atencao" | "saudavel";
+  situacao: "risco" | "atencao" | "saudavel" | "sem_dados" | "sem_alertas";
   observacoes: Alert[];
   avisos: string[];
 };
@@ -172,8 +172,8 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
               <section aria-label="Disponibilidade financeira">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="font-bold text-slate-800">O que posso usar agora?</h3>
-                  <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${data.situacao === "risco" ? "bg-red-100 text-red-700" : data.situacao === "atencao" ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
-                    {data.situacao === "risco" ? "Risco" : data.situacao === "atencao" ? "Atenção" : "Saudável"}
+                  <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${data.situacao === "risco" ? "bg-red-100 text-red-700" : data.situacao === "atencao" ? "bg-amber-100 text-amber-700" : data.situacao === "sem_dados" ? "bg-slate-100 text-slate-700" : "bg-emerald-100 text-emerald-700"}`}>
+                    {data.situacao === "risco" ? "Risco" : data.situacao === "atencao" ? "Atenção" : data.situacao === "sem_dados" ? "Dados insuficientes" : data.situacao === "sem_alertas" ? "Sem alertas" : "Sem alerta de risco"}
                   </span>
                 </div>
                 <div className="rounded-2xl bg-emerald-600 p-4 text-white">
@@ -208,11 +208,16 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
               </section>
 
               <section className="space-y-2" aria-label="Alertas financeiros">
-                <h3 className="font-bold text-slate-800">Observações</h3>
+                <h3 className="font-bold text-slate-800">Observações baseadas nos registros</h3>
+                {data.observacoes.length === 0 && <p className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">Nenhuma condição gerou alerta agora. Comparações de tendência exigem registros nas quatro semanas anteriores; continue categorizando saídas e compras.</p>}
                 {data.observacoes.map((item, i) => (
                   <div key={`${item.titulo}-${i}`} className={`rounded-xl border p-3 text-sm ${severities[item.nivel]}`}>
                     <p className="flex items-center gap-1 font-bold"><AlertTriangle className="h-4 w-4" /> {item.titulo}</p>
-                    <p className="mt-1 leading-relaxed">{item.texto}</p>
+                    <dl className="mt-2 space-y-2 leading-relaxed">
+                      {[["O que aconteceu?", item.aconteceu], ["Qual dado provocou o alerta?", item.dado], ["Como isso afetou o caixa?", item.impacto], ["O que pode acontecer se continuar?", item.continuidade], ["Qual ação considerar?", item.sugestao]].map(([label, description]) => (
+                        <div key={label}><dt className="text-xs font-bold">{label}</dt><dd className="mt-0.5 text-sm">{description}</dd></div>
+                      ))}
+                    </dl>
                   </div>
                 ))}
               </section>
@@ -283,7 +288,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 </div>
                 {messages.map((message, i) => <div key={i} className="space-y-1 text-sm">
                   <p className="ml-6 rounded-xl bg-slate-100 p-2 text-slate-800">{message.pergunta}</p>
-                  <p className="mr-6 rounded-xl bg-blue-50 p-3 leading-relaxed text-blue-950">{message.resposta}</p>
+                  <p className="mr-6 whitespace-pre-line rounded-xl bg-blue-50 p-3 leading-relaxed text-blue-950">{message.resposta}</p>
                 </div>)}
                 <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex gap-2">
                   <Input data-testid="input-pergunta-financeira" value={question} maxLength={400} onChange={e => setQuestion(e.target.value)} placeholder="Pergunte sobre seu Caixa..." aria-label="Sua pergunta" />

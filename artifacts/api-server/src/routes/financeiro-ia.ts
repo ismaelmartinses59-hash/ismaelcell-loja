@@ -194,24 +194,93 @@ async function snapshot() {
     .map(row => daySP(row.createdAt))).size;
   const projected = total === null || distinctDays < 7 ? null
     : total + Math.round((recentDays.entradas - recentDays.saidas) / 28 * 7);
-  const alerts: { nivel: "risco" | "atencao" | "positivo"; titulo: string; texto: string }[] = [];
-  if (disponivel !== null && purchaseAverage !== null && disponivel < purchaseAverage)
-    alerts.push({ nivel: "risco", titulo: "Compra de estoque", texto: `Disponível: ${reais(disponivel)}; média das semanas com compras registradas: ${reais(purchaseAverage)}. Faltam ${reais(purchaseAverage - disponivel)} sem usar a reserva.` });
-  if (total !== null && config.proteger && total < config.reserva)
-    alerts.push({ nivel: "risco", titulo: "Reserva abaixo da meta", texto: `Saldo registrado: ${reais(total)}; meta protegida: ${reais(config.reserva)}.` });
-  if (previousWeek.saidas > 0 && week.saidas > previousWeek.saidas * 1.25)
-    alerts.push({ nivel: "atencao", titulo: "Saídas acima da semana anterior", texto: `Esta semana: ${reais(week.saidas)}; semana anterior inteira: ${reais(previousWeek.saidas)}.` });
-  if (disponivel !== null && week.retiradas > 0 && week.retiradas > disponivel / 4)
-    alerts.push({ nivel: "atencao", titulo: "Retiradas relevantes", texto: `As retiradas registradas nesta semana somam ${reais(week.retiradas)}; disponível atual: ${reais(disponivel)}.` });
-  if (expensesTotal > 0 && disponivel !== null && expensesTotal > disponivel)
-    alerts.push({ nivel: "risco", titulo: "Contas próximas", texto: `Contas previstas para os próximos 7 dias: ${reais(expensesTotal)}; disponível: ${reais(disponivel)}.` });
-  if (stockLow.length)
-    alerts.push({ nivel: "atencao", titulo: "Estoque baixo", texto: `${stockLow.length} produto(s) com no máximo 2 unidades cadastradas.` });
-  if (previousWeek.entradas > 0 && week.entradas > previousWeek.entradas)
-    alerts.push({ nivel: "positivo", titulo: "Faturamento em alta", texto: `Esta semana: ${reais(week.entradas)}; semana anterior: ${reais(previousWeek.entradas)}. A semana atual ainda está em andamento.` });
-  if (!alerts.length) alerts.push({ nivel: "atencao", titulo: "Dados registrados", texto: "Sem alertas confiáveis por enquanto. Registre compras e categorias para melhorar a análise." });
+  type Alerta = { nivel: "risco" | "atencao" | "positivo"; titulo: string; aconteceu: string; dado: string; impacto: string; continuidade: string; sugestao: string; texto: string };
+  const alerts: Alerta[] = [];
+  const add = (nivel: Alerta["nivel"], titulo: string, aconteceu: string, dado: string, impacto: string, continuidade: string, sugestao: string) => {
+    alerts.push({ nivel, titulo, aconteceu, dado, impacto, continuidade, sugestao, texto: [aconteceu, dado, impacto, continuidade, sugestao].join(" ") });
+  };
+  const last7 = totalPeriod(today - 6, today);
+  const previous4 = [1, 2, 3, 4].map(i => totalPeriod(today - 6 - i * 7, today - i * 7));
+  const validComparison = previous4.every(period => period.registros > 0);
+  const average = (key: "entradas" | "saidas" | "compras") => validComparison
+    ? Math.round(previous4.reduce((sum, period) => sum + period[key], 0) / 4) : null;
+  const avgExpenses = average("saidas");
+  const avgPurchases = average("compras");
+  const avgRevenue = average("entradas");
+  const delta = (current: number, base: number | null) => base && base > 0 ? Math.round((current - base) / base * 100) : null;
+  const expensesChange = delta(last7.saidas, avgExpenses);
+  const purchaseChange = delta(last7.compras, avgPurchases);
+  const revenueChange = delta(last7.entradas, avgRevenue);
+  const impactCash = (amount: number) => disponivel === null
+    ? `Saídas registradas de ${reais(amount)} afetam o fluxo; sem sessão da gaveta não calculo a disponibilidade atual.`
+    : `Saídas registradas de ${reais(amount)} reduzem o fluxo; o disponível atual, após outros movimentos e a reserva, é ${reais(disponivel)}.`;
+  if (disponivel !== null && purchaseAverage !== null && purchaseValues.length >= 2 && disponivel < purchaseAverage) {
+    const gap = purchaseAverage - disponivel;
+    add("risco", "Compra de estoque acima do disponível",
+      "O caixa operacional registrado está abaixo da média de compra de estoque.",
+      `Disponível: ${reais(disponivel)}; média de ${purchaseValues.length} semana(s) com compras registradas: ${reais(purchaseAverage)}; diferença: ${reais(gap)}.`,
+      `Uma compra dessa média hoje ultrapassaria o disponível em ${reais(gap)}, sem considerar contas ainda não pagas.`,
+      "Se a compra ocorrer antes de novas entradas, pode ser necessário adiar parte dela ou comprometer a reserva protegida.",
+      "Confira quais peças são necessárias e considere ajustar o valor ou esperar novas entradas; a decisão é sua.");
+  }
+  if (total !== null && config.proteger && total < config.reserva) {
+    add("risco", "Reserva abaixo da meta",
+      "O saldo registrado está abaixo do valor configurado para proteção.",
+      `Saldo registrado em dinheiro e PIX: ${reais(total)}; reserva configurada: ${reais(config.reserva)}; diferença: ${reais(config.reserva - total)}.`,
+      "Não há valor operacional livre calculado sem usar a meta protegida.",
+      "Se novas saídas ocorrerem antes de entradas, a distância até a meta de reserva poderá aumentar.",
+      "Considere revisar saídas programadas e acompanhar as próximas entradas antes de assumir novos gastos.");
+  }
+  if (purchaseChange !== null && purchaseChange > 25 && avgPurchases !== null && avgPurchases > 0) {
+    add("atencao", "Compras de peças acima da média",
+      "As compras de peças registradas nos últimos 7 dias superaram a média recente.",
+      `Compras: ${reais(last7.compras)}; média semanal das quatro semanas anteriores: ${reais(avgPurchases)}; variação: +${purchaseChange}%. ${revenueChange === null ? "Não há base comparável de entradas." : `Entradas registradas: ${reais(last7.entradas)} contra média de ${reais(avgRevenue!)} (${revenueChange >= 0 ? "+" : ""}${revenueChange}%).`}`,
+      impactCash(last7.compras),
+      "Se as compras mantiverem esse ritmo sem entradas suficientes, haverá menos recursos livres para outras operações.",
+      "Antes da próxima compra, confira as peças de maior saída e considere priorizar as necessárias.");
+  } else if (expensesChange !== null && expensesChange > 25 && avgExpenses !== null && avgExpenses > 0) {
+    add("atencao", "Saídas acima da média registrada",
+      "As saídas dos últimos 7 dias superaram a média recente.",
+      `Saídas: ${reais(last7.saidas)}; média semanal das quatro semanas anteriores: ${reais(avgExpenses)}; variação: +${expensesChange}%.`,
+      impactCash(last7.saidas),
+      "Se as saídas continuarem acima da média sem entradas equivalentes, o disponível poderá diminuir.",
+      "Considere revisar as categorias de saída e as contas próximas antes de planejar novos gastos.");
+  }
+  if (disponivel !== null && last7.retiradas > 0 && last7.retiradas > disponivel / 4) {
+    add("atencao", "Retiradas e disponibilidade",
+      "Houve retiradas registradas nos últimos 7 dias.",
+      `Retiradas: ${reais(last7.retiradas)}; disponível atual: ${reais(disponivel)}.`,
+      `Essas saídas reduziram o fluxo em ${reais(last7.retiradas)}; o disponível atual já considera os movimentos registrados.`,
+      "Se retiradas semelhantes ocorrerem sem novas entradas, a margem para despesas e compras poderá diminuir.",
+      "Considere comparar a próxima retirada com as contas previstas e a meta de compra antes de confirmá-la.");
+  }
+  if (expensesTotal > 0 && disponivel !== null && expensesTotal > disponivel) {
+    add("risco", "Contas previstas acima do disponível",
+      "O total das contas cadastradas para os próximos 7 dias supera o disponível registrado.",
+      `Contas previstas: ${reais(expensesTotal)}; disponível: ${reais(disponivel)}; diferença: ${reais(expensesTotal - disponivel)}.`,
+      "Essas contas ainda não foram debitadas; se fossem pagas agora sem novas entradas, ultrapassariam o disponível.",
+      "Se nenhum recebimento ocorrer até os vencimentos, poderá faltar saldo operacional para pagá-las sem usar a reserva.",
+      "Confira vencimentos e recebimentos esperados antes de programar novas compras.");
+  }
+  if (stockLow.length) {
+    add("atencao", "Estoque com poucas unidades",
+      "Há produtos com no máximo duas unidades cadastradas; este é um critério de atenção, não um estoque mínimo configurado.",
+      `Itens encontrados: ${stockLow.slice(0, 3).map(p => `${p.modelo} (${p.quantidade})`).join(", ")}${stockLow.length > 3 ? ` e mais ${stockLow.length - 3}` : ""}.`,
+      "Estoque baixo não altera o caixa por si só; não há dado suficiente para calcular eventual perda de vendas.",
+      "Se houver procura por esses itens e eles acabarem, atendimentos poderão ser adiados.",
+      "Confira a procura registrada e considere priorizar os itens necessários na próxima compra.");
+  }
+  if (avgRevenue !== null && avgRevenue > 0 && revenueChange !== null && revenueChange > 25) {
+    add("positivo", "Entradas acima da média",
+      "As entradas registradas nos últimos 7 dias superaram a média recente.",
+      `Entradas: ${reais(last7.entradas)}; média semanal das quatro semanas anteriores: ${reais(avgRevenue)}; variação: +${revenueChange}%.`,
+      "Entradas em dinheiro/PIX podem ampliar o disponível, mas vendas em cartão não são disponibilidade imediata.",
+      "O resultado da próxima semana pode ser diferente; as saídas também influenciam o saldo.",
+      "Considere acompanhar entradas recebidas e saídas antes de decidir o valor da próxima compra.");
+  }
   const situacao = alerts.some(a => a.nivel === "risco") ? "risco" :
-    alerts.some(a => a.nivel === "atencao") ? "atencao" : "saudavel";
+    alerts.some(a => a.nivel === "atencao") ? "atencao" :
+    alerts.some(a => a.nivel === "positivo") ? "saudavel" : recent.length === 0 ? "sem_dados" : "sem_alertas";
   return {
     atualizadoEm: now.toISOString(),
     saldos: {
@@ -233,6 +302,7 @@ async function snapshot() {
     },
     mes: { entradas: money(month.entradas), saidas: money(month.saidas), lucro: month.lucro === null ? null : money(month.lucro) },
     comparacao: { semanaAnterior: { entradas: money(previousWeek.entradas), saidas: money(previousWeek.saidas) }, periodoAnterior: { entradas: money(previousMonth.entradas), saidas: money(previousMonth.saidas) } },
+    analiseGastos: { ultimos7Dias: money(last7.saidas), mediaSemanal4Semanas: avgExpenses === null ? null : money(avgExpenses), variacaoPercentual: expensesChange, semanasComRegistros: previous4.filter(p => p.registros > 0).length, entradas7Dias: money(last7.entradas), mediaEntradas4Semanas: avgRevenue === null ? null : money(avgRevenue), variacaoEntradasPercentual: revenueChange },
     compras: {
       totalSemana: money(week.compras), mediaSemanal: purchaseAverage === null ? null : money(purchaseAverage),
       menor: purchaseValues.length ? money(Math.min(...purchaseValues)) : null,
@@ -310,6 +380,10 @@ router.post("/financeiro-ia/retiradas", async (req, res) => {
   } catch (err) { req.log.error({ err }, "financeiro-ia/retiradas"); res.status(500).json({ error: "Não foi possível registrar a retirada." }); }
 });
 
+function formatConcern(a: { aconteceu: string; dado: string; impacto: string; continuidade: string; sugestao: string }) {
+  return [`O que aconteceu? ${a.aconteceu}`, `Qual dado provocou o alerta? ${a.dado}`, `Como isso afetou o caixa? ${a.impacto}`, `O que pode acontecer se continuar? ${a.continuidade}`, `Qual ação considerar? ${a.sugestao}`].join("\n");
+}
+
 function normalize(text: string) {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
@@ -327,27 +401,58 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
     const amount = question.match(/(?:r\$\s*)?((?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?)/i);
     const target = amount ? inputMoney(amount[1].replace(/\./g, "")) : null;
     if (/posso comprar|comprar.*peca|comprar.*estoque/.test(q)) {
-      answer = saldo.disponivel === null ? insufficient : target === null
-        ? `Disponível sem usar a reserva: ${reais(Math.round(saldo.disponivel * 100))}. Informe o valor da compra para comparar.`
-        : `Compra consultada: ${reais(target)}. Disponível sem usar a reserva: ${reais(Math.round(saldo.disponivel * 100))}. ${target <= Math.round(saldo.disponivel * 100) ? "Cabe no caixa operacional registrado." : `Faltam ${reais(target - Math.round(saldo.disponivel * 100))}; isso utilizaria a reserva ou exigiria novas entradas. Nenhum valor será movimentado automaticamente.`}`;
+      if (saldo.disponivel === null) answer = insufficient;
+      else if (target === null) answer = `Disponível sem usar a reserva: ${reais(Math.round(saldo.disponivel * 100))}. Informe o valor da compra para comparar.`;
+      else if (target <= Math.round(saldo.disponivel * 100)) answer = `Compra consultada: ${reais(target)}; disponível sem usar a reserva: ${reais(Math.round(saldo.disponivel * 100))}. Cabe no caixa operacional registrado, antes de despesas futuras não cadastradas. Nenhum valor será movimentado automaticamente.`;
+      else {
+        const gap = target - Math.round(saldo.disponivel * 100);
+        answer = formatConcern({
+          aconteceu: "A compra consultada excede o caixa operacional registrado.",
+          dado: `Compra: ${reais(target)}; disponível sem reserva: ${reais(Math.round(saldo.disponivel * 100))}; diferença: ${reais(gap)}.`,
+          impacto: `Se a compra fosse paga agora em dinheiro/PIX, ultrapassaria o disponível em ${reais(gap)}. Nenhum valor foi movimentado.`,
+          continuidade: "Se compras acima do disponível ocorrerem antes de novas entradas, a reserva poderá ser comprometida.",
+          sugestao: "Considere ajustar a lista de peças ou aguardar entradas efetivamente recebidas; a decisão é sua."
+        });
+      }
     } else if (/quanto.*(gastar|retirar|separar para mim)/.test(q)) {
       answer = saldo.podeGastar === null ? insufficient
         : `Limite conservador registrado: ${reais(Math.round(saldo.podeGastar * 100))}. Cálculo: ${reais(Math.round(saldo.disponivel! * 100))} disponível − ${reais(Math.round(s.despesasPrevistas.total * 100))} em contas previstas nos próximos 7 dias − ${reais(Math.round(s.metaCompra * 100))} da meta de compra. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
       answer = saldo.total === null ? insufficient
-        : `Dinheiro físico: ${reais(Math.round(saldo.dinheiro! * 100))}; PIX líquido registrado: ${reais(Math.round(saldo.pix * 100))}; total: ${reais(Math.round(saldo.total * 100))}; reserva ${saldo.protecaoAtiva ? "protegida" : "desativada"}: ${reais(Math.round(saldo.reserva * 100))}; disponível sem usar reserva: ${reais(Math.round(saldo.disponivel! * 100))}. ${saldo.base}`;
+        : `Dinheiro físico: ${reais(Math.round(saldo.dinheiro! * 100))}; PIX líquido registrado: ${reais(Math.round(saldo.pix * 100))}; total: ${reais(Math.round(saldo.total * 100))}; reserva ${saldo.protecaoAtiva ? "protegida" : "desativada"}: ${reais(Math.round(saldo.reserva * 100))}; disponível sem usar reserva: ${reais(Math.round(saldo.disponivel! * 100))}. ${saldo.base}${s.observacoes.find(a => a.titulo === "Reserva abaixo da meta") ? `\n${formatConcern(s.observacoes.find(a => a.titulo === "Reserva abaixo da meta")!)}` : ""}`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`
         : insufficient;
     } else if (/(preciso|falta).*fatur.*compra|quanto.*(proxima|pr[oó]xima) compra/.test(q)) {
       const goal = s.metaCompra > 0 ? s.metaCompra : s.compras.mediaSemanal;
-      answer = saldo.disponivel === null || goal === null ? insufficient
-        : `Para a ${s.metaCompra > 0 ? "meta planejada" : "média semanal registrada"} de ${reais(Math.round(goal * 100))}, faltam ${reais(Math.max(0, Math.round((goal - saldo.disponivel) * 100)))} em caixa operacional. Isso não é uma meta de faturamento bruto: somente entradas efetivamente recebidas em dinheiro/PIX, líquidas de saídas, aumentam o disponível.`;
+      if (saldo.disponivel === null || goal === null) answer = insufficient;
+      else {
+        const gap = Math.max(0, Math.round((goal - saldo.disponivel) * 100));
+        answer = gap === 0 ? `A ${s.metaCompra > 0 ? "meta planejada" : "média semanal registrada"} de ${reais(Math.round(goal * 100))} já cabe no disponível registrado de ${reais(Math.round(saldo.disponivel * 100))}, antes das contas futuras.` : formatConcern({
+          aconteceu: "O disponível ainda está abaixo da próxima compra considerada.",
+          dado: `Compra ${s.metaCompra > 0 ? "planejada" : "média registrada"}: ${reais(Math.round(goal * 100))}; disponível: ${reais(Math.round(saldo.disponivel * 100))}; diferença: ${reais(gap)}.`,
+          impacto: `Sem novas entradas, uma compra desse valor ultrapassaria o disponível em ${reais(gap)}.`,
+          continuidade: "Novas saídas antes da compra podem ampliar essa diferença; não é possível converter a diferença em faturamento bruto sem conhecer forma de recebimento e gastos futuros.",
+          sugestao: "Considere acompanhar entradas efetivamente recebidas em dinheiro/PIX e revisar a compra antes de confirmá-la."
+        });
+      }
     } else if (/gasto.*mais|gastando demais/.test(q)) {
-      const categories = Object.entries(s.categorias).sort((a, b) => b[1] - a[1]);
-      answer = categories.length ? `Nesta semana, a maior categoria registrada foi ${categories[0][0]}: ${reais(Math.round(categories[0][1] * 100))}. Saídas da semana: ${reais(Math.round(s.semana.saidas * 100))}; semana anterior: ${reais(Math.round(s.comparacao.semanaAnterior.saidas * 100))}. Despesas antigas sem categoria não entram na classificação.`
-        : insufficient;
+      const spendingAlert = s.observacoes.find(a => a.titulo === "Compras de peças acima da média" || a.titulo === "Saídas acima da média registrada");
+      if (spendingAlert) {
+        answer = formatConcern(spendingAlert);
+      } else if (s.analiseGastos.mediaSemanal4Semanas === null) {
+        answer = `${insufficient} Nos últimos 7 dias, as saídas registradas foram ${reais(Math.round(s.analiseGastos.ultimos7Dias * 100))}; não há registros em todas as quatro semanas anteriores para uma comparação responsável.`;
+      } else {
+        const a = s.analiseGastos;
+        const percentual = a.variacaoPercentual;
+        const direction = percentual === null ? "sem variação percentual calculável" : percentual > 0 ? `${percentual}% acima` : `${Math.abs(percentual)}% abaixo ou igual`;
+        answer = [`O que aconteceu? As saídas registradas nos últimos 7 dias estão ${direction} da média recente.`,
+          `Qual dado provocou a análise? Saídas: ${reais(Math.round(a.ultimos7Dias * 100))}; média semanal das quatro semanas anteriores: ${reais(Math.round(a.mediaSemanal4Semanas! * 100))}.`,
+          `Como isso afetou o caixa? Essas saídas reduziram o fluxo em ${reais(Math.round(a.ultimos7Dias * 100))}; ${saldo.disponivel === null ? "não é possível calcular o disponível sem sessão da gaveta" : `o disponível atual, após outros movimentos e a reserva, é ${reais(Math.round(saldo.disponivel * 100))}`}.`,
+          "O que pode acontecer se continuar? Saídas futuras sem entradas correspondentes podem reduzir a margem operacional; não é uma previsão certa.",
+          "Qual ação considerar? Confira as categorias registradas e as contas previstas antes de decidir o próximo gasto."].join("\n");
+      }
     } else if (/fatur|melhorando|evolu/.test(q)) {
       answer = s.semana.registros ? `Entradas hoje: ${reais(Math.round(s.dia.entradas * 100))}; nesta semana: ${reais(Math.round(s.semana.entradas * 100))}; semana anterior: ${reais(Math.round(s.comparacao.semanaAnterior.entradas * 100))}. Nos últimos 30 dias: ${reais(Math.round(s.mes.entradas * 100))}; 30 dias anteriores: ${reais(Math.round(s.comparacao.periodoAnterior.entradas * 100))}. A semana atual está em andamento; faturamento sozinho não mede lucro.`
         : insufficient;
@@ -366,13 +471,13 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
     if (!answer && process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
       const facts = JSON.stringify({
         saldos: s.saldos, semana: s.semana, mes: s.mes, comparacao: s.comparacao,
-        compras: s.compras, despesasPrevistas: s.despesasPrevistas,
+        compras: s.compras, analiseGastos: s.analiseGastos, observacoes: s.observacoes, despesasPrevistas: s.despesasPrevistas,
         estoqueBaixo: s.estoqueBaixo, avisos: s.avisos,
       });
       try {
         const response = await ai.models.generateContent({
           model: "gemini-2.5-flash",
-          contents: `Você é um assistente financeiro de uma loja. Responda em português usando SOMENTE os fatos JSON a seguir; se a pergunta exigir dados ausentes, diga exatamente "${insufficient}". Nunca proponha ações automáticas, nunca invente valores. Fatos: ${facts}. Pergunta: ${question}`,
+          contents: `Você é um assistente financeiro de uma loja. Responda em português usando SOMENTE os fatos JSON a seguir; se a pergunta exigir dados ausentes, diga exatamente "${insufficient}". Nunca proponha ações automáticas, nunca invente valores nem faça julgamentos vagos (errado, ruim, administrando mal). Se identificar algo que merece atenção, use cinco partes: O que aconteceu? Qual dado provocou o alerta? Como isso afetou o caixa? O que pode acontecer se continuar? Qual ação considerar? Diferencie fatos de riscos condicionais, e deixe a decisão com o usuário. Fatos: ${facts}. Pergunta: ${question}`,
         });
         answer = response.text?.trim() || insufficient;
       } catch (err) {
