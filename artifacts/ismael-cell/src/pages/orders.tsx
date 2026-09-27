@@ -24,6 +24,7 @@ import {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ListOrdersStatus } from "@workspace/api-client-react";
 import { fetchWithSession as fetch } from "@/lib/api-fetch";
+import { turnOffMicrophone } from "@/lib/microphone";
 import { useToast } from "@/hooks/use-toast";
 
 export default function Orders() {
@@ -110,6 +111,7 @@ export default function Orders() {
     try {
       const response = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/auth/logout`, { method: "POST" });
       if (!response.ok) throw new Error("Logout failed");
+      turnOffMicrophone();
       queryClient.clear();
       localStorage.removeItem("isLoggedIn");
       localStorage.removeItem("userEmail");

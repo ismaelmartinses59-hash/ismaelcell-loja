@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { fetchWithSession as fetch } from "@/lib/api-fetch";
+import { requestMicrophone, turnOffMicrophone, useMicrophoneActive } from "@/lib/microphone";
 import { Mic, Square, Plus, Trash2, Check, Share2, Pencil, ShoppingCart, Loader2, ArrowLeft, PackageCheck } from "lucide-react";
 import { FORNECEDORES } from "./encomendas-tab";
 
@@ -318,6 +319,7 @@ function ConvertForm({ selectedItems, onConfirm, onCancel, isConverting }: { sel
 export function PedidosTab({ open }: { open: boolean }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const microphoneActive = useMicrophoneActive();
   const [filter, setFilter] = useState<"pendente" | "comprado" | "todos">("pendente");
   const [mode, setMode] = useState<"list" | "manual-add" | "manual-edit" | "audio-preview" | "convert">("list");
   
@@ -328,6 +330,9 @@ export function PedidosTab({ open }: { open: boolean }) {
   const [isProcessingAudio, setIsProcessingAudio] = useState(false);
   const [audioItems, setAudioItems] = useState<AudioParsedItem[]>([]);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const startingAudioRef = useRef(false);
+  const openRef = useRef(open);
+  openRef.current = open;
   const chunksRef = useRef<Blob[]>([]);
   const recordingTimeoutRef = useRef<number | null>(null);
 
@@ -336,11 +341,11 @@ export function PedidosTab({ open }: { open: boolean }) {
       if (recordingTimeoutRef.current) window.clearTimeout(recordingTimeoutRef.current);
       const recorder = mediaRecorderRef.current;
       if (recorder?.state === "recording") {
-        recorder.stream.getTracks().forEach((track) => track.stop());
+        recorder.onstop = null;
         recorder.stop();
       }
     };
-  }, []);
+  }, [open]);
 
   const { data, isLoading } = useQuery({
     queryKey: ["pedidos", filter],
@@ -410,9 +415,11 @@ export function PedidosTab({ open }: { open: boolean }) {
   });
 
   const startAudio = async () => {
-    if (isRecording || isProcessingAudio) return;
+    if (isRecording || isProcessingAudio || startingAudioRef.current) return;
+    startingAudioRef.current = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await requestMicrophone();
+      if (!openRef.current) return;
       const mr = new MediaRecorder(stream);
       mediaRecorderRef.current = mr;
       chunksRef.current = [];
@@ -424,7 +431,7 @@ export function PedidosTab({ open }: { open: boolean }) {
       mr.onstop = async () => {
         if (recordingTimeoutRef.current) window.clearTimeout(recordingTimeoutRef.current);
         recordingTimeoutRef.current = null;
-        stream.getTracks().forEach(t => t.stop());
+        mediaRecorderRef.current = null;
         setIsProcessingAudio(true);
         const chunks = [...chunksRef.current];
         chunksRef.current = [];
@@ -476,7 +483,9 @@ export function PedidosTab({ open }: { open: boolean }) {
     } catch (err) {
       setIsRecording(false);
       setIsProcessingAudio(false);
-      toast({ title: "Erro", description: "Não foi possível acessar o microfone", variant: "destructive" });
+      toast({ title: "Microfone indisponível", description: err instanceof Error ? err.message : "Verifique a permissão do microfone no navegador.", variant: "destructive" });
+    } finally {
+      startingAudioRef.current = false;
     }
   };
 
@@ -616,6 +625,18 @@ export function PedidosTab({ open }: { open: boolean }) {
             <Plus className="w-5 h-5" />
           </Button>
         </div>
+        {microphoneActive && (
+          <div className="flex items-center justify-between gap-3 text-xs text-slate-600">
+            <span data-testid="status-microfone-pedidos">Microfone ativo neste acesso ao app. Só grava quando você toca em “Falar Pedidos”.</span>
+            <button
+              data-testid="button-desativar-microfone-pedidos"
+              type="button"
+              onClick={turnOffMicrophone}
+              disabled={isRecording || isProcessingAudio}
+              className="shrink-0 font-semibold text-blue-700 underline disabled:opacity-50"
+            >Desativar</button>
+          </div>
+        )}
 
         <div className="flex items-center justify-between">
           <div className="flex bg-gray-100/80 rounded-lg p-1">

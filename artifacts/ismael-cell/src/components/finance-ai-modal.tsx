@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownRight, Bot, LockKeyhole, MessageCircle, Package, Send, Wallet, X } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, Bot, LockKeyhole, MessageCircle, Mic, Package, Send, Square, Volume2, VolumeX, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { requestMicrophone, turnOffMicrophone, useMicrophoneActive } from "@/lib/microphone";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const fmt = (n: number | null) => n === null
@@ -67,6 +68,19 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState<{ pergunta: string; resposta: string }[]>([]);
   const [thinking, setThinking] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [selectedVoice, setSelectedVoice] = useState(() => window.localStorage.getItem("finance-voice") ?? "");
+  const [readAloud, setReadAloud] = useState(true);
+  const [speaking, setSpeaking] = useState(false);
+  const microphoneActive = useMicrophoneActive();
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const startingVoiceRef = useRef(false);
+  const chunksRef = useRef<Blob[]>([]);
+  const timeoutRef = useRef<number | null>(null);
+  const openRef = useRef(open);
+  openRef.current = open;
   const [withdraw, setWithdraw] = useState(false);
   const [amount, setAmount] = useState("");
   const [reason, setReason] = useState("");
@@ -81,6 +95,118 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     setMeta(String(data.metaCompra.toFixed(2)));
     setProteger(data.saldos.protecaoAtiva);
   }, [data?.saldos.reserva, data?.metaCompra, data?.saldos.protecaoAtiva]);
+
+  useEffect(() => {
+    if (!("speechSynthesis" in window)) return;
+    const updateVoices = () => setVoices(window.speechSynthesis.getVoices());
+    updateVoices();
+    window.speechSynthesis.addEventListener("voiceschanged", updateVoices);
+    return () => window.speechSynthesis.removeEventListener("voiceschanged", updateVoices);
+  }, []);
+
+  useEffect(() => {
+    if (open) return;
+    const recorder = recorderRef.current;
+    if (recorder?.state === "recording") {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    recorderRef.current = null;
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    window.speechSynthesis?.cancel();
+    setRecording(false);
+    setSpeaking(false);
+  }, [open]);
+
+  useEffect(() => () => {
+    const recorder = recorderRef.current;
+    if (recorder?.state === "recording") {
+      recorder.onstop = null;
+      recorder.stop();
+    }
+    if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+    window.speechSynthesis?.cancel();
+  }, []);
+
+  function speak(text: string) {
+    if (!("speechSynthesis" in window)) {
+      toast({ title: "Leitura de voz não disponível neste navegador", variant: "destructive" });
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "pt-BR";
+    utterance.rate = 1;
+    utterance.voice = voices.find(voice => voice.voiceURI === selectedVoice)
+      ?? voices.find(voice => voice.lang.toLowerCase() === "pt-br")
+      ?? voices.find(voice => voice.lang.toLowerCase().startsWith("pt"))
+      ?? null;
+    utterance.onstart = () => setSpeaking(true);
+    utterance.onend = () => setSpeaking(false);
+    utterance.onerror = () => setSpeaking(false);
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function stopVoice() {
+    const recorder = recorderRef.current;
+    if (recorder?.state === "recording") recorder.stop();
+  }
+
+  async function startVoice() {
+    if (recording || transcribing || thinking || startingVoiceRef.current) return;
+    startingVoiceRef.current = true;
+    window.speechSynthesis?.cancel();
+    try {
+      const stream = await requestMicrophone();
+      if (!openRef.current) return;
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      chunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunksRef.current.push(event.data);
+      };
+      recorder.onstop = async () => {
+        if (timeoutRef.current !== null) window.clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
+        recorderRef.current = null;
+        setRecording(false);
+        const blob = new Blob(chunksRef.current, { type: recorder.mimeType || "audio/mp4" });
+        chunksRef.current = [];
+        if (!openRef.current) return;
+        if (blob.size < 100) {
+          toast({ title: "Não ouvi uma pergunta. Tente novamente." });
+          return;
+        }
+        setTranscribing(true);
+        try {
+          const audioBase64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+            reader.onerror = () => reject(new Error("Não foi possível ler a gravação."));
+            reader.readAsDataURL(blob);
+          });
+          const result = await api<{ pergunta: string }>("/financeiro-ia/transcrever", {
+            method: "POST",
+            body: JSON.stringify({ audioBase64, mimeType: blob.type }),
+          });
+          if (!openRef.current) return;
+          setQuestion(result.pergunta);
+          await ask(result.pergunta);
+        } catch (err) {
+          if (openRef.current) toast({ title: "Não consegui ouvir sua pergunta", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+        } finally {
+          if (openRef.current) setTranscribing(false);
+        }
+      };
+      recorder.start();
+      setRecording(true);
+      timeoutRef.current = window.setTimeout(stopVoice, 30_000);
+    } catch (err) {
+      toast({ title: "Microfone indisponível", description: err instanceof Error ? err.message : "Confira a permissão do microfone no navegador.", variant: "destructive" });
+    } finally {
+      startingVoiceRef.current = false;
+    }
+  }
 
   async function saveConfig() {
     setSaving(true);
@@ -105,7 +231,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
       const result = await api<{ resposta: string }>("/financeiro-ia/perguntar", {
         method: "POST", body: JSON.stringify({ pergunta }),
       });
+      if (!openRef.current) return;
       setMessages(prev => [...prev, { pergunta, resposta: result.resposta }]);
+      if (readAloud) speak(result.resposta);
     } catch (e) {
       toast({ title: "Falha na análise", description: String(e instanceof Error ? e.message : e), variant: "destructive" });
       setQuestion(pergunta);
@@ -155,9 +283,27 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     <Dialog open={open} onOpenChange={(next) => { if (!next) onClose(); }}>
       <DialogContent className="w-[calc(100vw-16px)] max-w-2xl max-h-[94dvh] overflow-y-auto p-0 gap-0 rounded-2xl">
         <DialogHeader className="sticky top-0 z-10 border-b bg-white px-4 py-4">
-          <DialogTitle className="flex items-center gap-2 text-lg text-slate-900">
-            <Bot className="h-5 w-5 text-blue-600" /> IA Financeira
-          </DialogTitle>
+          <div className="flex items-center justify-between gap-2 pr-8">
+            <DialogTitle className="flex items-center gap-2 text-lg text-slate-900">
+              <Bot className="h-5 w-5 text-blue-600" /> IA Financeira
+            </DialogTitle>
+            <Button
+              data-testid="button-voz-ia-cabecalho"
+              type="button"
+              size="sm"
+              variant={recording ? "destructive" : "outline"}
+              disabled={thinking || transcribing}
+              onClick={() => {
+                document.getElementById("conversa-financeira")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                if (recording) stopVoice();
+                else void startVoice();
+              }}
+              className="shrink-0"
+            >
+              {recording ? <Square className="mr-1.5 h-4 w-4" /> : <Mic className="mr-1.5 h-4 w-4" />}
+              {recording ? "Enviar" : "Falar"}
+            </Button>
+          </div>
         </DialogHeader>
         <div className="space-y-5 p-4 pb-8">
           {isLoading && !data && <div className="py-12 text-center text-sm text-slate-500">Analisando os dados do Caixa...</div>}
@@ -279,8 +425,53 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 </div>}
               </section>
 
-              <section className="space-y-3" aria-label="Conversa com assistente financeiro">
+              <section id="conversa-financeira" className="scroll-mt-20 space-y-3" aria-label="Conversa com assistente financeiro">
                 <h3 className="flex items-center gap-2 font-bold text-slate-800"><MessageCircle className="h-4 w-4" /> Pergunte sobre suas finanças</h3>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      data-testid="button-falar-ia-financeira"
+                      type="button"
+                      variant={recording ? "destructive" : "default"}
+                      onClick={() => recording ? stopVoice() : void startVoice()}
+                      disabled={transcribing || thinking}
+                      className="min-h-11"
+                    >
+                      {recording ? <Square className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+                      {recording ? "Parar e enviar" : transcribing ? "Transcrevendo..." : "Falar com a IA"}
+                    </Button>
+                    {speaking && <Button data-testid="button-parar-voz-ia" variant="outline" type="button" onClick={() => { window.speechSynthesis.cancel(); setSpeaking(false); }}><VolumeX className="mr-2 h-4 w-4" /> Parar leitura</Button>}
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-700">
+                    <label className="flex items-center gap-2">
+                      Voz
+                      <select
+                        data-testid="select-voz-ia-financeira"
+                        className="max-w-[12rem] rounded-md border border-slate-300 bg-white px-2 py-1.5"
+                        value={selectedVoice}
+                        onChange={e => { setSelectedVoice(e.target.value); window.localStorage.setItem("finance-voice", e.target.value); }}
+                      >
+                        <option value="">Padrão em português</option>
+                        {(voices.some(voice => voice.lang.toLowerCase().startsWith("pt"))
+                          ? voices.filter(voice => voice.lang.toLowerCase().startsWith("pt"))
+                          : voices).map(voice => (
+                          <option key={voice.voiceURI} value={voice.voiceURI}>{voice.name} ({voice.lang})</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-1.5">
+                      <input data-testid="checkbox-ler-resposta-ia" type="checkbox" checked={readAloud} onChange={e => setReadAloud(e.target.checked)} />
+                      Ler respostas
+                    </label>
+                  </div>
+                  {microphoneActive && (
+                    <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-600">
+                      <span data-testid="status-microfone-ia">Microfone ativo neste acesso ao app. Só gravamos ao tocar em “Falar”.</span>
+                      <button data-testid="button-desativar-microfone-ia" type="button" disabled={recording || transcribing} onClick={turnOffMicrophone} className="shrink-0 font-semibold text-blue-700 underline disabled:opacity-50">Desativar</button>
+                    </div>
+                  )}
+                  <p className="mt-2 text-[11px] text-slate-500">O trecho gravado é enviado para transcrição. Você pode desligar o microfone quando quiser.</p>
+                </div>
                 <div className="flex flex-wrap gap-2">
                   {["Como está meu caixa?", "Quanto posso gastar hoje?", "Posso comprar R$ 1.500 em peças?", "Quanto faturei essa semana?"].map(q => (
                     <button data-testid={`button-pergunta-${q.length}`} key={q} type="button" onClick={() => void ask(q)} className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs text-blue-800 hover:bg-blue-100">{q}</button>
@@ -288,7 +479,10 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 </div>
                 {messages.map((message, i) => <div key={i} className="space-y-1 text-sm">
                   <p className="ml-6 rounded-xl bg-slate-100 p-2 text-slate-800">{message.pergunta}</p>
-                  <p className="mr-6 whitespace-pre-line rounded-xl bg-blue-50 p-3 leading-relaxed text-blue-950">{message.resposta}</p>
+                  <div className="mr-6 rounded-xl bg-blue-50 p-3 text-blue-950">
+                    <p className="whitespace-pre-line leading-relaxed">{message.resposta}</p>
+                    <button data-testid={`button-ouvir-resposta-${i}`} type="button" onClick={() => speak(message.resposta)} className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-700"><Volume2 className="h-3.5 w-3.5" /> Ouvir de novo</button>
+                  </div>
                 </div>)}
                 <form onSubmit={e => { e.preventDefault(); void ask(); }} className="flex gap-2">
                   <Input data-testid="input-pergunta-financeira" value={question} maxLength={400} onChange={e => setQuestion(e.target.value)} placeholder="Pergunte sobre seu Caixa..." aria-label="Sua pergunta" />

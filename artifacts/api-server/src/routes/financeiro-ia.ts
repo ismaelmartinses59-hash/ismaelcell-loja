@@ -7,6 +7,7 @@ import { calcularDisponibilidade, mediaDasSemanasComCompra } from "./financeiro-
 
 const router: IRouter = Router();
 router.use(requireFinanceSession);
+const voiceRequests = new Map<string, { count: number; resetAt: number }>();
 
 const TZ = "America/Sao_Paulo";
 const keys = {
@@ -394,6 +395,58 @@ function respostaConsultivaValida(resposta: string): boolean {
   if (texto === normalize(insufficient)) return true;
   return ["o que aconteceu?", "qual dado", "como isso afetou o caixa?", "o que pode acontecer se continuar?", "qual acao considerar?"].every(parte => texto.includes(parte));
 }
+router.post("/financeiro-ia/transcrever", async (req, res): Promise<void> => {
+  const audioBase64 = req.body?.audioBase64;
+  const mimeType = String(req.body?.mimeType ?? "").split(";")[0];
+  if (typeof audioBase64 !== "string" || !audioBase64 || audioBase64.length > 7_000_000
+    || audioBase64.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(audioBase64)
+    || !["audio/webm", "audio/mp4", "audio/mpeg", "audio/wav", "audio/ogg"].includes(mimeType)) {
+    res.status(400).json({ error: "Envie um áudio válido de até 5 MB." });
+    return;
+  }
+  if (Buffer.from(audioBase64, "base64").byteLength > 5 * 1024 * 1024) {
+    res.status(413).json({ error: "Áudio muito grande. Faça uma pergunta mais curta." });
+    return;
+  }
+  const key = req.ip ?? "sem-ip";
+  const now = Date.now();
+  if (voiceRequests.size > 2000) {
+    for (const [ip, value] of voiceRequests) if (value.resetAt <= now) voiceRequests.delete(ip);
+  }
+  const previous = voiceRequests.get(key);
+  if (previous && previous.resetAt > now && previous.count >= 8) {
+    res.status(429).json({ error: "Muitas perguntas por voz. Aguarde um minuto." });
+    return;
+  }
+  voiceRequests.set(key, previous && previous.resetAt > now
+    ? { count: previous.count + 1, resetAt: previous.resetAt }
+    : { count: 1, resetAt: now + 60_000 });
+
+  try {
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType, data: audioBase64 } },
+          { text: "Transcreva literalmente a pergunta falada em português do Brasil. Não responda à pergunta, não acrescente informações e não invente valores. Retorne somente JSON no formato {\"pergunta\":\"texto ouvido\"}." },
+        ],
+      }],
+      config: { responseMimeType: "application/json", maxOutputTokens: 500 },
+    });
+    const parsed: unknown = JSON.parse(response.text ?? "{}");
+    const text = String((parsed as { pergunta?: unknown })?.pergunta ?? "").trim();
+    if (!text || text.length > 400) {
+      res.status(422).json({ error: "Não consegui entender a pergunta. Tente falar mais devagar." });
+      return;
+    }
+    res.json({ pergunta: text });
+  } catch (err) {
+    req.log.warn({ err }, "financeiro-ia transcrição indisponível");
+    res.status(502).json({ error: "Não consegui transcrever a pergunta agora. Tente novamente." });
+  }
+});
+
 router.post("/financeiro-ia/perguntar", async (req, res) => {
   const question = String(req.body?.pergunta ?? "").trim();
   if (!question || question.length > 400) {
