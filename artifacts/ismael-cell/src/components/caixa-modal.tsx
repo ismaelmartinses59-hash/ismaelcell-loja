@@ -721,7 +721,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
               aria-haspopup="dialog"
               aria-expanded={financeOpen}
               title="Abrir IA Financeira"
-              className="absolute bottom-[calc(8rem+env(safe-area-inset-bottom,0px))] right-6 z-20 flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-full bg-blue-600 text-white shadow-[0_8px_24px_rgba(37,99,235,0.35)] transition-transform hover:bg-blue-700 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+              className="fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom,0px))] right-6 z-20 flex h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-full bg-blue-600 text-white shadow-[0_8px_24px_rgba(37,99,235,0.35)] transition-transform hover:bg-blue-700 active:scale-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
             >
               <Sparkles aria-hidden="true" className="h-5 w-5" />
               <span aria-hidden="true" className="text-[10px] font-extrabold leading-none tracking-wide">IA</span>
