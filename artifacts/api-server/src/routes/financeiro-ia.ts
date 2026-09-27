@@ -388,6 +388,12 @@ function normalize(text: string) {
   return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 }
 const insufficient = "Não tenho dados suficientes registrados no Caixa para calcular isso.";
+function respostaConsultivaValida(resposta: string): boolean {
+  const texto = normalize(resposta);
+  if (/\b(errad[oa]s?|ruim|administrando mal|gastando demais|gastou demais)\b/.test(texto)) return false;
+  if (texto === normalize(insufficient)) return true;
+  return ["o que aconteceu?", "qual dado", "como isso afetou o caixa?", "o que pode acontecer se continuar?", "qual acao considerar?"].every(parte => texto.includes(parte));
+}
 router.post("/financeiro-ia/perguntar", async (req, res) => {
   const question = String(req.body?.pergunta ?? "").trim();
   if (!question || question.length > 400) {
@@ -479,7 +485,8 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
           model: "gemini-2.5-flash",
           contents: `Você é um assistente financeiro de uma loja. Responda em português usando SOMENTE os fatos JSON a seguir; se a pergunta exigir dados ausentes, diga exatamente "${insufficient}". Nunca proponha ações automáticas, nunca invente valores nem faça julgamentos vagos (errado, ruim, administrando mal). Se identificar algo que merece atenção, use cinco partes: O que aconteceu? Qual dado provocou o alerta? Como isso afetou o caixa? O que pode acontecer se continuar? Qual ação considerar? Diferencie fatos de riscos condicionais, e deixe a decisão com o usuário. Fatos: ${facts}. Pergunta: ${question}`,
         });
-        answer = response.text?.trim() || insufficient;
+        const generated = response.text?.trim() || insufficient;
+        answer = respostaConsultivaValida(generated) ? generated : insufficient;
       } catch (err) {
         req.log.warn({ err }, "financeiro-ia modelo indisponível");
         answer = insufficient;
