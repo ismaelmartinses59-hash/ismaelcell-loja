@@ -8,63 +8,6 @@ import { ai } from "@workspace/integrations-gemini-ai";
 const router: IRouter = Router();
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
-const PALAVRAS_GENERICAS_PECA = new Set([
-  "TELA", "DISPLAY", "LCD", "TOUCH", "FRONTAL", "MODULO", "PECA",
-  "BATERIA", "PLACA", "CONECTOR", "FLEX", "ARO",
-]);
-
-function tokensModelo(modelo: string): string[] {
-  return modelo
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .split(/[^A-Z0-9]+/)
-    .filter((parte) => parte && !PALAVRAS_GENERICAS_PECA.has(parte));
-}
-
-const MARCAS_MODELO_CORRECAO = new Set([
-  "SAMSUNG", "APPLE", "MOTOROLA", "MOTO", "XIAOMI", "REDMI", "POCO", "REALME",
-  "OPPO", "VIVO", "HUAWEI", "HONOR", "GOOGLE", "PIXEL", "ONEPLUS", "LG",
-  "SONY", "NOKIA", "ASUS", "TECNO", "INFINIX", "TCL", "ALCATEL", "ZTE", "LENOVO",
-]);
-
-function correcaoMarcaPrefixoSegura(modeloAntigo: string, modeloNovo: string): boolean {
-  const antigo = tokensModelo(modeloAntigo);
-  const novo = tokensModelo(modeloNovo);
-  const marcaAntiga = MARCAS_MODELO_CORRECAO.has(antigo[0] ?? "") ? antigo[0] : undefined;
-  const marcaNova = MARCAS_MODELO_CORRECAO.has(novo[0] ?? "") ? novo[0] : undefined;
-  if (!marcaAntiga || (marcaNova && marcaNova !== marcaAntiga)) return false;
-
-  const identidadeAntiga = marcaAntiga ? antigo.slice(1) : antigo;
-  const identidadeNova = marcaNova ? novo.slice(1) : novo;
-  const chave = identidadeAntiga.join("");
-  return (
-    identidadeAntiga.length >= 2 &&
-    chave.length >= 5 &&
-    /[A-Z]/.test(chave) &&
-    /\d/.test(chave) &&
-    identidadeAntiga.join("|") === identidadeNova.join("|")
-  );
-}
-
-function expansaoModeloSegura(modeloAntigo: string, modeloNovo: string): boolean {
-  if (correcaoMarcaPrefixoSegura(modeloAntigo, modeloNovo)) return true;
-  const antigo = tokensModelo(modeloAntigo);
-  const novo = tokensModelo(modeloNovo);
-  const chaveAntiga = antigo.join("");
-  const chaveNova = novo.join("");
-  const sequenciaExata = novo.some((_, inicio) =>
-    antigo.every((token, deslocamento) => novo[inicio + deslocamento] === token),
-  );
-  return (
-    chaveAntiga.length >= 3 &&
-    chaveAntiga !== chaveNova &&
-    /[A-Z]/.test(chaveAntiga) &&
-    /\d/.test(chaveAntiga) &&
-    sequenciaExata
-  );
-}
-
 // Só removemos conectores da escrita. Mantemos "TELA", "BATERIA",
 // "PLACA" etc. para nunca cruzar estoques de tipos diferentes.
 const PALAVRAS_CONECTORES_ESTOQUE = new Set([
@@ -358,6 +301,20 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
     res.status(400).json({ error: "Todos os itens precisam de modelo, qualidade, quantidade (mín. 1) e os dois preços" });
     return;
   }
+  const nomePorParDeCorrecao = new Map<string, string>();
+  for (const item of normalizados) {
+    if (!item.correcaoPecaId || !item.correcaoGemeaId) continue;
+    const chavePar = [item.correcaoPecaId, item.correcaoGemeaId].sort((a, b) => a - b).join(":");
+    const nomeDestino = item.modelo.trim().toLowerCase();
+    const nomeAnterior = nomePorParDeCorrecao.get(chavePar);
+    if (nomeAnterior !== undefined && nomeAnterior !== nomeDestino) {
+      res.status(409).json({
+        error: "A mesma peça do estoque foi escolhida para nomes diferentes nesta nota. Escolha um único nome ou mantenha as linhas separadas.",
+      });
+      return;
+    }
+    nomePorParDeCorrecao.set(chavePar, nomeDestino);
+  }
   try {
     const resultado = await db.transaction(async (tx) => {
       let criados = 0;
@@ -402,8 +359,8 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
           if (!n.correcaoGemeaId || n.correcaoGemeaId === n.correcaoPecaId) {
             throw new ImportacaoInvalida("O par Cliente/Lojista da correção é inválido.", 409);
           }
-          // O lock serializa correções da mesma peça. A validação é repetida no
-          // servidor: a sugestão visual nunca é aceita como fonte de verdade.
+          // O usuário confirmou a peça existente pela busca; o servidor ainda
+          // valida par, setor, qualidade e colisões antes de renomear.
           for (const lockId of [n.correcaoPecaId, n.correcaoGemeaId].sort((a, b) => a - b)) {
             await tx.execute(sql`
               SELECT pg_advisory_xact_lock(hashtext('corrigir_modelo_peca'), ${lockId})
@@ -430,9 +387,6 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
           }
 
           const jaCorrigida = alvo.modelo.trim().toLowerCase() === n.modelo.trim().toLowerCase();
-          if (!jaCorrigida && !expansaoModeloSegura(alvo.modelo, n.modelo)) {
-            throw new ImportacaoInvalida("A correção de nome não passou pela validação de segurança.", 409);
-          }
 
           if (!jaCorrigida) {
             const outroSetor = alvo.setor === "cliente" ? "lojista" : "cliente";

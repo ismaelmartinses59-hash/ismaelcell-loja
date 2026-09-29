@@ -818,6 +818,7 @@ interface ImportRow {
   correcaoGemeaId?: number;
   correcaoModeloAntigo?: string;
   aplicarCorrecao?: boolean;
+  correcaoManual?: boolean;
   buscaCorrecao?: string;
   modoNomeCompleto?: boolean;
 }
@@ -903,15 +904,6 @@ function mesmoModeloImport(modeloA: string | undefined, modeloB: string): boolea
   const chaveA = chaveCompleta(modeloA ?? "");
   const chaveB = chaveCompleta(modeloB);
   return chaveA.replace(/\|/g, "").length >= 3 && chaveA === chaveB;
-}
-
-function nomeCorrecaoImportSeguro(modeloAntigo: string | undefined, modeloNovo: string): boolean {
-  const antigo = modeloAntigo?.trim() ?? "";
-  const novo = modeloNovo.trim();
-  if (!antigo || !novo) return false;
-  if (antigo.toLowerCase() === novo.toLowerCase()) return true;
-  if (mesmoModeloImport(antigo, novo)) return true;
-  return expansaoModeloImportSegura(antigo, novo);
 }
 
 function contemSequenciaDeTokens(texto: string, consulta: string): boolean {
@@ -1039,6 +1031,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
         correcaoGemeaId: undefined,
         correcaoModeloAntigo: undefined,
         aplicarCorrecao: undefined,
+        correcaoManual: false,
       };
     }
     const preco = precosExistentes[`${sugestao.modelo.toLowerCase().trim()}|${sugestao.qualidade}`];
@@ -1050,6 +1043,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
       correcaoGemeaId: sugestao.gemeaId,
       correcaoModeloAntigo: sugestao.modelo,
       aplicarCorrecao: false,
+      correcaoManual: false,
     };
   }, [pecasExistentes, precosExistentes]);
 
@@ -1076,7 +1070,19 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
     setRows((cur) =>
       cur.map((r, idx) => {
         if (idx !== i) return r;
-        const next = comSugestaoCorrecao({ ...r, ...patch });
+        // Preserve a escolha manual do estoque mesmo quando o nome da nota
+        // não se parece com o nome salvo.
+        const next = r.correcaoManual && r.correcaoPecaId
+          ? { ...r, ...patch }
+          : comSugestaoCorrecao({ ...r, ...patch });
+        const pecaSelecionada = pecasExistentes.find((peca) => peca.id === next.correcaoPecaId);
+        if (
+          next.aplicarCorrecao &&
+          pecaSelecionada &&
+          pecaSelecionada.qualidade.trim().toLowerCase() !== next.qualidade.trim().toLowerCase()
+        ) {
+          next.aplicarCorrecao = false;
+        }
         const pe = precosExistentes[`${next.modelo.toLowerCase().trim()}|${next.qualidade}`];
         if (pe?.cliente) next.valorCliente = pe.cliente;
         if (pe?.lojista) next.valorLojista = pe.lojista;
@@ -1098,6 +1104,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
           correcaoGemeaId: peca.gemeaId,
           correcaoModeloAntigo: peca.modelo,
           aplicarCorrecao: false,
+          correcaoManual: true,
           buscaCorrecao: peca.modelo,
           valorCliente: r.valorCliente.trim() || preco?.cliente || "",
           valorLojista: r.valorLojista.trim() || preco?.lojista || "",
@@ -1145,11 +1152,14 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
-            const nomeCorrecaoSeguro = nomeCorrecaoImportSeguro(r.correcaoModeloAntigo, r.modelo);
             const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
+            const qualidadeCorrecaoCompativel = Boolean(
+              pecaCorrecaoSelecionada &&
+              pecaCorrecaoSelecionada.qualidade.trim().toLowerCase() === r.qualidade.trim().toLowerCase(),
+            );
             const mesmaPecaSelecionada = Boolean(
               pecaCorrecaoSelecionada &&
-              pecaCorrecaoSelecionada.qualidade.trim().toLowerCase() === r.qualidade.trim().toLowerCase() &&
+              qualidadeCorrecaoCompativel &&
               mesmoModeloImport(pecaCorrecaoSelecionada.modelo, r.modelo),
             );
             const candidatosOutraQualidade = !r.correcaoPecaId ? candidatosOutraQualidadePara(r) : [];
@@ -1195,6 +1205,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                         placeholder="Digite parte do modelo, ex.: Note 60"
                         className="h-8 border-violet-200 focus-visible:ring-violet-400"
                       />
+                      <p className="mt-1 text-[10px] text-violet-700">
+                        Se você sabe que é a mesma peça, selecione o nome antigo aqui. A decisão de corrigir é sua, mesmo com nomes diferentes.
+                      </p>
                       {focusBuscaIdx === i && candidatosBuscaPara(r).length > 0 && (
                         <div className="relative z-50 mt-1 bg-white border border-violet-200 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto">
                           <div className="px-3 py-1.5 text-[10px] uppercase text-violet-700 bg-violet-50">
@@ -1276,14 +1289,14 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                     </button>
                     {r.modoNomeCompleto && (
                       <p className="ml-5 text-[10px] text-green-700">
-                        Edite o campo Modelo / Peça acima com todos os modelos compatíveis. A opção de corrigir a peça antiga aparecerá aqui.
+                        Para corrigir um nome antigo diferente, pesquise a peça no campo “Encontrar peça no estoque” e selecione-a.
                       </p>
                     )}
                   </div>
                 )}
                 {r.correcaoPecaId && r.correcaoModeloAntigo && (
                   <div className={`rounded-lg border px-3 py-2.5 space-y-2 ${
-                    !nomeCorrecaoSeguro
+                    !qualidadeCorrecaoCompativel
                       ? "bg-amber-50 border-amber-300 text-amber-900"
                       : mesmaPecaSelecionada
                         ? "bg-emerald-50 border-emerald-300 text-emerald-900"
@@ -1294,20 +1307,24 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                     <div className="flex items-start gap-2">
                       <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold">Correção inteligente encontrada</p>
+                        <p className="text-xs font-semibold">
+                          {r.correcaoManual ? "Peça escolhida por você" : "Possível peça já cadastrada"}
+                        </p>
                         <p className="text-[11px] mt-1 break-words">
                           <span className="line-through opacity-70">{r.correcaoModeloAntigo}</span>
                           <span className="mx-1.5">→</span>
                           <b>{r.modelo}</b>
                         </p>
                         <p className="text-[10px] mt-1 opacity-75">
-                          {!nomeCorrecaoSeguro
-                            ? "Essa troca não preserva o nome antigo e não pode ser aplicada com segurança. Mantenha as peças separadas ou revise o nome."
+                          {!pecaCorrecaoSelecionada
+                            ? "Essa peça não está mais disponível. Pesquise e selecione novamente."
+                            : !qualidadeCorrecaoCompativel
+                            ? `A qualidade do estoque é ${pecaCorrecaoSelecionada.qualidade}. Para corrigir, escolha essa mesma qualidade na linha da nota.`
                             : mesmaPecaSelecionada
                               ? "Essa peça já existe com o mesmo modelo e qualidade. A quantidade será somada ao estoque atual; nenhuma peça duplicada será criada."
                             : r.aplicarCorrecao
-                            ? "Vai atualizar a peça antiga e somar nesta mesma linha."
-                            : "Escolha se deseja corrigir a peça antiga ou manter as duas separadas."}
+                            ? "Confirmado: o nome antigo será substituído pelo nome da nota nos estoques Cliente e Lojista, e a quantidade da nota será somada."
+                            : "Você decide se é a mesma peça. Corrigir troca o nome antigo pelo nome da nota; manter separadas preserva os dois nomes."}
                         </p>
                       </div>
                     </div>
@@ -1315,9 +1332,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                       <Button
                         type="button"
                         size="sm"
-                        variant={r.aplicarCorrecao && nomeCorrecaoSeguro ? "default" : "outline"}
-                        className={r.aplicarCorrecao && nomeCorrecaoSeguro ? "h-8 bg-violet-600 hover:bg-violet-700" : "h-8"}
-                        disabled={!nomeCorrecaoSeguro}
+                        variant={r.aplicarCorrecao && qualidadeCorrecaoCompativel ? "default" : "outline"}
+                        className={r.aplicarCorrecao && qualidadeCorrecaoCompativel ? "h-8 bg-violet-600 hover:bg-violet-700" : "h-8"}
+                        disabled={!qualidadeCorrecaoCompativel}
                         onClick={() => update(i, { aplicarCorrecao: true })}
                       >
                         <Check className="w-3.5 h-3.5 mr-1" /> Corrigir antiga
@@ -1752,18 +1769,6 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   };
 
   const confirmImport = async (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => {
-      const linhaCorrecaoInsegura = destino === "estoque"
-        ? rows.findIndex((r) => r.aplicarCorrecao && !nomeCorrecaoImportSeguro(r.correcaoModeloAntigo, r.modelo))
-        : -1;
-      if (linhaCorrecaoInsegura >= 0) {
-        const row = rows[linhaCorrecaoInsegura];
-        toast({
-          title: "Reveja a correção de nome",
-          description: `Peça ${linhaCorrecaoInsegura + 1}: “${row.correcaoModeloAntigo ?? "nome antigo"}” → “${row.modelo}” não passou pela validação. Ajuste o nome ou escolha “Manter separadas”. Nada foi cadastrado.`,
-          variant: "destructive",
-        });
-        return;
-      }
       setImportSaving(true);
       try {
         if (destino === "encomenda") {
