@@ -850,7 +850,33 @@ function tokensModeloImport(modelo: string): string[] {
     .filter((parte) => parte && !PALAVRAS_GENERICAS_PECA.has(parte));
 }
 
+const MARCAS_MODELO_IMPORT = new Set([
+  "SAMSUNG", "APPLE", "MOTOROLA", "MOTO", "XIAOMI", "REDMI", "POCO", "REALME",
+  "OPPO", "VIVO", "HUAWEI", "HONOR", "GOOGLE", "PIXEL", "ONEPLUS", "LG",
+  "SONY", "NOKIA", "ASUS", "TECNO", "INFINIX", "TCL", "ALCATEL", "ZTE", "LENOVO",
+]);
+
+function correcaoMarcaPrefixoSegura(modeloAntigo: string, modeloNovo: string): boolean {
+  const antigo = tokensModeloImport(modeloAntigo);
+  const novo = tokensModeloImport(modeloNovo);
+  const marcaAntiga = MARCAS_MODELO_IMPORT.has(antigo[0] ?? "") ? antigo[0] : undefined;
+  const marcaNova = MARCAS_MODELO_IMPORT.has(novo[0] ?? "") ? novo[0] : undefined;
+  if (!marcaAntiga || (marcaNova && marcaNova !== marcaAntiga)) return false;
+
+  const identidadeAntiga = marcaAntiga ? antigo.slice(1) : antigo;
+  const identidadeNova = marcaNova ? novo.slice(1) : novo;
+  const chave = identidadeAntiga.join("");
+  return (
+    identidadeAntiga.length >= 2 &&
+    chave.length >= 5 &&
+    /[A-Z]/.test(chave) &&
+    /\d/.test(chave) &&
+    identidadeAntiga.join("|") === identidadeNova.join("|")
+  );
+}
+
 function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): boolean {
+  if (correcaoMarcaPrefixoSegura(modeloAntigo, modeloNovo)) return true;
   const antigo = tokensModeloImport(modeloAntigo);
   const novo = tokensModeloImport(modeloNovo);
   const chaveAntiga = antigo.join("");
