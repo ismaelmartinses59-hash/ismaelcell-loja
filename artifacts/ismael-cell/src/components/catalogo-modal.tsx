@@ -866,6 +866,14 @@ function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): b
   );
 }
 
+function nomeCorrecaoImportSeguro(modeloAntigo: string | undefined, modeloNovo: string): boolean {
+  const antigo = modeloAntigo?.trim() ?? "";
+  const novo = modeloNovo.trim();
+  if (!antigo || !novo) return false;
+  if (antigo.toLowerCase() === novo.toLowerCase()) return true;
+  return expansaoModeloImportSegura(antigo, novo);
+}
+
 function contemSequenciaDeTokens(texto: string, consulta: string): boolean {
   const tokensTexto = tokensModeloImport(texto);
   const tokensConsulta = tokensModeloImport(consulta);
@@ -1094,6 +1102,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
+            const nomeCorrecaoSeguro = nomeCorrecaoImportSeguro(r.correcaoModeloAntigo, r.modelo);
             const candidatosOutraQualidade = !r.correcaoPecaId ? candidatosOutraQualidadePara(r) : [];
             return (
               <div key={i} className={`rounded-xl border p-3 space-y-2.5 ${rowValida(r) ? "bg-white" : "bg-amber-50/50 border-amber-300"}`}>
@@ -1225,9 +1234,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                 )}
                 {r.correcaoPecaId && r.correcaoModeloAntigo && (
                   <div className={`rounded-lg border px-3 py-2.5 space-y-2 ${
-                    r.aplicarCorrecao
-                      ? "bg-violet-50 border-violet-300 text-violet-900"
-                      : "bg-slate-50 border-slate-200 text-slate-700"
+                    !nomeCorrecaoSeguro
+                      ? "bg-amber-50 border-amber-300 text-amber-900"
+                      : r.aplicarCorrecao
+                        ? "bg-violet-50 border-violet-300 text-violet-900"
+                        : "bg-slate-50 border-slate-200 text-slate-700"
                   }`}>
                     <div className="flex items-start gap-2">
                       <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
@@ -1239,7 +1250,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                           <b>{r.modelo}</b>
                         </p>
                         <p className="text-[10px] mt-1 opacity-75">
-                          {r.aplicarCorrecao
+                          {!nomeCorrecaoSeguro
+                            ? "Essa troca não preserva o nome antigo e não pode ser aplicada com segurança. Mantenha as peças separadas ou revise o nome."
+                            : r.aplicarCorrecao
                             ? "Vai atualizar a peça antiga e somar nesta mesma linha."
                             : "Escolha se deseja corrigir a peça antiga ou manter as duas separadas."}
                         </p>
@@ -1249,8 +1262,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                       <Button
                         type="button"
                         size="sm"
-                        variant={r.aplicarCorrecao ? "default" : "outline"}
-                        className={r.aplicarCorrecao ? "h-8 bg-violet-600 hover:bg-violet-700" : "h-8"}
+                        variant={r.aplicarCorrecao && nomeCorrecaoSeguro ? "default" : "outline"}
+                        className={r.aplicarCorrecao && nomeCorrecaoSeguro ? "h-8 bg-violet-600 hover:bg-violet-700" : "h-8"}
+                        disabled={!nomeCorrecaoSeguro}
                         onClick={() => update(i, { aplicarCorrecao: true })}
                       >
                         <Check className="w-3.5 h-3.5 mr-1" /> Corrigir antiga
@@ -1685,7 +1699,19 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   };
 
   const confirmImport = async (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => {
-    setImportSaving(true);
+      const linhaCorrecaoInsegura = destino === "estoque"
+        ? rows.findIndex((r) => r.aplicarCorrecao && !nomeCorrecaoImportSeguro(r.correcaoModeloAntigo, r.modelo))
+        : -1;
+      if (linhaCorrecaoInsegura >= 0) {
+        const row = rows[linhaCorrecaoInsegura];
+        toast({
+          title: "Reveja a correção de nome",
+          description: `Peça ${linhaCorrecaoInsegura + 1}: “${row.correcaoModeloAntigo ?? "nome antigo"}” → “${row.modelo}” não passou pela validação. Ajuste o nome ou escolha “Manter separadas”. Nada foi cadastrado.`,
+          variant: "destructive",
+        });
+        return;
+      }
+      setImportSaving(true);
       try {
         if (destino === "encomenda") {
           await apiFetch("/api/encomendas", {
