@@ -866,11 +866,18 @@ function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): b
   );
 }
 
+function mesmoModeloImport(modeloA: string | undefined, modeloB: string): boolean {
+  const chaveA = tokensModeloImport(modeloA ?? "").join("");
+  const chaveB = tokensModeloImport(modeloB).join("");
+  return chaveA.length >= 3 && chaveA === chaveB;
+}
+
 function nomeCorrecaoImportSeguro(modeloAntigo: string | undefined, modeloNovo: string): boolean {
   const antigo = modeloAntigo?.trim() ?? "";
   const novo = modeloNovo.trim();
   if (!antigo || !novo) return false;
   if (antigo.toLowerCase() === novo.toLowerCase()) return true;
+  if (mesmoModeloImport(antigo, novo)) return true;
   return expansaoModeloImportSegura(antigo, novo);
 }
 
@@ -1049,8 +1056,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
       cur.map((r, idx) => {
         if (idx !== i) return r;
         const preco = precosExistentes[`${peca.modelo.toLowerCase().trim()}|${peca.qualidade}`];
+        const mesmaPeca = peca.qualidade.trim().toLowerCase() === r.qualidade.trim().toLowerCase()
+          && mesmoModeloImport(peca.modelo, r.modelo);
         return {
           ...r,
+          modelo: mesmaPeca ? peca.modelo : r.modelo,
           correcaoPecaId: peca.id,
           correcaoGemeaId: peca.gemeaId,
           correcaoModeloAntigo: peca.modelo,
@@ -1103,6 +1113,12 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
             const nomeCorrecaoSeguro = nomeCorrecaoImportSeguro(r.correcaoModeloAntigo, r.modelo);
+            const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
+            const mesmaPecaSelecionada = Boolean(
+              pecaCorrecaoSelecionada &&
+              pecaCorrecaoSelecionada.qualidade.trim().toLowerCase() === r.qualidade.trim().toLowerCase() &&
+              mesmoModeloImport(pecaCorrecaoSelecionada.modelo, r.modelo),
+            );
             const candidatosOutraQualidade = !r.correcaoPecaId ? candidatosOutraQualidadePara(r) : [];
             return (
               <div key={i} className={`rounded-xl border p-3 space-y-2.5 ${rowValida(r) ? "bg-white" : "bg-amber-50/50 border-amber-300"}`}>
@@ -1236,6 +1252,8 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                   <div className={`rounded-lg border px-3 py-2.5 space-y-2 ${
                     !nomeCorrecaoSeguro
                       ? "bg-amber-50 border-amber-300 text-amber-900"
+                      : mesmaPecaSelecionada
+                        ? "bg-emerald-50 border-emerald-300 text-emerald-900"
                       : r.aplicarCorrecao
                         ? "bg-violet-50 border-violet-300 text-violet-900"
                         : "bg-slate-50 border-slate-200 text-slate-700"
@@ -1252,13 +1270,15 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                         <p className="text-[10px] mt-1 opacity-75">
                           {!nomeCorrecaoSeguro
                             ? "Essa troca não preserva o nome antigo e não pode ser aplicada com segurança. Mantenha as peças separadas ou revise o nome."
+                            : mesmaPecaSelecionada
+                              ? "Essa peça já existe com o mesmo modelo e qualidade. A quantidade será somada ao estoque atual; nenhuma peça duplicada será criada."
                             : r.aplicarCorrecao
                             ? "Vai atualizar a peça antiga e somar nesta mesma linha."
                             : "Escolha se deseja corrigir a peça antiga ou manter as duas separadas."}
                         </p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
+                    {!mesmaPecaSelecionada && <div className="grid grid-cols-2 gap-2">
                       <Button
                         type="button"
                         size="sm"
@@ -1278,7 +1298,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                       >
                         Manter separadas
                       </Button>
-                    </div>
+                    </div>}
                   </div>
                 )}
                 <div className="grid grid-cols-3 gap-2">
