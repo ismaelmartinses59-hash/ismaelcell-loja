@@ -867,9 +867,16 @@ function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): b
 }
 
 function mesmoModeloImport(modeloA: string | undefined, modeloB: string): boolean {
-  const chaveA = tokensModeloImport(modeloA ?? "").join("");
-  const chaveB = tokensModeloImport(modeloB).join("");
-  return chaveA.length >= 3 && chaveA === chaveB;
+  const chaveCompleta = (modelo: string) => modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean)
+    .join("|");
+  const chaveA = chaveCompleta(modeloA ?? "");
+  const chaveB = chaveCompleta(modeloB);
+  return chaveA.replace(/\|/g, "").length >= 3 && chaveA === chaveB;
 }
 
 function nomeCorrecaoImportSeguro(modeloAntigo: string | undefined, modeloNovo: string): boolean {
