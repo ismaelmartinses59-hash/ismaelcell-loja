@@ -1,3 +1,33 @@
+export const FINANCE_TIME_ZONE = "America/Sao_Paulo";
+
+export function diaFinanceiroLocal(date: Date): number {
+  const key = new Intl.DateTimeFormat("en-CA", { timeZone: FINANCE_TIME_ZONE }).format(date);
+  return Math.floor(Date.parse(`${key}T12:00:00Z`) / 86400000);
+}
+
+export function dataFinanceiraLocal(date: Date): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: FINANCE_TIME_ZONE }).format(date);
+}
+
+export function somarMovimentosElegiveisDoDia(
+  movimentos: {
+    dia: number;
+    tipo: string;
+    formaPagamento: string | null;
+    valorCentavos: number;
+  }[],
+  diaAlvo: number,
+) {
+  return movimentos.reduce((total, movimento) => {
+    const elegivel = movimento.dia === diaAlvo &&
+      (!movimento.formaPagamento || movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix");
+    if (!elegivel || (movimento.tipo !== "entrada" && movimento.tipo !== "saida")) return total;
+    if (movimento.tipo === "entrada") total.entradas += movimento.valorCentavos;
+    else total.saidas += movimento.valorCentavos;
+    return total;
+  }, { entradas: 0, saidas: 0 });
+}
+
 export function calcularDisponibilidade(
   dinheiroCentavos: number | null,
   pixCentavos: number,
@@ -30,6 +60,64 @@ export function percentualReserva(entradas7Dias: number, mediaSemanal: number | 
   if (entradas7Dias < mediaSemanal * 0.7) return 30;
   if (entradas7Dias > mediaSemanal * 1.3) return 60;
   return 45;
+}
+
+export function calcularRateioDiario(
+  entradasCentavos: number,
+  saidasCentavos: number,
+  percentual: number,
+  protecaoAtiva: boolean,
+  limiteProtecaoCentavos: number,
+) {
+  const entradas = Math.max(0, Math.trunc(entradasCentavos));
+  const saidas = Math.max(0, Math.trunc(saidasCentavos));
+  const limite = Math.max(0, Math.trunc(limiteProtecaoCentavos));
+  const percentualValido = Math.min(100, Math.max(0, percentual));
+  const protecaoCentavos = protecaoAtiva
+    ? Math.min(Math.floor(entradas * percentualValido / 100), limite)
+    : 0;
+
+  return {
+    protecaoCentavos,
+    saldoOperacionalCentavos: entradas - protecaoCentavos - saidas,
+  };
+}
+
+export interface CicloReservaSemanal {
+  chave: string;
+  inicioDia: number;
+  inicioId: number;
+}
+
+export function proximoCicloReservaSemanal(
+  hojeDia: number,
+  segundaDia: number,
+  primeiraEntradaSegundaId: number | null,
+  cicloAtual: CicloReservaSemanal | null,
+): CicloReservaSemanal | null {
+  const chaveFallback = `fallback:${segundaDia}`;
+  if (cicloAtual?.chave === chaveFallback) return null;
+
+  if (primeiraEntradaSegundaId !== null) {
+    const chave = `venda:${segundaDia}:${primeiraEntradaSegundaId}`;
+    if (cicloAtual?.chave === chave) return null;
+    return { chave, inicioDia: segundaDia, inicioId: primeiraEntradaSegundaId };
+  }
+
+  if (hojeDia > segundaDia && cicloAtual?.chave !== chaveFallback) {
+    return { chave: chaveFallback, inicioDia: segundaDia + 1, inicioId: 0 };
+  }
+  return null;
+}
+
+export function aumentoReservaDaSemana(
+  aumentoTotal: number,
+  entradasNovasTotal: number,
+  entradasNovasDaSemana: number,
+): number {
+  if (aumentoTotal <= 0 || entradasNovasTotal <= 0 || entradasNovasDaSemana <= 0) return 0;
+  const proporcao = Math.min(1, entradasNovasDaSemana / entradasNovasTotal);
+  return Math.min(aumentoTotal, Math.floor(aumentoTotal * proporcao));
 }
 
 export function somarEntradasNovas(

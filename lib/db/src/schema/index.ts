@@ -7,6 +7,7 @@ export * from "./caixa";
 export * from "./caixa-sessoes";
 export * from "./push-subscriptions";
 export * from "./app-config";
+export * from "./reserva-ajustes";
 export * from "./encomendas";
 export * from "./pecas-espera";
 export * from "./devolucoes";

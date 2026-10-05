@@ -1,6 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calcularDisponibilidade, calcularReservaGradual, mediaDasSemanasComCompra, percentualReserva, somarEntradasNovas } from "./financeiro-ia-calculos.ts";
+import {
+  aumentoReservaDaSemana,
+  calcularDisponibilidade,
+  calcularRateioDiario,
+  calcularReservaGradual,
+  dataFinanceiraLocal,
+  diaFinanceiroLocal,
+  mediaDasSemanasComCompra,
+  percentualReserva,
+  proximoCicloReservaSemanal,
+  somarMovimentosElegiveisDoDia,
+  somarEntradasNovas,
+} from "./financeiro-ia-calculos.js";
 
 test("reserva protege R$ 2.000 dos R$ 2.550 em dinheiro e PIX", () => {
   assert.deepEqual(calcularDisponibilidade(155000, 100000, 200000, true, 0, 130000), {
@@ -68,4 +80,60 @@ test("semanas fracas e fortes mudam a taxa, sem inventar comparação sem histó
   assert.equal(percentualReserva(100000, 100000), 45);
   assert.equal(percentualReserva(150000, 100000), 60);
   assert.equal(percentualReserva(100000, null), 45);
+});
+test("rateia somente as entradas elegíveis do dia e desconta as saídas registradas", () => {
+  assert.deepEqual(calcularRateioDiario(109500, 0, 45, true, 150000), {
+    protecaoCentavos: 49275,
+    saldoOperacionalCentavos: 60225,
+  });
+  assert.deepEqual(calcularRateioDiario(109500, 10000, 45, true, 150000), {
+    protecaoCentavos: 49275,
+    saldoOperacionalCentavos: 50225,
+  });
+});
+test("rateio diário respeita o teto da proteção e deixa tudo para operação quando pausado", () => {
+  assert.deepEqual(calcularRateioDiario(109500, 0, 60, true, 20000), {
+    protecaoCentavos: 20000,
+    saldoOperacionalCentavos: 89500,
+  });
+  assert.deepEqual(calcularRateioDiario(109500, 0, 45, false, 150000), {
+    protecaoCentavos: 0,
+    saldoOperacionalCentavos: 109500,
+  });
+});
+test("resumo diário reinicia à meia-noite local e ignora dias e formas de pagamento inelegíveis", () => {
+  const antesDaVirada = new Date("2026-10-05T02:59:59.000Z");
+  const depoisDaVirada = new Date("2026-10-05T03:00:00.000Z");
+  const diaAlvo = diaFinanceiroLocal(depoisDaVirada);
+  assert.equal(dataFinanceiraLocal(antesDaVirada), "2026-10-04");
+  assert.equal(diaFinanceiroLocal(antesDaVirada), diaAlvo - 1);
+  assert.equal(dataFinanceiraLocal(depoisDaVirada), "2026-10-05");
+
+  assert.deepEqual(somarMovimentosElegiveisDoDia([
+    { dia: diaAlvo, tipo: "entrada", formaPagamento: "pix", valorCentavos: 109500 },
+    { dia: diaAlvo, tipo: "entrada", formaPagamento: "cartao", valorCentavos: 20000 },
+    { dia: diaAlvo - 1, tipo: "entrada", formaPagamento: "dinheiro", valorCentavos: 5000 },
+    { dia: diaAlvo, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 10000 },
+    { dia: diaAlvo, tipo: "saida", formaPagamento: "cartao", valorCentavos: 3000 },
+  ], diaAlvo), { entradas: 109500, saidas: 10000 });
+});
+test("o ciclo semanal reinicia na primeira entrada de segunda ou na terça sem venda", () => {
+  const segunda = 20_000;
+  const cicloAnterior = { chave: "venda:19993:51", inicioDia: 19993, inicioId: 51 };
+  const cicloDaVenda = proximoCicloReservaSemanal(segunda, segunda, 84, cicloAnterior);
+  assert.deepEqual(cicloDaVenda, {
+    chave: `venda:${segunda}:84`, inicioDia: segunda, inicioId: 84,
+  });
+  assert.equal(proximoCicloReservaSemanal(segunda, segunda, null, cicloAnterior), null);
+  const cicloFallback = proximoCicloReservaSemanal(segunda + 1, segunda, null, cicloAnterior);
+  assert.deepEqual(cicloFallback, {
+    chave: `fallback:${segunda}`, inicioDia: segunda + 1, inicioId: 0,
+  });
+  assert.equal(proximoCicloReservaSemanal(segunda + 1, segunda, null, cicloFallback), null);
+});
+test("a parcela semanal acompanha só a parte do aumento atribuída às entradas desta semana", () => {
+  assert.equal(aumentoReservaDaSemana(4500, 10000, 10000), 4500);
+  assert.equal(aumentoReservaDaSemana(4500, 10000, 4000), 1800);
+  assert.equal(aumentoReservaDaSemana(4500, 10000, 0), 0);
+  assert.equal(aumentoReservaDaSemana(0, 10000, 4000), 0);
 });

@@ -260,6 +260,20 @@ async function ensureSchema(): Promise<void> {
       updated_at timestamp NOT NULL DEFAULT now()
     )
   `));
+  await runStatement("reserva_ajustes", db.execute(sql`
+    CREATE TABLE IF NOT EXISTS reserva_ajustes (
+      id serial PRIMARY KEY,
+      valor_anterior integer NOT NULL,
+      aumento integer NOT NULL,
+      valor_novo integer NOT NULL,
+      entrada_nova integer NOT NULL,
+      percentual integer NOT NULL,
+      contas_protegidas integer NOT NULL,
+      pedidos_protegidos integer NOT NULL,
+      ultimo_lancamento_id integer NOT NULL UNIQUE,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `));
   await runStatement("pedidos", db.execute(sql`
     CREATE TABLE IF NOT EXISTS pedidos (
       id serial PRIMARY KEY,
