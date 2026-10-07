@@ -300,57 +300,6 @@ router.post("/caixa", async (req, res): Promise<void> => {
   }
 });
 
-router.patch("/caixa/:id/forma-pagamento", async (req, res): Promise<void> => {
-  const id = parseInt(req.params.id, 10);
-  if (isNaN(id) || id <= 0) {
-    res.status(400).json({ error: "ID inválido" });
-    return;
-  }
-
-  const formaRaw = String(req.body?.formaPagamento ?? "").trim().toLowerCase();
-  if (formaRaw !== "dinheiro" && formaRaw !== "pix") {
-    res.status(400).json({ error: "Escolha Dinheiro ou PIX." });
-    return;
-  }
-  const formaPagamento = formaRaw;
-
-  try {
-    const movimento = await db.transaction(async (tx) => {
-      await tx.execute(
-        sql`SELECT id FROM caixa WHERE id = ${id} FOR UPDATE`,
-      );
-      const [atual] = await tx
-        .select()
-        .from(caixaTable)
-        .where(eq(caixaTable.id, id));
-      if (!atual) throw httpError(404, "Movimento não encontrado");
-      if (atual.tipo !== "saida") {
-        throw httpError(409, "Só é possível alterar a forma de uma saída.");
-      }
-      if (atual.reembolsoOrigemId) {
-        throw httpError(409, "A forma de pagamento de um reembolso não pode ser alterada.");
-      }
-
-      const [atualizado] = await tx
-        .update(caixaTable)
-        .set({ formaPagamento })
-        .where(eq(caixaTable.id, id))
-        .returning({
-          id: caixaTable.id,
-          formaPagamento: caixaTable.formaPagamento,
-        });
-      return atualizado;
-    });
-
-    res.json(movimento);
-  } catch (err) {
-    const e = err as HttpError;
-    res.status(e.status ?? 500).json({
-      error: e.message || "Erro ao alterar a forma de pagamento",
-    });
-  }
-});
-
 router.post("/caixa/:id/reembolsar", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id) || id <= 0) {
