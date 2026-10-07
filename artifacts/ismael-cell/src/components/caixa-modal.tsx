@@ -193,6 +193,8 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
   const [diaDetalhe, setDiaDetalhe] = useState<CaixaSessao | null>(null);
   const [movimentoDetalhe, setMovimentoDetalhe] =
     useState<CaixaMovimentoComVenda | null>(null);
+  const [movimentoFormaPendente, setMovimentoFormaPendente] =
+    useState<CaixaMovimentoComVenda | null>(null);
   const [detalhePartes, setDetalhePartes] = useState<CaixaMovimentoComVenda[]>([]);
   const [mostrarFormasReembolso, setMostrarFormasReembolso] = useState(false);
   const [historicoMovimentos, setHistoricoMovimentos] = useState<"dia" | "hora" | null>(null);
@@ -537,6 +539,41 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
     onError: (error) =>
       toast({
         title: "Não foi possível reembolsar",
+        description: error instanceof Error ? error.message : undefined,
+        variant: "destructive",
+      }),
+  });
+
+  const alterarFormaPagamento = useMutation({
+    mutationFn: async ({
+      id,
+      formaPagamento,
+    }: {
+      id: number;
+      formaPagamento: "dinheiro" | "pix";
+    }) => {
+      const r = await fetch(`${BASE}/api/caixa/${id}/forma-pagamento`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ formaPagamento }),
+      });
+      if (!r.ok) {
+        const body = await r.json().catch(() => ({}));
+        throw new Error(body.error || "Não foi possível alterar a forma de pagamento");
+      }
+      return r.json();
+    },
+    onSuccess: (_resultado, variables) => {
+      toast({
+        title: "Forma de pagamento alterada",
+        description: `Saída atualizada para ${LABELS_FORMA[variables.formaPagamento]}.`,
+      });
+      setMovimentoFormaPendente(null);
+      invalidate();
+    },
+    onError: (error) =>
+      toast({
+        title: "Não foi possível alterar",
         description: error instanceof Error ? error.message : undefined,
         variant: "destructive",
       }),
@@ -1370,6 +1407,23 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                             {formatDataHoraSP(m.createdAt)}
                             {m.modelo ? ` · ${m.modelo}` : ""}
                             {partes.length > 1 ? " · Misto" : ` · ${labelFormaPagamento(m.formaPagamento, m.tipo)}`}
+                            {!isEntrada && partes.length === 1 && !m.reembolsoOrigemId && (
+                              <>
+                                {" · "}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMovimentoFormaPendente(m);
+                                  }}
+                                  data-testid={`button-edit-payment-method-${m.id}`}
+                                  className="font-semibold text-indigo-600 underline underline-offset-2"
+                                  title="Alterar a forma de pagamento desta saída"
+                                >
+                                  Alterar
+                                </button>
+                              </>
+                            )}
                           </p>
                           {partes.length > 1 && (
                             <p className="text-[11px] font-medium text-slate-600">
@@ -1601,6 +1655,17 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                           <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">
                             {partes.length > 1 ? "Misto" : labelFormaPagamento(m.formaPagamento, m.tipo)}
                           </span>
+                          {!isEntrada && partes.length === 1 && !m.reembolsoOrigemId && (
+                            <button
+                              type="button"
+                              onClick={() => setMovimentoFormaPendente(m)}
+                              data-testid={`button-edit-payment-method-${m.id}`}
+                              className="rounded-full bg-slate-100 px-2 py-0.5 text-indigo-700 hover:bg-indigo-50"
+                              title="Alterar a forma de pagamento desta saída"
+                            >
+                              Alterar
+                            </button>
+                          )}
                           <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">
                             {formatDataHoraSP(m.createdAt)}
                           </span>
@@ -1750,6 +1815,79 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   )}
                 </div>
               )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={open && !!movimentoFormaPendente}
+        onOpenChange={(v) => {
+          if (!v && !alterarFormaPagamento.isPending) {
+            setMovimentoFormaPendente(null);
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Alterar forma de pagamento</DialogTitle>
+          </DialogHeader>
+          {movimentoFormaPendente && (
+            <div className="space-y-4">
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="font-semibold text-slate-800">
+                  {movimentoFormaPendente.motivo}
+                </p>
+                <p className="mt-1 text-lg font-bold text-red-600">
+                  − {formatMoney(parseMoney(movimentoFormaPendente.valor))}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {formatDataHoraSP(movimentoFormaPendente.createdAt)} ·{" "}
+                  Atual: {labelFormaPagamento(movimentoFormaPendente.formaPagamento, "saida")}
+                </p>
+              </div>
+              <p className="text-xs text-slate-500">
+                Só a forma de pagamento será alterada; valor e data ficam iguais.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    alterarFormaPagamento.isPending ||
+                    movimentoFormaPendente.formaPagamento === "dinheiro"
+                  }
+                  onClick={() =>
+                    alterarFormaPagamento.mutate({
+                      id: movimentoFormaPendente.id,
+                      formaPagamento: "dinheiro",
+                    })
+                  }
+                  data-testid="button-set-payment-method-dinheiro"
+                  className="h-12 border-emerald-200 text-emerald-700"
+                >
+                  <Banknote className="mr-2 h-4 w-4" />
+                  Dinheiro
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={
+                    alterarFormaPagamento.isPending ||
+                    movimentoFormaPendente.formaPagamento === "pix"
+                  }
+                  onClick={() =>
+                    alterarFormaPagamento.mutate({
+                      id: movimentoFormaPendente.id,
+                      formaPagamento: "pix",
+                    })
+                  }
+                  data-testid="button-set-payment-method-pix"
+                  className="h-12 border-cyan-200 text-cyan-700"
+                >
+                  <QrCode className="mr-2 h-4 w-4" />
+                  PIX
+                </Button>
+              </div>
             </div>
           )}
         </DialogContent>

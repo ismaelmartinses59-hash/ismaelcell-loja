@@ -198,6 +198,13 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
     return;
   }
   const marcandoPago = req.body?.pago !== false;
+  const formaRaw = String(req.body?.formaPagamento ?? "").trim().toLowerCase();
+  const formaPagamento =
+    formaRaw === "dinheiro" || formaRaw === "pix" ? formaRaw : null;
+  if (marcandoPago && !formaPagamento) {
+    res.status(400).json({ error: "Escolha Dinheiro ou PIX." });
+    return;
+  }
 
   // Guarda anti-duplicata: se já está marcada como paga, rejeita nova marcação
   if (marcandoPago) {
@@ -234,7 +241,7 @@ router.post("/financeiro/pagar", async (req, res): Promise<void> => {
           valor: valorFmt,
           motivo: CONTA_LABEL[conta],
           categoria: conta,
-          formaPagamento: "dinheiro",
+          formaPagamento,
         });
       }
     }
@@ -250,6 +257,13 @@ router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
   const id = String(req.body?.id ?? "");
   const pago: boolean = req.body?.pago !== false;
   if (!id) { res.status(400).json({ error: "id obrigatório" }); return; }
+  const formaRaw = String(req.body?.formaPagamento ?? "").trim().toLowerCase();
+  const formaPagamento =
+    formaRaw === "dinheiro" || formaRaw === "pix" ? formaRaw : null;
+  if (pago && !formaPagamento) {
+    res.status(400).json({ error: "Escolha Dinheiro ou PIX." });
+    return;
+  }
   const extras = await lerExtras();
   const idx = extras.findIndex((e) => e.id === id);
   if (idx === -1) { res.status(404).json({ error: "conta não encontrada" }); return; }
@@ -277,7 +291,7 @@ router.post("/financeiro/pagar-extra", async (req, res): Promise<void> => {
           valor: valorFmt,
           motivo: extra.nome,
           categoria: "outros",
-          formaPagamento: "dinheiro",
+          formaPagamento,
         });
       }
     }

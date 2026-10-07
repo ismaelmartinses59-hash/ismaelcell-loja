@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { fetchWithSession as fetch } from "@/lib/api-fetch";
 import {
@@ -175,6 +181,11 @@ interface ConfigFin {
 }
 
 type ContaFixa = "aluguel" | "energia" | "internet" | "agua";
+type FormaPagamentoConta = "dinheiro" | "pix";
+type ContaPagamentoPendente =
+  | { tipo: "fixa"; id: ContaFixa; nome: string; valor: number }
+  | { tipo: "extra"; id: string; nome: string; valor: number };
+
 interface ContaStatus {
   pagoEm: string | null;
   diasContados: number;
@@ -224,6 +235,8 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
   const [extras, setExtras] = useState<ContaExtra[]>([]);
   const [salvando, setSalvando] = useState(false);
   const [pagandoConta, setPagandoConta] = useState<string | null>(null);
+  const [contaPagamentoPendente, setContaPagamentoPendente] =
+    useState<ContaPagamentoPendente | null>(null);
   // track if user edited extras so we know to save them
   const extrasEditados = useRef(false);
 
@@ -260,58 +273,88 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
   };
 
   // ── Pagar conta fixa ──────────────────────────────────────────────────────
-  const pagarFixa = async (conta: ContaFixa, pago: boolean) => {
+  const pagarFixa = async (
+    conta: ContaFixa,
+    pago: boolean,
+    formaPagamento?: FormaPagamentoConta,
+  ): Promise<boolean> => {
     setPagandoConta(conta);
     try {
       const r = await fetch(`${BASE}/api/financeiro/pagar`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conta, pago }),
+        body: JSON.stringify({ conta, pago, formaPagamento }),
       });
       if (r.status === 409) {
         const body = await r.json();
         toast({ title: body.error ?? "Conta já registrada como paga.", variant: "destructive" });
-        return;
+        return false;
       }
       if (!r.ok) throw new Error("erro");
       setForm(null);
       await atualizarFinanceiroECaixa();
       toast({
         title: pago ? "✅ Pago! Saída lançada no Caixa." : "Desmarcado",
-        description: pago ? "A despesa foi registrada automaticamente." : undefined,
+        description: pago
+          ? `A despesa foi registrada como ${formaPagamento === "pix" ? "PIX" : "Dinheiro"}.`
+          : undefined,
       });
+      return true;
     } catch {
       toast({ title: "Não deu pra salvar", variant: "destructive" });
+      return false;
     } finally {
       setPagandoConta(null);
     }
   };
 
   // ── Pagar conta extra ─────────────────────────────────────────────────────
-  const pagarExtra = async (id: string, pago: boolean) => {
+  const pagarExtra = async (
+    id: string,
+    pago: boolean,
+    formaPagamento?: FormaPagamentoConta,
+  ): Promise<boolean> => {
     setPagandoConta(id);
     try {
       const r = await fetch(`${BASE}/api/financeiro/pagar-extra`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, pago }),
+        body: JSON.stringify({ id, pago, formaPagamento }),
       });
       if (r.status === 409) {
         const body = await r.json();
         toast({ title: body.error ?? "Conta já registrada como paga.", variant: "destructive" });
-        return;
+        return false;
       }
       if (!r.ok) throw new Error("erro");
       setForm(null);
       await atualizarFinanceiroECaixa();
       toast({
         title: pago ? "✅ Pago! Saída lançada no Caixa." : "Desmarcado",
-        description: pago ? "A despesa foi registrada automaticamente." : undefined,
+        description: pago
+          ? `A despesa foi registrada como ${formaPagamento === "pix" ? "PIX" : "Dinheiro"}.`
+          : undefined,
       });
+      return true;
     } catch {
       toast({ title: "Não deu pra salvar", variant: "destructive" });
+      return false;
     } finally {
       setPagandoConta(null);
+    }
+  };
+
+  const confirmarPagamento = async (formaPagamento: FormaPagamentoConta) => {
+    const pendente = contaPagamentoPendente;
+    if (!pendente) return;
+    const sucesso =
+      pendente.tipo === "fixa"
+        ? await pagarFixa(pendente.id, true, formaPagamento)
+        : await pagarExtra(pendente.id, true, formaPagamento);
+    if (sucesso) {
+      setContaPagamentoPendente((atual) =>
+        atual === pendente ? null : atual,
+      );
     }
   };
 
@@ -437,7 +480,19 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
                           size="sm"
                           variant={pagoEm ? "default" : "outline"}
                           disabled={pagandoConta === contaKey}
-                          onClick={() => pagarFixa(contaKey, !pagoEm)}
+                          onClick={() => {
+                            if (pagoEm) {
+                              void pagarFixa(contaKey, false);
+                            } else {
+                              setContaPagamentoPendente({
+                                tipo: "fixa",
+                                id: contaKey,
+                                nome: label.replace(" (valor do mês)", ""),
+                                valor: valorMes,
+                              });
+                            }
+                          }}
+                          data-testid={`button-pay-account-${contaKey}`}
                           className={
                             pagoEm
                               ? "h-7 shrink-0 bg-green-600 px-2.5 text-[11px] hover:bg-green-700"
@@ -543,7 +598,19 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
                             size="sm"
                             variant={pagoEm ? "default" : "outline"}
                             disabled={pagandoConta === e.id}
-                            onClick={() => pagarExtra(e.id, !pagoEm)}
+                            onClick={() => {
+                              if (pagoEm) {
+                                void pagarExtra(e.id, false);
+                              } else {
+                                setContaPagamentoPendente({
+                                  tipo: "extra",
+                                  id: e.id,
+                                  nome: e.nome,
+                                  valor: valorMes,
+                                });
+                              }
+                            }}
+                            data-testid={`button-pay-account-${e.id}`}
                             className={
                               pagoEm
                                 ? "h-7 shrink-0 bg-green-600 px-2.5 text-[11px] hover:bg-green-700"
@@ -618,6 +685,52 @@ export function ConfigFinanceiro({ defaultOpen = false }: { defaultOpen?: boolea
           )}
         </div>
       )}
+      <Dialog
+        open={!!contaPagamentoPendente}
+        onOpenChange={(abriu) => {
+          if (!abriu) setContaPagamentoPendente(null);
+        }}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Como você pagou?</DialogTitle>
+          </DialogHeader>
+          {contaPagamentoPendente && (
+            <div className="space-y-4">
+              <div className="rounded-xl border bg-slate-50 p-3">
+                <p className="font-semibold text-slate-800">
+                  {contaPagamentoPendente.nome}
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Valor: {fmt(contaPagamentoPendente.valor)}
+                </p>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pagandoConta === contaPagamentoPendente.id}
+                  onClick={() => void confirmarPagamento("dinheiro")}
+                  data-testid="button-pay-account-dinheiro"
+                  className="h-12 border-emerald-200 text-emerald-700"
+                >
+                  Dinheiro
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={pagandoConta === contaPagamentoPendente.id}
+                  onClick={() => void confirmarPagamento("pix")}
+                  data-testid="button-pay-account-pix"
+                  className="h-12 border-cyan-200 text-cyan-700"
+                >
+                  PIX
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
