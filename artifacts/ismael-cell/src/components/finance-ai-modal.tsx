@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { requestMicrophone, turnOffMicrophone, useMicrophoneActive } from "@/lib/microphone";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
-const DASHBOARD_HIDDEN_AT = "finance-ai-warnings-hidden-after-message-at";
+const FINANCIAL_NOTES_HIDDEN_AT = "finance-ai-warnings-hidden-after-message-at";
 const fmt = (n: number | null) => n === null
   ? "Sem dados" : n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const todaySP = () => new Intl.DateTimeFormat("en-CA", {
@@ -77,8 +77,8 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     queryFn: () => api("/financeiro-ia"),
   });
   const [question, setQuestion] = useState("");
-  const [dashboardHiddenAt, setDashboardHiddenAt] = useState<number | null>(() => {
-    const saved = Number(window.localStorage.getItem(DASHBOARD_HIDDEN_AT));
+  const [financialNotesHiddenAt, setFinancialNotesHiddenAt] = useState<number | null>(() => {
+    const saved = Number(window.localStorage.getItem(FINANCIAL_NOTES_HIDDEN_AT));
     return Number.isFinite(saved) && saved > 0 ? saved : null;
   });
   const [messages, setMessages] = useState<{ pergunta: string; resposta: string }[]>([]);
@@ -105,8 +105,8 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const [payment, setPayment] = useState<"dinheiro" | "pix">("dinheiro");
   const [sending, setSending] = useState(false);
   const lastClosedAt = data?.ultimoFechamentoCaixa ? Date.parse(data.ultimoFechamentoCaixa) : NaN;
-  const dashboardHidden = dashboardHiddenAt !== null &&
-    (!Number.isFinite(lastClosedAt) || lastClosedAt <= dashboardHiddenAt);
+  const financialNotesHidden = financialNotesHiddenAt !== null &&
+    (!Number.isFinite(lastClosedAt) || lastClosedAt <= financialNotesHiddenAt);
 
   useEffect(() => {
     if (!open || messages.length === 0) return;
@@ -116,18 +116,18 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     return () => window.cancelAnimationFrame(frame);
   }, [messages, open]);
 
-  function hideDashboard() {
-    if (dashboardHiddenAt !== null) return;
+  function hideFinancialNotes() {
+    if (financialNotesHiddenAt !== null) return;
     const now = Date.now();
-    window.localStorage.setItem(DASHBOARD_HIDDEN_AT, String(now));
-    setDashboardHiddenAt(now);
+    window.localStorage.setItem(FINANCIAL_NOTES_HIDDEN_AT, String(now));
+    setFinancialNotesHiddenAt(now);
   }
 
   useEffect(() => {
-    if (dashboardHiddenAt === null || !Number.isFinite(lastClosedAt) || lastClosedAt <= dashboardHiddenAt) return;
-    window.localStorage.removeItem(DASHBOARD_HIDDEN_AT);
-    setDashboardHiddenAt(null);
-  }, [dashboardHiddenAt, lastClosedAt]);
+    if (financialNotesHiddenAt === null || !Number.isFinite(lastClosedAt) || lastClosedAt <= financialNotesHiddenAt) return;
+    window.localStorage.removeItem(FINANCIAL_NOTES_HIDDEN_AT);
+    setFinancialNotesHiddenAt(null);
+  }, [financialNotesHiddenAt, lastClosedAt]);
 
   useEffect(() => {
     if (!("speechSynthesis" in window)) return;
@@ -244,7 +244,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   async function ask(text = question) {
     const pergunta = text.trim();
     if (!pergunta || thinking) return;
-    hideDashboard();
+    hideFinancialNotes();
     setQuestion("");
     setThinking(true);
     try {
@@ -323,7 +323,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
           )}
           {data && summary && (
             <>
-              {!dashboardHidden && <>
+              <div className={financialNotesHidden ? "sticky top-16 z-10 -mx-4 bg-white px-4 pb-2 pt-2 shadow-sm" : ""}>
               <section aria-label="Movimentação financeira de hoje">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="font-bold text-slate-800">Resumo financeiro de hoje</h3>
@@ -334,33 +334,38 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 <div className="rounded-2xl bg-emerald-600 p-4 text-white">
                   <p className="text-sm font-medium text-emerald-50">Entradas elegíveis hoje · dinheiro + PIX</p>
                   <p data-testid="text-entradas-elegiveis-hoje" className="mt-1 text-3xl font-extrabold">{fmt(data.movimentoHoje.entradas)}</p>
-                  <p className="mt-1 text-xs text-emerald-50">Este cálculo recomeça à meia-noite e não carrega o saldo dos dias anteriores.</p>
+                  {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">Este cálculo recomeça à meia-noite e não carrega o saldo dos dias anteriores.</p>}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção das entradas de hoje · até {data.movimentoHoje.percentualProtecao}%</p>
                     <p data-testid="text-protecao-calculada-hoje" className="mt-1 font-bold text-violet-900">{fmt(data.movimentoHoje.protecao)}</p>
-                    <p className="text-[11px] text-violet-700">Cálculo de hoje; separado da proteção já acumulada.</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">Cálculo de hoje; separado da proteção já acumulada.</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Saldo operacional de hoje</p>
                     <p data-testid="text-saldo-operacional-hoje" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoHoje.saldoOperacional)}</p>
-                    <p className="text-[11px] text-emerald-700">Após proteção calculada e saídas registradas hoje ({fmt(data.movimentoHoje.saidas)}).</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Após proteção calculada e saídas registradas hoje ({fmt(data.movimentoHoje.saidas)}).</p>}
                   </div>
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido nesta semana</p>
                     <p data-testid="text-reserva-semanal" className="mt-1 font-bold text-violet-900">{fmt(data.reservaAutomatica.reservaSemana)}</p>
-                    <p className="text-[11px] text-violet-700">Somente o ciclo atual; reinicia na virada semanal.</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">Somente o ciclo atual; reinicia na virada semanal.</p>}
                   </div>
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
                     <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
-                    <p className="text-[11px] text-blue-700">Inclui semanas anteriores e a atual · Meta máxima: {fmt(data.reservaAutomatica.meta)}</p>
+                    <p className="text-[11px] text-blue-700">
+                      {!financialNotesHidden && <>Inclui semanas anteriores e a atual · </>}
+                      Meta máxima: {fmt(data.reservaAutomatica.meta)}
+                    </p>
                   </div>
                 </div>
-                <p className="mt-2 text-[11px] leading-relaxed text-slate-500">O operacional de hoje usa somente as entradas elegíveis de hoje, menos a proteção calculada hoje e as saídas de hoje. Não inclui saldo de semanas anteriores. A proteção semanal mostra só o ciclo atual; a proteção total soma todas as semanas. O rateio é uma referência e não movimenta dinheiro.</p>
+                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">O operacional de hoje usa somente as entradas elegíveis de hoje, menos a proteção calculada hoje e as saídas de hoje. Não inclui saldo de semanas anteriores. A proteção semanal mostra só o ciclo atual; a proteção total soma todas as semanas. O rateio é uma referência e não movimenta dinheiro.</p>}
               </section>
 
+              </div>
+              {!financialNotesHidden && <>
               <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-sm" aria-label="Reserva gradual">
                 <h3 className="flex items-center gap-2 font-bold text-blue-900"><LockKeyhole className="h-4 w-4" /> Reserva gradual</h3>
                 <p className="mt-1 text-slate-700">
@@ -524,7 +529,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   <Button data-testid="button-confirmar-retirada" variant="destructive" disabled={sending} className="w-full" onClick={() => void registerWithdrawal()}>{sending ? "Registrando..." : "Confirmar saída no Caixa"}</Button>
                 </div>}
               </section>
-              {!dashboardHidden && <div className="border-t pt-3 text-[11px] leading-relaxed text-slate-500">
+              {!financialNotesHidden && <div className="border-t pt-3 text-[11px] leading-relaxed text-slate-500">
                 {data.avisos.map((notice, i) => <p key={i}>{notice}</p>)}
                 <p className="mt-2">Atualizado em {new Date(data.atualizadoEm).toLocaleString("pt-BR")}. Nenhuma sugestão altera seu Caixa automaticamente.</p>
               </div>}
