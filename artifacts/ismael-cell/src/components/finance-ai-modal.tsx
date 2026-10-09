@@ -26,12 +26,13 @@ type FinanceSnapshot = {
   };
   metaCompra: number;
   reservaAutomatica: {
-    meta: number; falta: number; reservaSemana: number; aporte: number; entradaNova: number; percentual: 30 | 45 | 60;
+    reservaSemana: number; aporte: number; entradaNova: number; percentual: 30 | 45 | 60;
     entradasSemana: number; compraProtegida: number; contasProtegidas: number;
-    estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_margem" | "concluida" | "acumulando";
+    estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_margem" | "acumulando";
   };
-  movimentoHoje: {
-    data: string;
+  movimentoSemana: {
+    inicio: string;
+    fim: string;
     entradas: number;
     saidas: number;
     percentualProtecao: number;
@@ -324,53 +325,51 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
           {data && summary && (
             <>
               <div className={financialNotesHidden ? "sticky top-16 z-10 -mx-4 bg-white px-4 pb-2 pt-2 shadow-sm" : ""}>
-              <section aria-label="Movimentação financeira de hoje">
+              <section aria-label="Movimentação financeira desta semana">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="font-bold text-slate-800">Resumo financeiro de hoje</h3>
+                  <h3 className="font-bold text-slate-800">Resumo financeiro da semana</h3>
                   <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${data.situacao === "risco" ? "bg-red-100 text-red-700" : data.situacao === "atencao" ? "bg-amber-100 text-amber-700" : data.situacao === "sem_dados" ? "bg-slate-100 text-slate-700" : "bg-emerald-100 text-emerald-700"}`}>
                     {data.situacao === "risco" ? "Risco" : data.situacao === "atencao" ? "Atenção" : data.situacao === "sem_dados" ? "Dados insuficientes" : data.situacao === "sem_alertas" ? "Sem alertas" : "Sem alerta de risco"}
                   </span>
                 </div>
                 <div className="rounded-2xl bg-emerald-600 p-4 text-white">
-                  <p className="text-sm font-medium text-emerald-50">Entradas elegíveis hoje · dinheiro + PIX</p>
-                  <p data-testid="text-entradas-elegiveis-hoje" className="mt-1 text-3xl font-extrabold">{fmt(data.movimentoHoje.entradas)}</p>
-                  {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">Este cálculo recomeça à meia-noite e não carrega o saldo dos dias anteriores.</p>}
+                  <p className="text-sm font-medium text-emerald-50">Entradas elegíveis nesta semana · dinheiro + PIX</p>
+                  <p data-testid="text-entradas-elegiveis-semana" className="mt-1 text-3xl font-extrabold">{fmt(data.movimentoSemana.entradas)}</p>
+                  {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">De segunda-feira ({data.movimentoSemana.inicio}) até hoje ({data.movimentoSemana.fim}); não inclui cartão nem abertura da gaveta.</p>}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção das entradas de hoje · até {data.movimentoHoje.percentualProtecao}%</p>
-                    <p data-testid="text-protecao-calculada-hoje" className="mt-1 font-bold text-violet-900">{fmt(data.movimentoHoje.protecao)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">Cálculo de hoje; separado da proteção já acumulada.</p>}
+                    <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção de referência da semana · {data.movimentoSemana.percentualProtecao}%</p>
+                    <p data-testid="text-protecao-calculada-semana" className="mt-1 font-bold text-violet-900">{fmt(data.movimentoSemana.protecao)}</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">Cálculo sobre todas as entradas elegíveis da semana; não é um lançamento.</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Saldo operacional de hoje</p>
-                    <p data-testid="text-saldo-operacional-hoje" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoHoje.saldoOperacional)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Após proteção calculada e saídas registradas hoje ({fmt(data.movimentoHoje.saidas)}).</p>}
+                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Saldo operacional da semana</p>
+                    <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacional)}</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos proteção de referência e saídas da semana ({fmt(data.movimentoSemana.saidas)}).</p>}
                   </div>
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido nesta semana</p>
                     <p data-testid="text-reserva-semanal" className="mt-1 font-bold text-violet-900">{fmt(data.reservaAutomatica.reservaSemana)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">Somente o ciclo atual; reinicia na virada semanal.</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">Aporte real feito neste ciclo; considera contas previstas e pedidos.</p>}
                   </div>
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
                     <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
                     <p className="text-[11px] text-blue-700">
-                      {!financialNotesHidden && <>Inclui semanas anteriores e a atual · </>}
-                      Meta máxima: {fmt(data.reservaAutomatica.meta)}
+                      {!financialNotesHidden && "Acumulado das semanas anteriores e da atual · sem teto máximo."}
                     </p>
                   </div>
                 </div>
-                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">O operacional de hoje usa somente as entradas elegíveis de hoje, menos a proteção calculada hoje e as saídas de hoje. Não inclui saldo de semanas anteriores. A proteção semanal mostra só o ciclo atual; a proteção total soma todas as semanas. O rateio é uma referência e não movimenta dinheiro.</p>}
+                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">O saldo operacional é o fluxo líquido registrado nesta semana, não o saldo físico/PIX disponível agora. {summary.protecaoAtiva ? "A proteção de referência aplica a taxa semanal às entradas elegíveis; o aporte real pode ser menor para preservar contas previstas e pedidos." : "Com a proteção desativada, nenhum valor semanal é rateado para a reserva."} O rateio não movimenta dinheiro.</p>}
               </section>
 
               </div>
               {!financialNotesHidden && <>
               <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-sm" aria-label="Reserva gradual">
-                <h3 className="flex items-center gap-2 font-bold text-blue-900"><LockKeyhole className="h-4 w-4" /> Reserva gradual</h3>
+                <h3 className="flex items-center gap-2 font-bold text-blue-900"><LockKeyhole className="h-4 w-4" /> Reserva sem teto</h3>
                 <p className="mt-1 text-slate-700">
-                  Meta da reserva total: <strong>{fmt(data.reservaAutomatica.meta)}</strong>.
-                  {data.reservaAutomatica.falta > 0 && <> Faltam {fmt(data.reservaAutomatica.falta)} para o teto.</>}
+                  O saldo protegido total é acumulado sem meta máxima. Ele pode continuar crescendo depois de R$ 50 mil, R$ 100 mil ou qualquer outro valor.
                 </p>
                 <p className="mt-1 text-xs text-slate-600">A reserva da semana mostra apenas o que foi protegido neste ciclo. O que ficou protegido na semana passada permanece na reserva total. O ciclo reinicia na primeira entrada elegível de segunda-feira; se não houver, na terça. A abertura da gaveta não conta como entrada nova, e o valor semanal não é descontado uma segunda vez do saldo.</p>
                 {data.reservaAutomatica.entradaNova > 0 && (
@@ -384,12 +383,10 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 {data.reservaAutomatica.estado === "pausada" && <p className="mt-1 text-amber-700">Aumento automático pausado: ative a proteção da reserva abaixo.</p>}
                 {data.reservaAutomatica.estado === "sem_saldo" && <p className="mt-1 text-amber-700">Sem sessão da gaveta, não é seguro aumentar a reserva.</p>}
                 {data.reservaAutomatica.estado === "iniciando" && <p className="mt-1 text-slate-600">Acompanhamento iniciado agora. As entradas anteriores já estão no saldo; só as próximas entradas poderão gerar novos aumentos.</p>}
-                {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma entrada nova desde o último cálculo automático. O resumo acima continua mostrando todas as entradas elegíveis registradas hoje.</p>}
-                {data.reservaAutomatica.estado === "sem_margem" && <p className="mt-1 text-amber-700">A entrada já compõe o saldo, mas não há margem para aumentar a reserva sem comprometer contas ou pedidos.</p>}
-                {data.reservaAutomatica.estado === "concluida" && <p className="mt-1 text-emerald-700">Meta atingida. Novas entradas ficam para a operação e os pedidos.</p>}
-                {summary.reserva > data.reservaAutomatica.meta && <p className="mt-1 text-amber-700">O valor já protegido ultrapassa a nova meta. Ele não será reduzido sem seu ajuste manual.</p>}
+                {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma entrada nova desde o último cálculo automático. O resumo acima continua somando todas as entradas elegíveis desta semana; o saldo antigo sozinho não gera outro aumento.</p>}
+                {data.reservaAutomatica.estado === "sem_margem" && <p className="mt-1 text-amber-700">A entrada já compõe o saldo. Nesta atualização, o aumento automático foi limitado para preservar {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas e {fmt(data.reservaAutomatica.compraProtegida)} para pedidos; não existe teto máximo para a reserva.</p>}
                 <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                  A taxa de referência compara as entradas em dinheiro/PIX desde segunda-feira ({fmt(data.reservaAutomatica.entradasSemana)}) com as quatro semanas anteriores: semana fraca 30%, normal 45%, forte 60%; sem histórico completo, 45%. O aporte real da reserva continua respeitando {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas, até {fmt(data.reservaAutomatica.compraProtegida)} para pedidos e o teto configurado.
+                  A taxa indicativa é {data.reservaAutomatica.percentual}% sobre as entradas em dinheiro/PIX desta semana ({fmt(data.reservaAutomatica.entradasSemana)}). Ela varia entre 30%, 45% e 60% conforme as quatro semanas anteriores; sem histórico completo, usa 45%. {summary.protecaoAtiva ? "Com a proteção ativa, o aporte real pode ser menor para preservar contas previstas e pedidos, mas a reserva continua acumulando sem valor máximo." : "A proteção está desativada, então esse cálculo não gera aporte automático."}
                 </p>
                 <p className="mt-1 text-xs text-slate-500">É uma proteção no cálculo do app, não uma transferência ou saída do Caixa. Gastos e transferências não registrados podem alterar o saldo real.</p>
               </section>

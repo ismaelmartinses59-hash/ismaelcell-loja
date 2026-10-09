@@ -6,11 +6,11 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import {
   aumentoReservaDaSemana,
   calcularDisponibilidade,
-  calcularRateioDiario,
+  calcularRateioPeriodo,
   calcularReservaGradual,
   dataFinanceiraLocal,
   diaFinanceiroLocal,
-  somarMovimentosElegiveisDoDia,
+  somarMovimentosElegiveisDoPeriodo,
   mediaDasSemanasComCompra,
   percentualReserva,
   proximoCicloReservaSemanal,
@@ -27,12 +27,10 @@ const keys = {
   reserva: "ia_fin_reserva_valor",
   proteger: "ia_fin_reserva_ativa",
   meta: "ia_fin_meta_compra",
-  metaReserva: "ia_fin_meta_reserva",
   ultimoLancamentoReserva: "ia_fin_reserva_ultimo_lancamento",
   reservaSemana: "ia_fin_reserva_semanal_valor",
   cicloReservaSemana: "ia_fin_reserva_semanal_ciclo",
 };
-const META_RESERVA_PADRAO = 150000;
 const categorias = [
   "pecas", "frete", "aluguel", "energia", "internet", "agua",
   "combustivel", "ferramentas", "alimentacao", "retirada pessoal",
@@ -77,7 +75,6 @@ async function readConfig() {
     reservaSemana: cents(config.get(keys.reservaSemana) ?? "0"),
     proteger: config.get(keys.proteger) !== "false",
     meta: cents(config.get(keys.meta) ?? "0"),
-    metaReserva: cents(config.get(keys.metaReserva) ?? "1500"),
   };
 }
 
@@ -102,7 +99,6 @@ async function atualizarReservaGradual(
   total: number | null,
   reserva: number,
   reservaSemana: number,
-  metaReserva: number,
   compraPlanejada: number,
   contasPrevistas: number,
   percentual: number,
@@ -114,7 +110,6 @@ async function atualizarReservaGradual(
     await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
     const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
     const atual = cents(config.get(keys.reserva) ?? (reserva / 100).toFixed(2));
-    const teto = cents(config.get(keys.metaReserva) ?? (metaReserva / 100).toFixed(2));
     const ativa = config.get(keys.proteger) !== "false";
     const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
     const marcador = config.get(keys.ultimoLancamentoReserva);
@@ -175,7 +170,6 @@ async function atualizarReservaGradual(
       return {
         reserva: atual,
         reservaSemana: reservaSemanaAtual,
-        metaReserva: teto,
         aporte: 0,
         entradaNova: 0,
         inicioAgora: false,
@@ -197,7 +191,7 @@ async function atualizarReservaGradual(
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
       const aposContas = Math.max(0, total - contasPrevistas);
       const pedidos = Math.min(compra, Math.ceil(aposContas * (100 - percentual) / 100));
-      return { reserva: atual, reservaSemana: reservaSemanaAtual, metaReserva: teto, aporte: 0, entradaNova: 0, inicioAgora: true, compraPlanejada: Math.min(pedidos, Math.max(0, aposContas - atual)), protecaoAtiva: ativa, saldosAtuais: null as { dinheiro: number; pix: number } | null };
+      return { reserva: atual, reservaSemana: reservaSemanaAtual, aporte: 0, entradaNova: 0, inicioAgora: true, compraPlanejada: Math.min(pedidos, Math.max(0, aposContas - atual)), protecaoAtiva: ativa, saldosAtuais: null as { dinheiro: number; pix: number } | null };
     }
     const cursor = Number(marcador);
     if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Marcador da reserva inválido");
@@ -235,7 +229,7 @@ async function atualizarReservaGradual(
         pixAtual = pixRegistrados.reduce((soma, row) =>
           soma + (row.tipo === "entrada" ? 1 : -1) * cents(row.valor), 0);
         novo = calcularReservaGradual(
-          dinheiroAtual + pixAtual, atual, teto, contasPrevistas, compra, percentual, entradaNova,
+          dinheiroAtual + pixAtual, atual, contasPrevistas, compra, percentual, entradaNova,
         );
       }
     }
@@ -286,7 +280,7 @@ async function atualizarReservaGradual(
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
     }
     return {
-      reserva: novo, reservaSemana: reservaSemanaAtual, metaReserva: teto, aporte: novo - atual,
+      reserva: novo, reservaSemana: reservaSemanaAtual, aporte: novo - atual,
       entradaNova: dinheiroAtual === null ? 0 : entradaNova, inicioAgora: false,
       compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)),
       protecaoAtiva: ativa,
@@ -439,7 +433,7 @@ async function snapshot() {
     : null;
   const taxaReserva = percentualReserva(entradasSemana, mediaEntradas);
   const reservaAutomatica = await atualizarReservaGradual(
-    dinheiro === null ? null : dinheiro + pix, config.reserva, config.reservaSemana, config.metaReserva,
+    dinheiro === null ? null : dinheiro + pix, config.reserva, config.reservaSemana,
     config.meta > 0 ? config.meta : purchaseAverage ?? 0,
     expensesTotal, taxaReserva, today, weekStart,
   );
@@ -451,26 +445,18 @@ async function snapshot() {
   }
   const total = dinheiro === null ? null : dinheiro + pix;
   config.reserva = reservaAutomatica.reserva;
-  config.metaReserva = reservaAutomatica.metaReserva;
   if (reservaAutomatica.protecaoAtiva !== null) config.proteger = reservaAutomatica.protecaoAtiva;
-  const movimentosElegiveisHoje = somarMovimentosElegiveisDoDia(recent.map(row => ({
+  const movimentosElegiveisSemana = somarMovimentosElegiveisDoPeriodo(recent.map(row => ({
     dia: dayIndex(row.createdAt),
     tipo: row.tipo,
     formaPagamento: row.formaPagamento,
     valorCentavos: cents(row.valor),
-  })), today);
-  const entradasElegiveisHoje = movimentosElegiveisHoje.entradas;
-  const saidasElegiveisHoje = movimentosElegiveisHoje.saidas;
-  const aumentoAutomaticoHoje = historicoReserva.reduce((soma, ajuste) =>
-    soma + (daySP(ajuste.createdAt) === todayString && ajuste.entradaNova > 0 ? ajuste.aumento : 0), 0);
-  const reservaNoInicioDoDia = Math.max(0, config.reserva - aumentoAutomaticoHoje);
-  const limiteProtecaoHoje = Math.max(0, config.metaReserva - reservaNoInicioDoDia);
-  const rateioHoje = calcularRateioDiario(
-    entradasElegiveisHoje,
-    saidasElegiveisHoje,
+  })), weekStart, today);
+  const rateioSemana = calcularRateioPeriodo(
+    movimentosElegiveisSemana.entradas,
+    movimentosElegiveisSemana.saidas,
     taxaReserva,
     config.proteger,
-    limiteProtecaoHoje,
   );
   const saldos = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, 0, 0);
   const disponivel = saldos.disponivel;
@@ -508,8 +494,6 @@ async function snapshot() {
     },
     metaCompra: money(config.meta),
     reservaAutomatica: {
-      meta: money(config.metaReserva),
-      falta: money(Math.max(0, config.metaReserva - config.reserva)),
       reservaSemana: money(reservaAutomatica.reservaSemana),
       aporte: money(reservaAutomatica.aporte),
       entradaNova: money(reservaAutomatica.entradaNova),
@@ -520,18 +504,18 @@ async function snapshot() {
       compraProtegida: money(reservaAutomatica.compraPlanejada),
       contasProtegidas: money(expensesTotal),
       estado: !config.proteger ? "pausada" : total === null ? "sem_saldo"
-        : config.reserva >= config.metaReserva ? "concluida"
         : reservaAutomatica.inicioAgora ? "iniciando"
         : reservaAutomatica.entradaNova <= 0 ? "sem_entradas"
         : reservaAutomatica.aporte <= 0 ? "sem_margem" : "acumulando",
     },
-    movimentoHoje: {
-      data: todayString,
-      entradas: money(entradasElegiveisHoje),
-      saidas: money(saidasElegiveisHoje),
+    movimentoSemana: {
+      inicio: daySP(new Date(weekStart * 86400000 + 43200000)),
+      fim: todayString,
+      entradas: money(movimentosElegiveisSemana.entradas),
+      saidas: money(movimentosElegiveisSemana.saidas),
       percentualProtecao: config.proteger ? taxaReserva : 0,
-      protecao: money(rateioHoje.protecaoCentavos),
-      saldoOperacional: money(rateioHoje.saldoOperacionalCentavos),
+      protecao: money(rateioSemana.protecaoCentavos),
+      saldoOperacional: money(rateioSemana.saldoOperacionalCentavos),
     },
     faltamMeta: spending.faltaMeta === null ? null : money(spending.faltaMeta),
     dia: { entradas: money(dia.entradas), saidas: money(dia.saidas), retiradas: money(dia.retiradas) },
@@ -580,11 +564,9 @@ router.get("/financeiro-ia", async (_req, res) => {
 router.put("/financeiro-ia/config", async (req, res) => {
   const reserva = inputMoney(req.body?.reserva);
   const meta = inputMoney(req.body?.metaCompra);
-  const metaReserva = req.body?.metaReserva === undefined ? null : inputMoney(req.body.metaReserva);
   const proteger = req.body?.protecaoAtiva;
-  if (reserva === null || meta === null || typeof proteger !== "boolean" ||
-    (req.body?.metaReserva !== undefined && (metaReserva === null || reserva > metaReserva))) {
-    res.status(400).json({ error: "Informe uma reserva atual que não ultrapasse a meta, a compra planejada e a proteção." }); return;
+  if (reserva === null || meta === null || typeof proteger !== "boolean") {
+    res.status(400).json({ error: "Informe o saldo protegido atual, a compra planejada e o estado da proteção." }); return;
   }
   try {
     await db.transaction(async tx => {
@@ -599,7 +581,6 @@ router.put("/financeiro-ia/config", async (req, res) => {
         [keys.reservaSemana, (semanaManual / 100).toFixed(2)],
         [keys.meta, (meta / 100).toFixed(2)],
         [keys.proteger, String(proteger)],
-        ...(metaReserva !== null ? [[keys.metaReserva, (metaReserva / 100).toFixed(2)]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
     });
@@ -728,7 +709,7 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
         : `Limite conservador registrado: ${reais(Math.round(saldo.podeGastar * 100))}. Cálculo: ${reais(Math.round(saldo.disponivel! * 100))} disponível − ${reais(Math.round(s.despesasPrevistas.total * 100))} em contas previstas nos próximos 7 dias − ${reais(Math.round(s.metaCompra * 100))} da meta de compra. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
       answer = saldo.total === null ? insufficient
-        : `Hoje (${s.movimentoHoje.data}) entraram ${reais(Math.round(s.movimentoHoje.entradas * 100))} em dinheiro/PIX. A proteção calculada sobre as entradas de hoje é ${reais(Math.round(s.movimentoHoje.protecao * 100))} (${s.movimentoHoje.percentualProtecao}% pela taxa semanal), e o saldo operacional de hoje é ${reais(Math.round(s.movimentoHoje.saldoOperacional * 100))}, após descontar ${reais(Math.round(s.movimentoHoje.saidas * 100))} em saídas registradas hoje. Esse saldo operacional considera somente hoje: não inclui saldo nem proteção de semanas anteriores. Saldo protegido nesta semana: ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}, somente o ciclo atual. Saldo protegido total: ${reais(Math.round(saldo.reserva * 100))}, incluindo as semanas anteriores e a atual; meta máxima ${reais(Math.round(s.reservaAutomatica.meta * 100))}. A proteção total está ${saldo.protecaoAtiva ? "ativa" : "desativada"}. O resumo diário recomeça à meia-noite local e considera apenas entradas em dinheiro/PIX, sem cartão ou abertura da gaveta. O rateio diário é uma referência, não movimenta dinheiro; a reserva automática continua respeitando o teto, as contas previstas e os pedidos.`;
+        : `Nesta semana, desde ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX. A referência de proteção é ${reais(Math.round(s.movimentoSemana.protecao * 100))} (${s.movimentoSemana.percentualProtecao}%), e o saldo operacional do fluxo da semana é ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}, depois de descontar ${reais(Math.round(s.movimentoSemana.saidas * 100))} em saídas registradas. Esse cálculo considera a semana atual, não o saldo físico/PIX acumulado. O aporte realmente protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}; ele pode ficar abaixo da referência quando contas previstas e pedidos deixam pouca margem. O saldo protegido total é ${reais(Math.round(saldo.reserva * 100))}, acumulado sem teto máximo. A proteção total está ${saldo.protecaoAtiva ? "ativa" : "desativada"}. Só dinheiro/PIX entra no rateio; cartão e abertura da gaveta ficam de fora. O rateio é uma referência, não movimenta dinheiro; o aumento automático respeita as contas previstas e os pedidos, mas não tem valor máximo.`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

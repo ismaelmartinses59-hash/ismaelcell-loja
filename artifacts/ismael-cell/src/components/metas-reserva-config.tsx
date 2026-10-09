@@ -10,13 +10,11 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 type FinanceGoalsSnapshot = {
   saldos: { reserva: number; protecaoAtiva: boolean };
-  reservaAutomatica: { meta: number };
   metaCompra: number;
 };
 
 type FinanceGoalsForm = {
   reserva: string;
-  metaReserva: string;
   metaCompra: string;
   proteger: boolean;
 };
@@ -66,13 +64,12 @@ export function MetasReservaConfig({
     if (!aberto || !data || dirty) return;
     setForm({
       reserva: data.saldos.reserva.toFixed(2),
-      metaReserva: data.reservaAutomatica.meta.toFixed(2),
       metaCompra: data.metaCompra.toFixed(2),
       proteger: data.saldos.protecaoAtiva,
     });
   }, [open, aberto, data, dirty]);
 
-  function updateMoney(field: "reserva" | "metaReserva" | "metaCompra", value: string) {
+  function updateMoney(field: "reserva" | "metaCompra", value: string) {
     setDirty(true);
     setForm(current => current ? { ...current, [field]: value } : current);
   }
@@ -85,7 +82,6 @@ export function MetasReservaConfig({
         method: "PUT",
         body: JSON.stringify({
           reserva: form.reserva,
-          metaReserva: form.metaReserva,
           metaCompra: form.metaCompra,
           protecaoAtiva: form.proteger,
         }),
@@ -154,19 +150,6 @@ export function MetasReservaConfig({
                   />
                 </label>
                 <label className="text-xs text-slate-600">
-                  Meta máxima da reserva (R$)
-                  <Input
-                    data-testid="input-meta-reserva"
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="0.01"
-                    className="mt-1"
-                    value={form.metaReserva}
-                    onChange={event => updateMoney("metaReserva", event.target.value)}
-                  />
-                </label>
-                <label className="text-xs text-slate-600 sm:col-span-2">
                   Valor para a próxima compra (R$)
                   <Input
                     data-testid="input-meta-compra"
@@ -181,7 +164,7 @@ export function MetasReservaConfig({
                 </label>
               </div>
               <p className="text-xs leading-relaxed text-slate-600">
-                Com a proteção ativa, o app pode aumentar a reserva depois que uma nova entrada em dinheiro ou PIX for registrada e aparecer no saldo. O aumento é gradual, considera as contas e os pedidos e nunca ultrapassa esta meta. Saldo antigo sozinho não gera aumento.
+                Com a proteção ativa, o app pode aumentar a reserva depois que uma nova entrada em dinheiro ou PIX for registrada e aparecer no saldo. O aumento é gradual, considera as contas e os pedidos e não tem valor máximo. Saldo antigo sozinho não gera aumento.
               </p>
               <p className="text-[11px] leading-relaxed text-slate-500">
                 A reserva é uma proteção no cálculo do app, não uma transferência nem uma saída do Caixa. Um ajuste manual não impede novos aumentos automáticos quando houver saldo e novas entradas.

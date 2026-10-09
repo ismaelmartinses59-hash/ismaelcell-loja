@@ -9,17 +9,19 @@ export function dataFinanceiraLocal(date: Date): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: FINANCE_TIME_ZONE }).format(date);
 }
 
-export function somarMovimentosElegiveisDoDia(
+export function somarMovimentosElegiveisDoPeriodo(
   movimentos: {
     dia: number;
     tipo: string;
     formaPagamento: string | null;
     valorCentavos: number;
   }[],
-  diaAlvo: number,
+  diaInicio: number,
+  diaFim: number,
 ) {
   return movimentos.reduce((total, movimento) => {
-    const elegivel = movimento.dia === diaAlvo &&
+    const elegivel = movimento.dia >= diaInicio &&
+      movimento.dia <= diaFim &&
       (!movimento.formaPagamento || movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix");
     if (!elegivel || (movimento.tipo !== "entrada" && movimento.tipo !== "saida")) return total;
     if (movimento.tipo === "entrada") total.entradas += movimento.valorCentavos;
@@ -62,19 +64,17 @@ export function percentualReserva(entradas7Dias: number, mediaSemanal: number | 
   return 45;
 }
 
-export function calcularRateioDiario(
+export function calcularRateioPeriodo(
   entradasCentavos: number,
   saidasCentavos: number,
   percentual: number,
   protecaoAtiva: boolean,
-  limiteProtecaoCentavos: number,
 ) {
   const entradas = Math.max(0, Math.trunc(entradasCentavos));
   const saidas = Math.max(0, Math.trunc(saidasCentavos));
-  const limite = Math.max(0, Math.trunc(limiteProtecaoCentavos));
   const percentualValido = Math.min(100, Math.max(0, percentual));
   const protecaoCentavos = protecaoAtiva
-    ? Math.min(Math.floor(entradas * percentualValido / 100), limite)
+    ? Math.floor(entradas * percentualValido / 100)
     : 0;
 
   return {
@@ -133,7 +133,6 @@ export function somarEntradasNovas(
 export function calcularReservaGradual(
   total: number | null,
   atual: number,
-  meta: number,
   contasPrevistas: number,
   compraPlanejada: number,
   percentual: number,
@@ -144,7 +143,7 @@ export function calcularReservaGradual(
   // Se a compra planejada não couber inteira, ainda deixa uma parte viável
   // para pedidos, em vez de impedir qualquer avanço da reserva.
   const pedidos = Math.min(compraPlanejada, Math.ceil(aposContas * (100 - percentual) / 100));
-  const proximo = Math.min(meta, atual + Math.floor(entradaNova * percentual / 100), aposContas - pedidos);
+  const proximo = Math.min(atual + Math.floor(entradaNova * percentual / 100), aposContas - pedidos);
   // Uma semana ruim não desfaz a proteção já registrada.
   return Math.max(atual, proximo);
 }
