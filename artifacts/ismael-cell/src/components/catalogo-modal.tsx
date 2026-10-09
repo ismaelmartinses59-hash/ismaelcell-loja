@@ -1950,6 +1950,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const invalidateCaixa = () => {
     qc.invalidateQueries({ queryKey: ["caixa"] });
     qc.invalidateQueries({ queryKey: ["caixa-sessoes"] });
+    qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
   };
   const [devolverDialogPeca, setDevolverDialogPeca] = useState<Peca | null>(null);
   const [devolverFornecedor, setDevolverFornecedor] = useState("");
@@ -2128,22 +2129,22 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const pagarMutation = useMutation({
     mutationFn: ({ contaId, valor, formaPagamento, splits }: { contaId: number; valor: string; formaPagamento?: string; splits?: Array<{ forma: string; valor: string }> }) =>
       apiFetch(`/api/contas-receber/${contaId}/pagamento`, { method: "POST", body: JSON.stringify({ valor, formaPagamento: formaPagamento ?? null, splits: splits ?? null }) }),
-    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); setPagamentoMisto(false); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); toast({ title: "💰 Pagamento registrado!" }); },
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); qc.invalidateQueries({ queryKey: ["financeiro-ia"] }); setPagandoContaId(null); setPagamentoValor(""); setPagamentoForma("dinheiro"); setPagamentoMisto(false); setPagamentoMistoSplits([]); setPagamentoMistoForma("dinheiro"); setPagamentoMistoValor(""); toast({ title: "💰 Pagamento registrado!" }); },
     onError: (error: Error) => toast({ title: "Erro ao registrar pagamento", description: error.message, variant: "destructive" }),
   });
   const apagarContaMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/${id}`, { method: "DELETE" }),
-    onSuccess: () => { invalidateContas(); setDeletingContaId(null); toast({ title: "Conta apagada" }); },
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["financeiro-ia"] }); setDeletingContaId(null); toast({ title: "Conta apagada" }); },
     onError: () => toast({ title: "Erro ao apagar conta", variant: "destructive" }),
   });
   const apagarItemMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/itens/${id}`, { method: "DELETE" }),
-    onSuccess: () => { invalidateContas(); setDeletingItemId(null); toast({ title: "Item removido" }); },
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["financeiro-ia"] }); setDeletingItemId(null); toast({ title: "Item removido" }); },
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
   const apagarPagamentoMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/pagamentos/${id}`, { method: "DELETE" }),
-    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
+    onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); qc.invalidateQueries({ queryKey: ["financeiro-ia"] }); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
   const addItemMutation = useMutation({

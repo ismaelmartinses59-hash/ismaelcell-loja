@@ -117,6 +117,7 @@ export function EncomendasTab({ open }: { open: boolean }) {
     qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
     qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
     qc.invalidateQueries({ queryKey: ["vendas"] });
+    qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
   };
 
   const receberMutation = useMutation({

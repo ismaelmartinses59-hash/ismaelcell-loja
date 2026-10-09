@@ -4,15 +4,13 @@ import { db, appConfigTable, caixaTable, caixaSessoesTable, pecasTable, reservaA
 import { requireFinanceSession } from "./auth";
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
-  aumentoReservaDaSemana,
+  calcularAlocacaoSemanal,
+  calcularAumentoReservaSemanal,
   calcularDisponibilidade,
-  calcularRateioPeriodo,
-  calcularReservaGradual,
   dataFinanceiraLocal,
   diaFinanceiroLocal,
   somarMovimentosElegiveisDoPeriodo,
   mediaDasSemanasComCompra,
-  percentualReserva,
   proximoCicloReservaSemanal,
   somarEntradasNovas,
   type CicloReservaSemanal,
@@ -101,7 +99,9 @@ async function atualizarReservaGradual(
   reservaSemana: number,
   compraPlanejada: number,
   contasPrevistas: number,
-  percentual: number,
+  protecaoAlocadaSemana: number,
+  necessidadeOperacional: number,
+  percentualProtecao: number,
   hojeDia: number,
   segundaDia: number,
 ) {
@@ -127,7 +127,7 @@ async function atualizarReservaGradual(
     const primeiraEntradaSegundaId = entradasSegunda.find(row =>
       dayIndex(row.createdAt) === segundaDia &&
       row.tipo === "entrada" &&
-      (!row.formaPagamento || row.formaPagamento === "dinheiro" || row.formaPagamento === "pix") &&
+      (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix") &&
       cents(row.valor) > 0,
     )?.id ?? null;
     const proximoCiclo = proximoCicloReservaSemanal(
@@ -165,15 +165,13 @@ async function atualizarReservaGradual(
         ]) await tx.insert(appConfigTable).values({ key, value })
           .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
       }
-      const aposContas = Math.max(0, -contasPrevistas);
-      const pedidosPreservados = Math.min(compra, Math.ceil(aposContas * (100 - percentual) / 100));
       return {
         reserva: atual,
         reservaSemana: reservaSemanaAtual,
         aporte: 0,
         entradaNova: 0,
         inicioAgora: false,
-        compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - atual)),
+        compraPlanejada: 0,
         protecaoAtiva: ativa,
         saldosAtuais: null as { dinheiro: number; pix: number } | null,
       };
@@ -190,8 +188,16 @@ async function atualizarReservaGradual(
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
       const aposContas = Math.max(0, total - contasPrevistas);
-      const pedidos = Math.min(compra, Math.ceil(aposContas * (100 - percentual) / 100));
-      return { reserva: atual, reservaSemana: reservaSemanaAtual, aporte: 0, entradaNova: 0, inicioAgora: true, compraPlanejada: Math.min(pedidos, Math.max(0, aposContas - atual)), protecaoAtiva: ativa, saldosAtuais: null as { dinheiro: number; pix: number } | null };
+      return {
+        reserva: atual,
+        reservaSemana: reservaSemanaAtual,
+        aporte: 0,
+        entradaNova: 0,
+        inicioAgora: true,
+        compraPlanejada: Math.min(compra, Math.max(0, aposContas - atual)),
+        protecaoAtiva: ativa,
+        saldosAtuais: null as { dinheiro: number; pix: number } | null,
+      };
     }
     const cursor = Number(marcador);
     if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Marcador da reserva inválido");
@@ -204,13 +210,12 @@ async function atualizarReservaGradual(
     );
     const entradaNovaSemana = novos.reduce((soma, row) => {
       const elegivel = row.tipo === "entrada" &&
-        (!row.formaPagamento || row.formaPagamento === "dinheiro" || row.formaPagamento === "pix");
+        (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix");
       const dia = dayIndex(row.createdAt);
       return soma + (elegivel && dia >= ciclo.inicioDia && dia <= hojeDia ? cents(row.valor) : 0);
     }, 0);
     let dinheiroAtual: number | null = null;
     let pixAtual = 0;
-    let novo = atual;
     if (entradaNova > 0 && ativa) {
       // Consulta o saldo depois de ver a entrada confirmada no Caixa.
       const [sessao] = await tx.select().from(caixaSessoesTable).orderBy(desc(caixaSessoesTable.aberturaAt)).limit(1);
@@ -228,17 +233,22 @@ async function atualizarReservaGradual(
           .from(caixaTable).where(eq(caixaTable.formaPagamento, "pix"));
         pixAtual = pixRegistrados.reduce((soma, row) =>
           soma + (row.tipo === "entrada" ? 1 : -1) * cents(row.valor), 0);
-        novo = calcularReservaGradual(
-          dinheiroAtual + pixAtual, atual, contasPrevistas, compra, percentual, entradaNova,
-        );
       }
     }
-    const aposContas = Math.max(0, (dinheiroAtual === null ? total : dinheiroAtual + pixAtual) - contasPrevistas);
-    const pedidosPreservados = Math.min(compra, Math.ceil(aposContas * (100 - percentual) / 100));
+    const totalAtual = dinheiroAtual === null ? total : dinheiroAtual + pixAtual;
+    const aumentoPlanejado = entradaNovaSemana > 0
+      ? calcularAumentoReservaSemanal(
+          totalAtual, atual, reservaSemanaAtual, protecaoAlocadaSemana,
+          necessidadeOperacional, entradaNovaSemana, ativa,
+        )
+      : 0;
+    const novo = atual + aumentoPlanejado;
+    const aposContas = Math.max(0, (totalAtual ?? 0) - contasPrevistas);
+    const pedidosPreservados = Math.min(compra, Math.max(0, aposContas - novo));
     reservaSemanaAtual = Math.min(novo, reservaSemanaAtual);
     const aumento = novo - atual;
     if (aumento > 0 && entradaNova > 0 && entradaNovaSemana > 0) {
-      reservaSemanaAtual += aumentoReservaDaSemana(aumento, entradaNova, entradaNovaSemana);
+      reservaSemanaAtual += aumento;
       // A reserva da semana é parte do total protegido, nunca um valor adicional.
       reservaSemanaAtual = Math.min(novo, reservaSemanaAtual);
     }
@@ -253,7 +263,7 @@ async function atualizarReservaGradual(
         aumento: novo - atual,
         valorNovo: novo,
         entradaNova,
-        percentual,
+        percentual: percentualProtecao,
         contasProtegidas: contasPrevistas,
         pedidosProtegidos: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)),
         ultimoLancamentoId: novos.at(-1)!.id,
@@ -365,6 +375,7 @@ async function snapshot() {
   const month = totalPeriod(today - 29, today);
   const previousMonth = totalPeriod(today - 59, today - 30);
   const purchaseRows = recent.filter(row => row.tipo === "saida" &&
+    (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix") &&
     classificar(row.categoria, row.motivo) === "pecas" &&
     dayIndex(row.createdAt) >= today - 56);
   const biggestExpense = recent.filter(row => row.tipo === "saida")
@@ -411,31 +422,50 @@ async function snapshot() {
     }
   } catch { /* configuração legada inválida: não inventar vencimentos */ }
   const expensesTotal = expenses.reduce((sum, e) => sum + e.valor, 0);
-  const entradasLiquidas = (min: number, max: number) =>
-    recent.filter(row => {
-      const date = dayIndex(row.createdAt);
-      return date >= min && date <= max && row.tipo === "entrada" &&
-        (!row.formaPagamento || row.formaPagamento === "dinheiro" || row.formaPagamento === "pix");
-    }).reduce((sum, row) => sum + cents(row.valor), 0);
-  const entradasSemana = entradasLiquidas(weekStart, today);
+  const movimentosRecentes = recent.map(row => ({
+    dia: dayIndex(row.createdAt),
+    tipo: row.tipo,
+    formaPagamento: row.formaPagamento,
+    valorCentavos: cents(row.valor),
+  }));
+  const movimentosElegiveisSemana = somarMovimentosElegiveisDoPeriodo(
+    movimentosRecentes, weekStart, today,
+  );
   const periodosAnteriores = [1, 2, 3, 4].map(i => {
     const min = weekStart - i * 7, max = min + 6;
+    const registros = movimentosRecentes.filter(row =>
+      row.dia >= min && row.dia <= max &&
+      (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix") &&
+      (row.tipo === "entrada" || row.tipo === "saida"),
+    );
     return {
-      entradas: entradasLiquidas(min, max),
-      comRegistros: recent.some(row => {
-        const date = dayIndex(row.createdAt);
-        return date >= min && date <= max;
-      }),
+      saidas: registros.filter(row => row.tipo === "saida")
+        .reduce((sum, row) => sum + row.valorCentavos, 0),
+      comHistoricoElegivel: registros.length > 0,
     };
   });
-  const mediaEntradas = periodosAnteriores.every(periodo => periodo.comRegistros)
-    ? Math.round(periodosAnteriores.reduce((sum, periodo) => sum + periodo.entradas, 0) / 4)
+  const mediaSemanalSaidas = periodosAnteriores.every(periodo => periodo.comHistoricoElegivel)
+    ? Math.round(periodosAnteriores.reduce((sum, periodo) => sum + periodo.saidas, 0) / 4)
     : null;
-  const taxaReserva = percentualReserva(entradasSemana, mediaEntradas);
+  const compraOperacional = config.meta > 0 ? config.meta : purchaseAverage ?? 0;
+  const alocacaoSemana = calcularAlocacaoSemanal(
+    movimentosElegiveisSemana.entradas,
+    movimentosElegiveisSemana.saidas,
+    mediaSemanalSaidas,
+    expensesTotal + compraOperacional,
+    config.proteger,
+  );
+  const entradasSemana = movimentosElegiveisSemana.entradas;
+  const taxaReserva = alocacaoSemana.percentualProtecao;
   const reservaAutomatica = await atualizarReservaGradual(
     dinheiro === null ? null : dinheiro + pix, config.reserva, config.reservaSemana,
-    config.meta > 0 ? config.meta : purchaseAverage ?? 0,
-    expensesTotal, taxaReserva, today, weekStart,
+    compraOperacional,
+    expensesTotal,
+    alocacaoSemana.protecaoCentavos,
+    alocacaoSemana.necessidadeOperacionalCentavos,
+    taxaReserva,
+    today,
+    weekStart,
   );
   const historicoReserva = await db.select().from(reservaAjustesTable)
     .orderBy(desc(reservaAjustesTable.id));
@@ -446,18 +476,17 @@ async function snapshot() {
   const total = dinheiro === null ? null : dinheiro + pix;
   config.reserva = reservaAutomatica.reserva;
   if (reservaAutomatica.protecaoAtiva !== null) config.proteger = reservaAutomatica.protecaoAtiva;
-  const movimentosElegiveisSemana = somarMovimentosElegiveisDoPeriodo(recent.map(row => ({
-    dia: dayIndex(row.createdAt),
-    tipo: row.tipo,
-    formaPagamento: row.formaPagamento,
-    valorCentavos: cents(row.valor),
-  })), weekStart, today);
-  const rateioSemana = calcularRateioPeriodo(
-    movimentosElegiveisSemana.entradas,
-    movimentosElegiveisSemana.saidas,
-    taxaReserva,
-    config.proteger,
+  const movimentosSemFormaSemana = movimentosRecentes.filter(row =>
+    row.dia >= weekStart && row.dia <= today &&
+    !row.formaPagamento &&
+    (row.tipo === "entrada" || row.tipo === "saida"),
   );
+  const semFormaEntradas = movimentosSemFormaSemana
+    .filter(row => row.tipo === "entrada")
+    .reduce((sum, row) => sum + row.valorCentavos, 0);
+  const semFormaSaidas = movimentosSemFormaSemana
+    .filter(row => row.tipo === "saida")
+    .reduce((sum, row) => sum + row.valorCentavos, 0);
   const saldos = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, 0, 0);
   const disponivel = saldos.disponivel;
   const spending = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, expensesTotal, config.meta);
@@ -514,8 +543,12 @@ async function snapshot() {
       entradas: money(movimentosElegiveisSemana.entradas),
       saidas: money(movimentosElegiveisSemana.saidas),
       percentualProtecao: config.proteger ? taxaReserva : 0,
-      protecao: money(rateioSemana.protecaoCentavos),
-      saldoOperacional: money(rateioSemana.saldoOperacionalCentavos),
+      protecao: money(alocacaoSemana.protecaoCentavos),
+      alocacaoOperacao: money(alocacaoSemana.operacaoCentavos),
+      necessidadeOperacional: money(alocacaoSemana.necessidadeOperacionalCentavos),
+      saldoOperacional: money(alocacaoSemana.fluxoLiquidoCentavos),
+      entradasSemForma: money(semFormaEntradas),
+      saidasSemForma: money(semFormaSaidas),
     },
     faltamMeta: spending.faltaMeta === null ? null : money(spending.faltaMeta),
     dia: { entradas: money(dia.entradas), saidas: money(dia.saidas), retiradas: money(dia.retiradas) },
@@ -714,7 +747,8 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
       answer = saldo.podeGastar === null ? insufficient
         : `Limite conservador registrado: ${reais(Math.round(saldo.podeGastar * 100))}. Cálculo: ${reais(Math.round(saldo.disponivel! * 100))} disponível − ${reais(Math.round(s.despesasPrevistas.total * 100))} em contas previstas nos próximos 7 dias − ${reais(Math.round(s.metaCompra * 100))} da meta de compra. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
-      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e saíram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. O fluxo líquido registrado é ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))} (entradas menos saídas). A referência de proteção é ${reais(Math.round(s.movimentoSemana.protecao * 100))} (${s.movimentoSemana.percentualProtecao}%), mas não é descontada desse fluxo porque não é uma saída nem uma transferência. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O aporte realmente protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}; ele pode ficar abaixo da referência porque depende das entradas novas e da margem depois de contas e pedidos. O saldo protegido total continua acumulando sem teto máximo. Só dinheiro/PIX entra no cálculo; cartão e abertura da gaveta ficam de fora.`;
+      const positivo = Math.max(0, Math.round(s.movimentoSemana.saldoOperacional * 100));
+      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e saíram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. Primeiro, o saldo líquido é calculado: ${reais(Math.round(s.movimentoSemana.entradas * 100))} − ${reais(Math.round(s.movimentoSemana.saidas * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}. ${positivo > 0 && s.saldos.protecaoAtiva ? `Com a proteção ativa, a divisão é 60% para operação (${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))}) e 40% para proteção (${reais(Math.round(s.movimentoSemana.protecao * 100))}); os valores somam exatamente ${reais(positivo)} após o arredondamento.` : positivo > 0 ? `Com a proteção desativada, os ${reais(positivo)} ficam na operação.` : "Como o saldo líquido não é positivo, não há parcelas positivas para dividir."} A necessidade operacional estimada (${reais(Math.round(s.movimentoSemana.necessidadeOperacional * 100))}) serve apenas para limitar o aporte real à reserva; não altera o rateio. A divisão é uma referência, não uma saída ou transferência. Há lançamentos sem forma de pagamento informada que foram excluídos: ${reais(Math.round(s.movimentoSemana.entradasSemForma * 100))} em entradas e ${reais(Math.round(s.movimentoSemana.saidasSemForma * 100))} em saídas. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O aporte realmente protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}. O saldo protegido total continua acumulando sem teto máximo.`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

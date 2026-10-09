@@ -478,6 +478,7 @@ export function CaixaSessaoGuard() {
       setContadoTouched(false); // deixa o valor conferido recalcular com a nova entrada
       await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
       await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+      await qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
       await qc.invalidateQueries({ queryKey: ["pecas"] });
       await qc.invalidateQueries({ queryKey: ["caixa-pecas"] });
       await qc.invalidateQueries({ queryKey: ["vendas"] });
@@ -517,6 +518,7 @@ export function CaixaSessaoGuard() {
         await qc.invalidateQueries({ queryKey: ["contas-receber"] });
         await qc.invalidateQueries({ queryKey: ["caixa-sessao-contas"] });
         await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+        await qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
         await refetch();
         await refetchHistorico();
       } catch (e) {
@@ -603,6 +605,7 @@ export function CaixaSessaoGuard() {
       setValorInicial("");
       await qc.invalidateQueries({ queryKey: ["caixa-sessao", data] });
       await qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+      await qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
       await refetch();
     } catch (e) {
       toast({

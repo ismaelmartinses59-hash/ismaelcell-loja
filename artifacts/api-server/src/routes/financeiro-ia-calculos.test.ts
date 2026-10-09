@@ -1,14 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  aumentoReservaDaSemana,
+  calcularAlocacaoSemanal,
+  calcularAumentoReservaSemanal,
   calcularDisponibilidade,
-  calcularRateioPeriodo,
-  calcularReservaGradual,
   dataFinanceiraLocal,
   diaFinanceiroLocal,
   mediaDasSemanasComCompra,
-  percentualReserva,
   proximoCicloReservaSemanal,
   somarMovimentosElegiveisDoPeriodo,
   somarEntradasNovas,
@@ -45,26 +43,6 @@ test("média de compras usa somente semanas com compras registradas", () => {
   assert.equal(mediaDasSemanasComCompra([120000, 130000, 150000, 125000]), 131250);
   assert.equal(mediaDasSemanasComCompra([]), null);
 });
-test("reserva cresce em etapas sem teto máximo", () => {
-  assert.equal(calcularReservaGradual(100000, 0, 0, 0, 30, 100000), 30000);
-  assert.equal(calcularReservaGradual(150000, 30000, 0, 0, 60, 50000), 60000);
-  assert.equal(calcularReservaGradual(200000, 60000, 0, 0, 60, 50000), 90000);
-  assert.equal(calcularReservaGradual(350000, 90000, 0, 0, 45, 150000), 157500);
-  assert.equal(calcularReservaGradual(5000000, 150000, 0, 0, 45, 1000000), 600000);
-});
-test("pedidos e contas têm prioridade; reserva existente não é reduzida", () => {
-  assert.equal(calcularReservaGradual(150000, 20000, 15000, 100000, 60, 100000), 80000);
-  assert.equal(calcularReservaGradual(100000, 45000, 15000, 60000, 30, 10000), 45000);
-  assert.equal(calcularReservaGradual(null, 45000, 0, 0, 60, 10000), 45000);
-  assert.equal(calcularReservaGradual(100000, 0, 0, 100000, 30, 100000), 30000);
-  assert.equal(calcularReservaGradual(200000, 0, 0, 150000, 60, 200000), 120000);
-  assert.equal(calcularReservaGradual(350000, 0, 0, 200000, 45, 350000), 157500);
-});
-test("saldo antigo sozinho não cria aporte; a entrada deve existir antes", () => {
-  assert.equal(calcularReservaGradual(200000, 0, 0, 0, 60, 0), 0);
-  assert.equal(calcularReservaGradual(200000, 0, 0, 0, 60, 200000), 120000);
-  assert.equal(calcularReservaGradual(200000, 120000, 0, 0, 60, 0), 120000);
-});
 test("só entradas novas recebidas em dinheiro ou PIX alimentam o aporte", () => {
   const rows = [
     { id: 9, tipo: "entrada", formaPagamento: "pix", valorCentavos: 200000 },
@@ -72,39 +50,79 @@ test("só entradas novas recebidas em dinheiro ou PIX alimentam o aporte", () =>
     { id: 11, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 20000 },
     { id: 12, tipo: "entrada", formaPagamento: "pix", valorCentavos: 120000 },
     { id: 13, tipo: "entrada", formaPagamento: "dinheiro", valorCentavos: 80000 },
+    { id: 14, tipo: "entrada", formaPagamento: null, valorCentavos: 99900 },
   ];
   assert.equal(somarEntradasNovas(rows, 11), 200000);
   assert.equal(somarEntradasNovas(rows, 13), 0);
 });
-test("semanas fracas e fortes mudam a taxa, sem inventar comparação sem histórico", () => {
-  assert.equal(percentualReserva(60000, 100000), 30);
-  assert.equal(percentualReserva(100000, 100000), 45);
-  assert.equal(percentualReserva(150000, 100000), 60);
-  assert.equal(percentualReserva(100000, null), 45);
+test("divide o saldo líquido positivo em 60/40 e conserva os centavos do exemplo real", () => {
+  const alocacao = calcularAlocacaoSemanal(448098, 214514, 200000, 120000, true);
+  assert.deepEqual(alocacao, {
+    fluxoLiquidoCentavos: 233584,
+    necessidadeOperacionalCentavos: 200000,
+    operacaoCentavos: 140150,
+    protecaoCentavos: 93434,
+    percentualProtecao: 40,
+  });
+  assert.equal(alocacao.operacaoCentavos + alocacao.protecaoCentavos, alocacao.fluxoLiquidoCentavos);
+  const saldoComCentavoImpar = calcularAlocacaoSemanal(1001, 0, 100, 0, true);
+  assert.equal(saldoComCentavoImpar.operacaoCentavos, 601);
+  assert.equal(saldoComCentavoImpar.protecaoCentavos, 400);
+  assert.equal(saldoComCentavoImpar.operacaoCentavos + saldoComCentavoImpar.protecaoCentavos, 1001);
 });
-test("a referência é separada do fluxo líquido, que desconta apenas as saídas", () => {
-  assert.deepEqual(calcularRateioPeriodo(209500, 0, 45, true), {
-    protecaoCentavos: 94275,
-    saldoOperacionalCentavos: 209500,
+test("mais saídas reduzem o líquido antes do rateio, nunca as entradas isoladamente", () => {
+  assert.deepEqual(calcularAlocacaoSemanal(400000, 150000, 100000, 120000, true), {
+    fluxoLiquidoCentavos: 250000,
+    necessidadeOperacionalCentavos: 120000,
+    operacaoCentavos: 150000,
+    protecaoCentavos: 100000,
+    percentualProtecao: 40,
   });
-  assert.deepEqual(calcularRateioPeriodo(209500, 10000, 45, true), {
-    protecaoCentavos: 94275,
-    saldoOperacionalCentavos: 199500,
-  });
-  assert.deepEqual(calcularRateioPeriodo(500000, 0, 60, true), {
-    protecaoCentavos: 300000,
-    saldoOperacionalCentavos: 500000,
-  });
-  assert.deepEqual(calcularRateioPeriodo(442400, 214514, 60, true), {
-    protecaoCentavos: 265440,
-    saldoOperacionalCentavos: 227886,
+  assert.deepEqual(calcularAlocacaoSemanal(400000, 300000, 100000, 120000, true), {
+    fluxoLiquidoCentavos: 100000,
+    necessidadeOperacionalCentavos: 120000,
+    operacaoCentavos: 60000,
+    protecaoCentavos: 40000,
+    percentualProtecao: 40,
   });
 });
-test("rateio deixa toda a movimentação para operação quando a proteção está pausada", () => {
-  assert.deepEqual(calcularRateioPeriodo(109500, 0, 45, false), {
+test("sem histórico nem compromissos, ainda divide o saldo líquido positivo em 60/40", () => {
+  assert.deepEqual(calcularAlocacaoSemanal(400000, 150000, null, 0, true), {
+    fluxoLiquidoCentavos: 250000,
+    necessidadeOperacionalCentavos: 400000,
+    operacaoCentavos: 150000,
+    protecaoCentavos: 100000,
+    percentualProtecao: 40,
+  });
+});
+test("fluxo zero ou negativo não gera parcelas positivas", () => {
+  assert.deepEqual(calcularAlocacaoSemanal(10000, 30000, 20000, 10000, true), {
+    fluxoLiquidoCentavos: -20000,
+    necessidadeOperacionalCentavos: 20000,
+    operacaoCentavos: 0,
     protecaoCentavos: 0,
-    saldoOperacionalCentavos: 109500,
+    percentualProtecao: 0,
   });
+  const fluxoZero = calcularAlocacaoSemanal(10000, 10000, 20000, 10000, true);
+  assert.equal(fluxoZero.fluxoLiquidoCentavos, 0);
+  assert.equal(fluxoZero.operacaoCentavos, 0);
+  assert.equal(fluxoZero.protecaoCentavos, 0);
+});
+test("com a proteção desativada, o líquido positivo fica todo para operação", () => {
+  assert.deepEqual(calcularAlocacaoSemanal(448098, 214514, 100000, 0, false), {
+    fluxoLiquidoCentavos: 233584,
+    necessidadeOperacionalCentavos: 100000,
+    operacaoCentavos: 233584,
+    protecaoCentavos: 0,
+    percentualProtecao: 0,
+  });
+});
+test("aporte semanal respeita a necessidade, o alvo, a entrada nova e a proteção ativa", () => {
+  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 20000, 80000, 250000, 50000, true), 50000);
+  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 20000, 80000, 400000, 50000, true), 0);
+  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 80000, 80000, 250000, 50000, true), 0);
+  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 20000, 80000, 250000, 50000, false), 0);
+  assert.equal(calcularAumentoReservaSemanal(null, 0, 0, 80000, 0, 50000, true), 0);
 });
 test("soma somente entradas e saídas elegíveis entre o início e o fim da semana", () => {
   assert.deepEqual(somarMovimentosElegiveisDoPeriodo([
@@ -114,7 +132,8 @@ test("soma somente entradas e saídas elegíveis entre o início e o fim da sema
     { dia: 12, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 10000 },
     { dia: 12, tipo: "saida", formaPagamento: "cartao", valorCentavos: 3000 },
     { dia: 13, tipo: "entrada", formaPagamento: null, valorCentavos: 2500 },
-  ], 11, 13), { entradas: 112000, saidas: 10000 });
+    { dia: 13, tipo: "saida", formaPagamento: null, valorCentavos: 1800 },
+  ], 11, 13), { entradas: 109500, saidas: 10000 });
 });
 test("resumo diário reinicia à meia-noite local e ignora dias e formas de pagamento inelegíveis", () => {
   const antesDaVirada = new Date("2026-10-05T02:59:59.000Z");
@@ -145,10 +164,4 @@ test("o ciclo semanal reinicia na primeira entrada de segunda ou na terça sem v
     chave: `fallback:${segunda}`, inicioDia: segunda + 1, inicioId: 0,
   });
   assert.equal(proximoCicloReservaSemanal(segunda + 1, segunda, null, cicloFallback), null);
-});
-test("a parcela semanal acompanha só a parte do aumento atribuída às entradas desta semana", () => {
-  assert.equal(aumentoReservaDaSemana(4500, 10000, 10000), 4500);
-  assert.equal(aumentoReservaDaSemana(4500, 10000, 4000), 1800);
-  assert.equal(aumentoReservaDaSemana(4500, 10000, 0), 0);
-  assert.equal(aumentoReservaDaSemana(0, 10000, 4000), 0);
 });

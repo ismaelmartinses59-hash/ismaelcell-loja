@@ -461,6 +461,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
       qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
       qc.invalidateQueries({ queryKey: ["caixa-sessao"] });
       qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
     } catch (e) {
       toast({
         title: "Erro ao fechar",
@@ -493,6 +494,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
       qc.invalidateQueries({ queryKey: ["caixa-sessao-hoje"] });
       qc.invalidateQueries({ queryKey: ["caixa-sessao"] });
       qc.invalidateQueries({ queryKey: ["caixa-historico"] });
+      qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
     } catch (e) {
       toast({
         title: "Erro ao reabrir",
