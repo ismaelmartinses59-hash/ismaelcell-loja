@@ -28,7 +28,7 @@ type FinanceSnapshot = {
   reservaAutomatica: {
     reservaSemana: number; aporte: number; entradaNova: number; percentual: number;
     entradasSemana: number; compraProtegida: number; contasProtegidas: number;
-    estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_margem" | "acumulando";
+    estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_aumento" | "acumulando";
   };
   movimentoSemana: {
     inicio: string;
@@ -78,7 +78,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     queryKey: ["financeiro-ia"],
     enabled: open,
     staleTime: 0,
-    refetchInterval: open ? 60000 : false,
+    refetchInterval: open ? 15000 : false,
     queryFn: () => api("/financeiro-ia"),
   });
   const [question, setQuestion] = useState("");
@@ -361,11 +361,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacional)}</p>
                     {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas registradas ({fmt(data.movimentoSemana.saidas)}). A referência de proteção não é uma saída.</p>}
                   </div>
-                  <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Aporte real na reserva nesta semana</p>
-                    <p data-testid="text-reserva-semanal" className="mt-1 font-bold text-violet-900">{fmt(data.reservaAutomatica.reservaSemana)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">Valor registrado no acumulado; pode diferir dos 40% calculados por causa da margem disponível.</p>}
-                  </div>
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
                     <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
@@ -377,11 +372,6 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Saldo de operação · {summary.protecaoAtiva ? "60%" : "100%"}</p>
                     <p data-testid="text-alocacao-operacao-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.alocacaoOperacao)}</p>
                     {!financialNotesHidden && <p className="text-[11px] text-emerald-700">{summary.protecaoAtiva ? "60% do saldo líquido positivo; com a proteção calculada, soma exatamente o líquido." : "Com a proteção desativada, o saldo líquido positivo fica todo na operação."}</p>}
-                  </div>
-                  <div className="rounded-xl border border-amber-100 bg-amber-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-amber-700"><Wallet className="h-3.5 w-3.5" /> Necessidade operacional estimada</p>
-                    <p data-testid="text-necessidade-operacional-semana" className="mt-1 font-bold text-amber-900">{fmt(data.movimentoSemana.necessidadeOperacional)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-amber-700">Usada apenas para limitar o aporte real à reserva; não altera a divisão de 60/40.</p>}
                   </div>
                 </div>
                 <p data-testid="text-lancamentos-sem-forma-semana" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
@@ -404,7 +394,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   </p>
                   {!financialNotesHidden && <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{data.saldos.base}</p>}
                 </div>
-                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">Primeiro, o app subtrai as saídas elegíveis das entradas; se o saldo líquido for positivo e a proteção estiver ativa, divide em 60% para operação e 40% para proteção. Os valores arredondados em centavos somam exatamente o líquido. Se não for positivo, não há parcelas a dividir. {summary.protecaoAtiva ? "O aporte real à reserva é separado do cálculo e ainda respeita as novas entradas elegíveis, o saldo físico disponível e a necessidade operacional." : "Com a proteção desativada, o saldo líquido positivo fica todo na operação."} O cálculo não movimenta dinheiro.</p>}
+                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">Primeiro, o app subtrai as saídas elegíveis das entradas; se o saldo líquido for positivo e a proteção estiver ativa, divide em 60% para operação e 40% para proteção. Os valores arredondados em centavos somam exatamente o líquido. Se não for positivo, não há parcelas a dividir. {summary.protecaoAtiva ? "O valor integral calculado para proteção é somado à reserva acumulada após novos lançamentos elegíveis; essa classificação não movimenta dinheiro. O saldo físico e a margem para gastos continuam separados." : "Com a proteção desativada, o saldo líquido positivo fica todo na operação."} O cálculo não movimenta dinheiro.</p>}
               </section>
 
               </div>
@@ -427,9 +417,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 {data.reservaAutomatica.estado === "sem_saldo" && <p className="mt-1 text-amber-700">Sem sessão da gaveta, não é seguro aumentar a reserva.</p>}
                 {data.reservaAutomatica.estado === "iniciando" && <p className="mt-1 text-slate-600">Acompanhamento iniciado agora. As entradas anteriores já estão no saldo; só as próximas entradas poderão gerar novos aumentos.</p>}
                 {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma entrada nova desde o último cálculo automático. O resumo acima continua somando todas as entradas elegíveis desta semana; o saldo antigo sozinho não gera outro aumento.</p>}
-                {data.reservaAutomatica.estado === "sem_margem" && <p className="mt-1 text-amber-700">A entrada já compõe o saldo. Nesta atualização, o aumento automático foi limitado para preservar {fmt(data.reservaAutomatica.contasProtegidas)} em contas previstas e {fmt(data.reservaAutomatica.compraProtegida)} para pedidos; não existe teto máximo para a reserva.</p>}
+                {data.reservaAutomatica.estado === "sem_aumento" && <p className="mt-1 text-slate-600">Nenhum valor novo foi acrescido à reserva nesta atualização; o total já protegido permanece acumulado.</p>}
                 <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                  O rateio é feito depois de subtrair as saídas elegíveis das entradas desta semana: {fmt(data.movimentoSemana.entradas)} − {fmt(data.movimentoSemana.saidas)} = {fmt(data.movimentoSemana.saldoOperacional)}. {summary.protecaoAtiva ? `Se o líquido for positivo, ${fmt(data.movimentoSemana.alocacaoOperacao)} vão para operação (60%) e ${fmt(data.movimentoSemana.protecao)} para proteção (40%).` : "Com a proteção desativada, todo o líquido positivo fica na operação."} Os valores arredondados em centavos somam exatamente o saldo líquido positivo; se o líquido for zero ou negativo, as duas parcelas calculadas são zero. O aporte real ainda respeita o saldo físico disponível e a reserva não tem teto máximo.
+                  O rateio é feito depois de subtrair as saídas elegíveis das entradas desta semana: {fmt(data.movimentoSemana.entradas)} − {fmt(data.movimentoSemana.saidas)} = {fmt(data.movimentoSemana.saldoOperacional)}. {summary.protecaoAtiva ? `Se o líquido for positivo, ${fmt(data.movimentoSemana.alocacaoOperacao)} vão para operação (60%) e ${fmt(data.movimentoSemana.protecao)} para proteção (40%).` : "Com a proteção desativada, todo o líquido positivo fica na operação."} Os valores arredondados em centavos somam exatamente o saldo líquido positivo; se o líquido for zero ou negativo, as duas parcelas calculadas são zero. A proteção calculada é somada ao total conforme entram novos lançamentos elegíveis; é uma classificação contábil, não uma transferência, e não tem teto máximo.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">É uma proteção no cálculo do app, não uma transferência ou saída do Caixa. Gastos e transferências não registrados podem alterar o saldo real.</p>
               </section>

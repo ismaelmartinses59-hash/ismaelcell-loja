@@ -90,7 +90,7 @@ export function calcularAlocacaoSemanal(
   const mediaSaidas = mediaSemanalSaidasCentavos === null
     ? null
     : Math.max(0, Math.trunc(mediaSemanalSaidasCentavos));
-  // Esta estimativa limita o aporte real à reserva; não muda o rateio projetado de 60/40.
+  // A necessidade operacional é exibida à parte e não altera o rateio semanal de 60/40.
   const semNecessidadeConhecida = mediaSaidas === null || (mediaSaidas === 0 && compromissos === 0);
   const necessidadeOperacionalCentavos = semNecessidadeConhecida
     ? entradas
@@ -117,27 +117,21 @@ export function calcularAlocacaoSemanal(
 
 export function calcularAumentoReservaSemanal(
   totalCaixaPixCentavos: number | null,
-  reservaTotalCentavos: number,
   reservaSemanaCentavos: number,
   protecaoAlocadaSemanaCentavos: number,
-  necessidadeOperacionalCentavos: number,
   entradaNovaElegivelCentavos: number,
   protecaoAtiva: boolean,
+  reconciliarSemana = false,
 ): number {
   if (totalCaixaPixCentavos === null || !protecaoAtiva) return 0;
-  const disponivelAposOperacao = Math.max(
-    0,
-    Math.trunc(totalCaixaPixCentavos) -
-      Math.max(0, Math.trunc(reservaTotalCentavos)) -
-      Math.max(0, Math.trunc(necessidadeOperacionalCentavos)),
-  );
   const faltaProteger = Math.max(
     0,
     Math.trunc(protecaoAlocadaSemanaCentavos) -
       Math.max(0, Math.trunc(reservaSemanaCentavos)),
   );
+  if (reconciliarSemana) return faltaProteger;
+  if (entradaNovaElegivelCentavos <= 0) return 0;
   return Math.min(
-    disponivelAposOperacao,
     faltaProteger,
     Math.max(0, Math.trunc(entradaNovaElegivelCentavos)),
   );

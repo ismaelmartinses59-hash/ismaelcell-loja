@@ -28,7 +28,9 @@ const keys = {
   ultimoLancamentoReserva: "ia_fin_reserva_ultimo_lancamento",
   reservaSemana: "ia_fin_reserva_semanal_valor",
   cicloReservaSemana: "ia_fin_reserva_semanal_ciclo",
+  modeloAcumulacaoReserva: "ia_fin_reserva_modelo_acumulacao",
 };
+const MODELO_ACUMULACAO_RESERVA = "alocacao-semanal-40-v1";
 const categorias = [
   "pecas", "frete", "aluguel", "energia", "internet", "agua",
   "combustivel", "ferramentas", "alimentacao", "retirada pessoal",
@@ -111,6 +113,7 @@ async function atualizarReservaGradual(
     const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
     const atual = cents(config.get(keys.reserva) ?? (reserva / 100).toFixed(2));
     const ativa = config.get(keys.proteger) !== "false";
+    const migrarAcumulacaoReserva = config.get(keys.modeloAcumulacaoReserva) !== MODELO_ACUMULACAO_RESERVA;
     const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
     const marcador = config.get(keys.ultimoLancamentoReserva);
     const cicloSalvo = lerCicloReservaSemanal(config.get(keys.cicloReservaSemana));
@@ -180,21 +183,36 @@ async function atualizarReservaGradual(
       // Ao ativar o rastreamento, não reaproveita entradas antigas como se
       // tivessem acabado de ser recebidas.
       const [ultimo] = await tx.select({ id: caixaTable.id }).from(caixaTable).orderBy(desc(caixaTable.id)).limit(1);
+      const reconciliarSemana = migrarAcumulacaoReserva && ativa && protecaoAlocadaSemana > 0;
+      const reservaSemanaBase = reconciliarSemana ? 0 : reservaSemanaAtual;
+      const aumentoInicial = reconciliarSemana
+        ? calcularAumentoReservaSemanal(total, reservaSemanaBase, protecaoAlocadaSemana, 0, ativa, true)
+        : 0;
+      const reservaInicial = atual + aumentoInicial;
+      reservaSemanaAtual = Math.min(reservaInicial, reservaSemanaBase + aumentoInicial);
+      if (aumentoInicial > 0) {
+        await tx.insert(appConfigTable).values({ key: keys.reserva, value: (reservaInicial / 100).toFixed(2) })
+          .onConflictDoUpdate({
+            target: appConfigTable.key,
+            set: { value: (reservaInicial / 100).toFixed(2), updatedAt: new Date() },
+          });
+      }
       await tx.insert(appConfigTable).values({ key: keys.ultimoLancamentoReserva, value: String(ultimo?.id ?? 0) })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value: String(ultimo?.id ?? 0), updatedAt: new Date() } });
       for (const [key, value] of [
         [keys.reservaSemana, (reservaSemanaAtual / 100).toFixed(2)],
         [keys.cicloReservaSemana, JSON.stringify(ciclo)],
+        ...(reconciliarSemana ? [[keys.modeloAcumulacaoReserva, MODELO_ACUMULACAO_RESERVA]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
       const aposContas = Math.max(0, total - contasPrevistas);
       return {
-        reserva: atual,
+        reserva: reservaInicial,
         reservaSemana: reservaSemanaAtual,
-        aporte: 0,
+        aporte: aumentoInicial,
         entradaNova: 0,
         inicioAgora: true,
-        compraPlanejada: Math.min(compra, Math.max(0, aposContas - atual)),
+        compraPlanejada: Math.min(compra, Math.max(0, aposContas - reservaInicial)),
         protecaoAtiva: ativa,
         saldosAtuais: null as { dinheiro: number; pix: number } | null,
       };
@@ -236,18 +254,20 @@ async function atualizarReservaGradual(
       }
     }
     const totalAtual = dinheiroAtual === null ? total : dinheiroAtual + pixAtual;
-    const aumentoPlanejado = entradaNovaSemana > 0
+    const reconciliarSemana = migrarAcumulacaoReserva && ativa && protecaoAlocadaSemana > 0;
+    const reservaSemanaBase = reconciliarSemana ? 0 : reservaSemanaAtual;
+    const aumentoPlanejado = reconciliarSemana || entradaNovaSemana > 0
       ? calcularAumentoReservaSemanal(
-          totalAtual, atual, reservaSemanaAtual, protecaoAlocadaSemana,
-          necessidadeOperacional, entradaNovaSemana, ativa,
+          totalAtual, reservaSemanaBase, protecaoAlocadaSemana,
+          entradaNovaSemana, ativa, reconciliarSemana,
         )
       : 0;
     const novo = atual + aumentoPlanejado;
     const aposContas = Math.max(0, (totalAtual ?? 0) - contasPrevistas);
     const pedidosPreservados = Math.min(compra, Math.max(0, aposContas - novo));
-    reservaSemanaAtual = Math.min(novo, reservaSemanaAtual);
+    reservaSemanaAtual = Math.min(novo, reservaSemanaBase);
     const aumento = novo - atual;
-    if (aumento > 0 && entradaNova > 0 && entradaNovaSemana > 0) {
+    if (aumento > 0) {
       reservaSemanaAtual += aumento;
       // A reserva da semana é parte do total protegido, nunca um valor adicional.
       reservaSemanaAtual = Math.min(novo, reservaSemanaAtual);
@@ -258,16 +278,18 @@ async function atualizarReservaGradual(
           target: appConfigTable.key,
           set: { value: (novo / 100).toFixed(2), updatedAt: new Date() },
         });
-      await tx.insert(reservaAjustesTable).values({
-        valorAnterior: atual,
-        aumento: novo - atual,
-        valorNovo: novo,
-        entradaNova,
-        percentual: percentualProtecao,
-        contasProtegidas: contasPrevistas,
-        pedidosProtegidos: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)),
-        ultimoLancamentoId: novos.at(-1)!.id,
-      });
+      if (novos.length && !reconciliarSemana) {
+        await tx.insert(reservaAjustesTable).values({
+          valorAnterior: atual,
+          aumento: novo - atual,
+          valorNovo: novo,
+          entradaNova,
+          percentual: percentualProtecao,
+          contasProtegidas: contasPrevistas,
+          pedidosProtegidos: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)),
+          ultimoLancamentoId: novos.at(-1)!.id,
+        });
+      }
     }
     // Sem base física, não consome a entrada; tenta novamente após abrir a gaveta.
     if (novos.length && (entradaNova === 0 || !ativa || dinheiroAtual !== null)) {
@@ -281,11 +303,13 @@ async function atualizarReservaGradual(
     const cicloSalvoJson = JSON.stringify(ciclo);
     if (
       config.get(keys.reservaSemana) !== reservaSemanaSalva ||
-      config.get(keys.cicloReservaSemana) !== cicloSalvoJson
+      config.get(keys.cicloReservaSemana) !== cicloSalvoJson ||
+      (reconciliarSemana && config.get(keys.modeloAcumulacaoReserva) !== MODELO_ACUMULACAO_RESERVA)
     ) {
       for (const [key, value] of [
         [keys.reservaSemana, reservaSemanaSalva],
         [keys.cicloReservaSemana, cicloSalvoJson],
+        ...(reconciliarSemana ? [[keys.modeloAcumulacaoReserva, MODELO_ACUMULACAO_RESERVA]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
     }
@@ -533,9 +557,21 @@ async function snapshot() {
       compraProtegida: money(reservaAutomatica.compraPlanejada),
       contasProtegidas: money(expensesTotal),
       estado: !config.proteger ? "pausada" : total === null ? "sem_saldo"
+        : reservaAutomatica.aporte > 0 ? "acumulando"
         : reservaAutomatica.inicioAgora ? "iniciando"
         : reservaAutomatica.entradaNova <= 0 ? "sem_entradas"
-        : reservaAutomatica.aporte <= 0 ? "sem_margem" : "acumulando",
+        : "sem_aumento",
+      historico: historicoReserva.map(ajuste => ({
+        id: ajuste.id,
+        data: ajuste.createdAt.toISOString(),
+        anterior: money(ajuste.valorAnterior),
+        aumento: money(ajuste.aumento),
+        novo: money(ajuste.valorNovo),
+        entradaNova: money(ajuste.entradaNova),
+        percentual: ajuste.percentual,
+        contasProtegidas: money(ajuste.contasProtegidas),
+        pedidosProtegidos: money(ajuste.pedidosProtegidos),
+      })),
     },
     movimentoSemana: {
       inicio: daySP(new Date(weekStart * 86400000 + 43200000)),
@@ -622,7 +658,7 @@ router.put("/financeiro-ia/config", async (req, res) => {
 });
 
 router.post("/financeiro-ia/retiradas", async (req, res) => {
-  const amount = inputMoney(req.body?.valor);
+    const amount = question.match(/(?:r\$\s*)?((?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?)/i);
   const motivo = String(req.body?.motivo ?? "").trim().slice(0, 120);
   const observacao = String(req.body?.observacao ?? "").trim().slice(0, 500);
   const date = String(req.body?.data ?? "");
@@ -630,7 +666,7 @@ router.post("/financeiro-ia/retiradas", async (req, res) => {
   const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T12:00:00Z`) : null;
   const validDate = parsedDate !== null && Number.isFinite(parsedDate.getTime()) &&
     parsedDate.toISOString().slice(0, 10) === date;
-  if (!amount || !motivo || !validDate ||
+  if (amount === null || amount <= 0 || !motivo || !validDate ||
     dayIndex(new Date(`${date}T12:00:00Z`)) > dayIndex(new Date()) ||
     (forma !== "dinheiro" && forma !== "pix")) {
     res.status(400).json({ error: "Informe valor positivo, motivo, data válida e dinheiro ou PIX." }); return;
@@ -687,17 +723,10 @@ router.post("/financeiro-ia/transcrever", async (req, res): Promise<void> => {
     : { count: 1, resetAt: now + 60_000 });
 
   try {
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{
-        role: "user",
-        parts: [
-          { inlineData: { mimeType, data: audioBase64 } },
-          { text: "Transcreva literalmente a pergunta falada em português do Brasil. Não responda à pergunta, não acrescente informações e não invente valores. Retorne somente JSON no formato {\"pergunta\":\"texto ouvido\"}." },
-        ],
-      }],
-      config: { responseMimeType: "application/json", maxOutputTokens: 500 },
-    });
+        const response = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: `Você é um assistente financeiro de uma loja. Responda em português usando SOMENTE os fatos JSON a seguir; se a pergunta exigir dados ausentes, diga exatamente "${insufficient}". Nunca proponha ações automáticas, nunca invente valores nem faça julgamentos vagos (errado, ruim, administrando mal). Se identificar algo que merece atenção, use cinco partes: O que aconteceu? Qual dado provocou o alerta? Como isso afetou o caixa? O que pode acontecer se continuar? Qual ação considerar? Diferencie fatos de riscos condicionais, e deixe a decisão com o usuário. Fatos: ${facts}. Pergunta: ${question}`,
+        });
     const parsed: unknown = JSON.parse(response.text ?? "{}");
     const text = String((parsed as { pergunta?: unknown })?.pergunta ?? "").trim();
     if (!text || text.length > 400) {
@@ -748,7 +777,7 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
         : `Limite conservador registrado: ${reais(Math.round(saldo.podeGastar * 100))}. Cálculo: ${reais(Math.round(saldo.disponivel! * 100))} disponível − ${reais(Math.round(s.despesasPrevistas.total * 100))} em contas previstas nos próximos 7 dias − ${reais(Math.round(s.metaCompra * 100))} da meta de compra. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
       const positivo = Math.max(0, Math.round(s.movimentoSemana.saldoOperacional * 100));
-      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e saíram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. Primeiro, o saldo líquido é calculado: ${reais(Math.round(s.movimentoSemana.entradas * 100))} − ${reais(Math.round(s.movimentoSemana.saidas * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}. ${positivo > 0 && s.saldos.protecaoAtiva ? `Com a proteção ativa, a divisão é 60% para operação (${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))}) e 40% para proteção (${reais(Math.round(s.movimentoSemana.protecao * 100))}); os valores somam exatamente ${reais(positivo)} após o arredondamento.` : positivo > 0 ? `Com a proteção desativada, os ${reais(positivo)} ficam na operação.` : "Como o saldo líquido não é positivo, não há parcelas positivas para dividir."} A necessidade operacional estimada (${reais(Math.round(s.movimentoSemana.necessidadeOperacional * 100))}) serve apenas para limitar o aporte real à reserva; não altera o rateio. A divisão é uma referência, não uma saída ou transferência. Há lançamentos sem forma de pagamento informada que foram excluídos: ${reais(Math.round(s.movimentoSemana.entradasSemForma * 100))} em entradas e ${reais(Math.round(s.movimentoSemana.saidasSemForma * 100))} em saídas. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O aporte realmente protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}. O saldo protegido total continua acumulando sem teto máximo.`;
+      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e saíram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. Primeiro, o saldo líquido é calculado: ${reais(Math.round(s.movimentoSemana.entradas * 100))} − ${reais(Math.round(s.movimentoSemana.saidas * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}. ${positivo > 0 && s.saldos.protecaoAtiva ? `Com a proteção ativa, a divisão é 60% para operação (${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))}) e 40% para proteção (${reais(Math.round(s.movimentoSemana.protecao * 100))}); os valores somam exatamente ${reais(positivo)} após o arredondamento.` : positivo > 0 ? `Com a proteção desativada, os ${reais(positivo)} ficam na operação.` : "Como o saldo líquido não é positivo, não há parcelas positivas para dividir."} O valor calculado para proteção é somado ao total protegido conforme entram novos lançamentos elegíveis; é uma classificação contábil, não uma saída nem transferência. Há lançamentos sem forma de pagamento informada que foram excluídos: ${reais(Math.round(s.movimentoSemana.entradasSemForma * 100))} em entradas e ${reais(Math.round(s.movimentoSemana.saidasSemForma * 100))} em saídas. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O valor considerado protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}. O saldo protegido total continua acumulando sem teto máximo.`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

@@ -117,12 +117,26 @@ test("com a proteção desativada, o líquido positivo fica todo para operação
     percentualProtecao: 0,
   });
 });
-test("aporte semanal respeita a necessidade, o alvo, a entrada nova e a proteção ativa", () => {
-  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 20000, 80000, 250000, 50000, true), 50000);
-  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 20000, 80000, 400000, 50000, true), 0);
-  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 80000, 80000, 250000, 50000, true), 0);
-  assert.equal(calcularAumentoReservaSemanal(500000, 100000, 20000, 80000, 250000, 50000, false), 0);
-  assert.equal(calcularAumentoReservaSemanal(null, 0, 0, 80000, 0, 50000, true), 0);
+test("protege a alocação semanal calculada sem limitar pela necessidade operacional ou pelo caixa livre", () => {
+  assert.equal(calcularAumentoReservaSemanal(50000, 20000, 80000, 50000, true), 50000);
+  assert.equal(calcularAumentoReservaSemanal(500000, 20000, 80000, 50000, true), 50000);
+  assert.equal(calcularAumentoReservaSemanal(500000, 80000, 80000, 50000, true), 0);
+  assert.equal(calcularAumentoReservaSemanal(500000, 20000, 80000, 0, true), 0);
+  assert.equal(calcularAumentoReservaSemanal(500000, 20000, 80000, 50000, false), 0);
+  assert.equal(calcularAumentoReservaSemanal(null, 0, 80000, 50000, true), 0);
+});
+test("a reconciliação inicial soma a semana inteira uma vez e depois segue só a diferença", () => {
+  const protecaoDaSemana = 91154;
+  const primeiraConciliacao = calcularAumentoReservaSemanal(
+    500000, 0, protecaoDaSemana, 0, true, true,
+  );
+  assert.equal(primeiraConciliacao, protecaoDaSemana);
+  assert.equal(calcularAumentoReservaSemanal(
+    500000, protecaoDaSemana, protecaoDaSemana, 0, true,
+  ), 0);
+  assert.equal(calcularAumentoReservaSemanal(
+    500000, protecaoDaSemana, 100000, 10000, true,
+  ), 8846);
 });
 test("soma somente entradas e saídas elegíveis entre o início e o fim da semana", () => {
   assert.deepEqual(somarMovimentosElegiveisDoPeriodo([
