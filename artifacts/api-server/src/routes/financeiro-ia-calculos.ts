@@ -79,7 +79,8 @@ export function calcularRateioPeriodo(
 
   return {
     protecaoCentavos,
-    saldoOperacionalCentavos: entradas - protecaoCentavos - saidas,
+    // A proteção é uma referência, não uma saída de caixa.
+    saldoOperacionalCentavos: entradas - saidas,
   };
 }
 

@@ -692,24 +692,29 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
     const target = amount ? inputMoney(amount[1].replace(/\./g, "")) : null;
     if (/posso comprar|comprar.*peca|comprar.*estoque/.test(q)) {
       if (saldo.disponivel === null) answer = insufficient;
-      else if (target === null) answer = `Disponível sem usar a reserva: ${reais(Math.round(saldo.disponivel * 100))}. Informe o valor da compra para comparar.`;
-      else if (target <= Math.round(saldo.disponivel * 100)) answer = `Compra consultada: ${reais(target)}; disponível sem usar a reserva: ${reais(Math.round(saldo.disponivel * 100))}. Cabe no caixa operacional registrado, antes de despesas futuras não cadastradas. Nenhum valor será movimentado automaticamente.`;
-      else {
-        const gap = Math.max(0, target - Math.round(saldo.disponivel * 100));
+      else if (target === null) answer = `Disponível após a reserva protegida: ${reais(Math.round(saldo.disponivel * 100))}. Margem conservadora depois das contas previstas e da meta de compra: ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. Informe o valor do pedido para comparar.`;
+      else if (target > Math.round(saldo.disponivel * 100)) {
+        const gap = target - Math.round(saldo.disponivel * 100);
         answer = formatConcern({
-          aconteceu: "A compra consultada excede o caixa operacional registrado.",
+          aconteceu: "A compra consultada excede o disponível após a reserva protegida.",
           dado: `Compra: ${reais(target)}; disponível sem reserva: ${reais(Math.round(saldo.disponivel * 100))}; diferença: ${reais(gap)}.`,
           impacto: `Se a compra fosse paga agora em dinheiro/PIX, ultrapassaria o disponível em ${reais(gap)}. Nenhum valor foi movimentado.`,
           continuidade: "Se compras acima do disponível ocorrerem antes de novas entradas, a reserva poderá ser comprometida.",
           sugestao: "Considere ajustar a lista de peças ou aguardar entradas efetivamente recebidas; a decisão é sua."
         });
+      } else if (saldo.podeGastar !== null && target > Math.round(saldo.podeGastar * 100)) {
+        const margem = Math.round(saldo.podeGastar * 100);
+        answer = `O pedido de ${reais(target)} cabe no disponível após a reserva protegida (${reais(Math.round(saldo.disponivel * 100))}), mas ultrapassa em ${reais(target - margem)} a margem conservadora (${reais(margem)}), que preserva contas previstas nos próximos 7 dias e a meta de compra. Ele pode comprometer esse planejamento; nenhum valor foi movimentado.`;
+      } else if (saldo.podeGastar === null) {
+        answer = `O pedido de ${reais(target)} cabe no disponível após a reserva protegida (${reais(Math.round(saldo.disponivel * 100))}), mas não há dados suficientes para confirmar que cabe sem afetar contas previstas e a meta de compra. Nenhum valor foi movimentado.`;
+      } else {
+        answer = `O pedido de ${reais(target)} cabe na margem conservadora de ${reais(Math.round(saldo.podeGastar * 100))}, após a reserva protegida, as contas previstas nos próximos 7 dias e a meta de compra. Nenhum valor foi movimentado automaticamente.`;
       }
     } else if (/quanto.*(gastar|retirar|separar para mim)/.test(q)) {
       answer = saldo.podeGastar === null ? insufficient
         : `Limite conservador registrado: ${reais(Math.round(saldo.podeGastar * 100))}. Cálculo: ${reais(Math.round(saldo.disponivel! * 100))} disponível − ${reais(Math.round(s.despesasPrevistas.total * 100))} em contas previstas nos próximos 7 dias − ${reais(Math.round(s.metaCompra * 100))} da meta de compra. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
-      answer = saldo.total === null ? insufficient
-        : `Nesta semana, desde ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX. A referência de proteção é ${reais(Math.round(s.movimentoSemana.protecao * 100))} (${s.movimentoSemana.percentualProtecao}%), e o saldo operacional do fluxo da semana é ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}, depois de descontar ${reais(Math.round(s.movimentoSemana.saidas * 100))} em saídas registradas. Esse cálculo considera a semana atual, não o saldo físico/PIX acumulado. O aporte realmente protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}; ele pode ficar abaixo da referência quando contas previstas e pedidos deixam pouca margem. O saldo protegido total é ${reais(Math.round(saldo.reserva * 100))}, acumulado sem teto máximo. A proteção total está ${saldo.protecaoAtiva ? "ativa" : "desativada"}. Só dinheiro/PIX entra no rateio; cartão e abertura da gaveta ficam de fora. O rateio é uma referência, não movimenta dinheiro; o aumento automático respeita as contas previstas e os pedidos, mas não tem valor máximo.`;
+      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e saíram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. O fluxo líquido registrado é ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))} (entradas menos saídas). A referência de proteção é ${reais(Math.round(s.movimentoSemana.protecao * 100))} (${s.movimentoSemana.percentualProtecao}%), mas não é descontada desse fluxo porque não é uma saída nem uma transferência. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O aporte realmente protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}; ele pode ficar abaixo da referência porque depende das entradas novas e da margem depois de contas e pedidos. O saldo protegido total continua acumulando sem teto máximo. Só dinheiro/PIX entra no cálculo; cartão e abertura da gaveta ficam de fora.`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

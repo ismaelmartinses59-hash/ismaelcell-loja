@@ -332,8 +332,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     {data.situacao === "risco" ? "Risco" : data.situacao === "atencao" ? "Atenção" : data.situacao === "sem_dados" ? "Dados insuficientes" : data.situacao === "sem_alertas" ? "Sem alertas" : "Sem alerta de risco"}
                   </span>
                 </div>
+                <p className="mb-2 text-[11px] text-slate-500">O selo resume alertas financeiros; não é o fluxo semanal nem, sozinho, uma decisão sobre pedidos. Compare o valor do pedido com a margem conservadora abaixo.</p>
                 <div className="rounded-2xl bg-emerald-600 p-4 text-white">
-                  <p className="text-sm font-medium text-emerald-50">Entradas elegíveis nesta semana · dinheiro + PIX</p>
+                  <p className="text-sm font-medium text-emerald-50">Entradas brutas elegíveis nesta semana · dinheiro + PIX</p>
                   <p data-testid="text-entradas-elegiveis-semana" className="mt-1 text-3xl font-extrabold">{fmt(data.movimentoSemana.entradas)}</p>
                   {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">De segunda-feira ({data.movimentoSemana.inicio}) até hoje ({data.movimentoSemana.fim}); não inclui cartão nem abertura da gaveta.</p>}
                 </div>
@@ -344,9 +345,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     {!financialNotesHidden && <p className="text-[11px] text-violet-700">Cálculo sobre todas as entradas elegíveis da semana; não é um lançamento.</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Saldo operacional da semana</p>
+                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Fluxo líquido da semana</p>
                     <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacional)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos proteção de referência e saídas da semana ({fmt(data.movimentoSemana.saidas)}).</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas registradas ({fmt(data.movimentoSemana.saidas)}). A referência de proteção não é uma saída.</p>}
                   </div>
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido nesta semana</p>
@@ -361,7 +362,24 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     </p>
                   </div>
                 </div>
-                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">O saldo operacional é o fluxo líquido registrado nesta semana, não o saldo físico/PIX disponível agora. {summary.protecaoAtiva ? "A proteção de referência aplica a taxa semanal às entradas elegíveis; o aporte real pode ser menor para preservar contas previstas e pedidos." : "Com a proteção desativada, nenhum valor semanal é rateado para a reserva."} O rateio não movimenta dinheiro.</p>}
+                <div className="mt-2 rounded-xl border border-slate-200 bg-white p-3 text-xs text-slate-700" aria-label="Caixa atual e margem para pedidos">
+                  <h3 className="font-bold text-slate-800">Caixa atual e margem para pedidos</h3>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div>
+                      <p>Caixa + PIX registrado agora</p>
+                      <p data-testid="text-saldo-caixa-pix-atual" className="font-bold">{fmt(data.saldos.total)}</p>
+                    </div>
+                    <div>
+                      <p>Disponível após reserva protegida</p>
+                      <p data-testid="text-disponivel-apos-reserva" className="font-bold">{fmt(data.saldos.disponivel)}</p>
+                    </div>
+                  </div>
+                  <p data-testid="text-limite-conservador-pedido" className="mt-2">
+                    Margem conservadora após reserva, contas previstas e meta de compra: <strong>{fmt(data.saldos.podeGastar)}</strong>. A decisão sobre um pedido depende do valor do pedido; esse valor não é a movimentação líquida da semana.
+                  </p>
+                  {!financialNotesHidden && <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{data.saldos.base}</p>}
+                </div>
+                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">O fluxo líquido da semana é entradas menos saídas registradas; a referência de proteção é mostrada separadamente porque não é dinheiro retirado. {summary.protecaoAtiva ? "O aporte real pode ser menor para preservar contas previstas e pedidos." : "Com a proteção desativada, nenhum valor semanal é rateado para a reserva."} O rateio não movimenta dinheiro.</p>}
               </section>
 
               </div>

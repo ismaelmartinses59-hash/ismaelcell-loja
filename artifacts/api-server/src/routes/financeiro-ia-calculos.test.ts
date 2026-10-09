@@ -82,18 +82,22 @@ test("semanas fracas e fortes mudam a taxa, sem inventar comparação sem histó
   assert.equal(percentualReserva(150000, 100000), 60);
   assert.equal(percentualReserva(100000, null), 45);
 });
-test("rateia entradas e saídas elegíveis da semana sem teto no cálculo de referência", () => {
+test("a referência é separada do fluxo líquido, que desconta apenas as saídas", () => {
   assert.deepEqual(calcularRateioPeriodo(209500, 0, 45, true), {
     protecaoCentavos: 94275,
-    saldoOperacionalCentavos: 115225,
+    saldoOperacionalCentavos: 209500,
   });
   assert.deepEqual(calcularRateioPeriodo(209500, 10000, 45, true), {
     protecaoCentavos: 94275,
-    saldoOperacionalCentavos: 105225,
+    saldoOperacionalCentavos: 199500,
   });
   assert.deepEqual(calcularRateioPeriodo(500000, 0, 60, true), {
     protecaoCentavos: 300000,
-    saldoOperacionalCentavos: 200000,
+    saldoOperacionalCentavos: 500000,
+  });
+  assert.deepEqual(calcularRateioPeriodo(442400, 214514, 60, true), {
+    protecaoCentavos: 265440,
+    saldoOperacionalCentavos: 227886,
   });
 });
 test("rateio deixa toda a movimentação para operação quando a proteção está pausada", () => {
