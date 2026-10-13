@@ -19,6 +19,11 @@ const QUALIDADES = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"]
 const QUALIDADES_BATERIA = ["Skaiky", "Foxcomm", "Original China"];
 const QUALIDADE_OUTRA = "__qualidade_outra__";
 const QUALIDADES_PERSONALIZADAS_STORAGE = "ismael-cell-qualidades-personalizadas";
+
+type QualidadesPersonalizadas = {
+  geral: string[];
+  bateria: string[];
+};
 const SUGESTOES_QUALIDADE: Array<{ palavra: string; opcoes: string[] }> = [
   { palavra: "bateria", opcoes: QUALIDADES_BATERIA },
 ];
@@ -35,29 +40,50 @@ function chaveQualidade(qualidade: string): string {
   return normalizarNomeQualidade(qualidade).toLocaleLowerCase("pt-BR");
 }
 
-function lerQualidadesPersonalizadas(): string[] {
+function modeloEhBateria(modelo: string): boolean {
+  return modelo.normalize("NFKC").toLocaleLowerCase("pt-BR").includes("bateria");
+}
+
+function lerQualidadesPersonalizadas(): QualidadesPersonalizadas {
   try {
     const salvas = JSON.parse(localStorage.getItem(QUALIDADES_PERSONALIZADAS_STORAGE) ?? "[]");
-    return Array.isArray(salvas)
-      ? salvas
+    const normalizarLista = (lista: unknown): string[] => Array.isArray(lista)
+      ? lista
           .filter((qualidade): qualidade is string => typeof qualidade === "string")
           .map(normalizarNomeQualidade)
           .filter(Boolean)
       : [];
+    if (Array.isArray(salvas)) {
+      return { geral: normalizarLista(salvas), bateria: [] };
+    }
+    return {
+      geral: normalizarLista(salvas?.geral),
+      bateria: normalizarLista(salvas?.bateria),
+    };
   } catch {
-    return [];
+    return { geral: [], bateria: [] };
   }
 }
 
-function mesclarQualidadesPersonalizadas(atuais: string[], novas: string[]): string[] {
-  const resultado = [...atuais];
-  const conhecidas = new Set([...QUALIDADES, ...QUALIDADES_BATERIA, ...atuais].map(chaveQualidade));
-  for (const qualidade of novas) {
-    const nome = normalizarNomeQualidade(qualidade);
+function mesclarQualidadesPersonalizadas(
+  atuais: QualidadesPersonalizadas,
+  novas: Array<{ modelo: string; qualidade: string }>,
+): QualidadesPersonalizadas {
+  const resultado: QualidadesPersonalizadas = {
+    geral: [...atuais.geral],
+    bateria: [...atuais.bateria],
+  };
+  for (const item of novas) {
+    const categoria = modeloEhBateria(item.modelo) ? "bateria" : "geral";
+    const nome = normalizarNomeQualidade(item.qualidade);
     const chave = chaveQualidade(nome);
+    const conhecidas = new Set([
+      ...QUALIDADES,
+      ...QUALIDADES_BATERIA,
+      ...resultado[categoria],
+    ].map(chaveQualidade));
     if (!nome || conhecidas.has(chave)) continue;
-    resultado.push(nome);
-    conhecidas.add(chave);
+    resultado[categoria].push(nome);
   }
   return resultado;
 }
@@ -999,7 +1025,7 @@ interface ImportarNotaDialogProps {
   open: boolean;
   itensIniciais: ImportRow[];
   pecasExistentes: PecaExistenteImport[];
-  qualidadesPersonalizadas: string[];
+  qualidadesPersonalizadas: QualidadesPersonalizadas;
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
   onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
   onClose: () => void;
@@ -1192,11 +1218,14 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
           {rows.map((r, i) => {
             const lower = r.modelo.toLowerCase();
             const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
+            const modeloBateria = Boolean(match);
             const qualidadesAtivas = [...new Map(
               [
                 ...(match ? match.opcoes : QUALIDADES),
-                ...qualidadesPersonalizadas,
-                ...pecasExistentes.map((peca) => peca.qualidade.trim()),
+                ...qualidadesPersonalizadas[modeloBateria ? "bateria" : "geral"],
+                ...pecasExistentes
+                  .filter((peca) => modeloEhBateria(peca.modelo) === modeloBateria)
+                  .map((peca) => peca.qualidade.trim()),
                 ...(!r.qualidadeOutra && r.qualidade ? [r.qualidade.trim()] : []),
               ]
                 .map(normalizarNomeQualidade)
@@ -1786,7 +1815,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [importDestino, setImportDestino] = useState<Destino>("estoque");
   const [importFornecedor, setImportFornecedor] = useState("");
   const [importSaving, setImportSaving] = useState(false);
-  const [qualidadesPersonalizadas, setQualidadesPersonalizadas] = useState<string[]>(lerQualidadesPersonalizadas);
+  const [qualidadesPersonalizadas, setQualidadesPersonalizadas] = useState<QualidadesPersonalizadas>(lerQualidadesPersonalizadas);
 
   useEffect(() => {
     try {
@@ -1873,7 +1902,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
             }),
           });
           setQualidadesPersonalizadas((atuais) =>
-            mesclarQualidadesPersonalizadas(atuais, rows.map((r) => r.qualidade)),
+            mesclarQualidadesPersonalizadas(atuais, rows),
           );
           qc.invalidateQueries({ queryKey: ["encomendas"] });
           setImportOpen(false);
@@ -1898,7 +1927,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         }),
       });
       setQualidadesPersonalizadas((atuais) =>
-        mesclarQualidadesPersonalizadas(atuais, rows.map((r) => r.qualidade)),
+        mesclarQualidadesPersonalizadas(atuais, rows),
       );
       invalidatePecas();
       setImportOpen(false);
