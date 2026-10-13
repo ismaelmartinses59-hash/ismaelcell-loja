@@ -23,11 +23,26 @@ const SUGESTOES_QUALIDADE: Array<{ palavra: string; opcoes: string[] }> = [
   { palavra: "bateria", opcoes: QUALIDADES_BATERIA },
 ];
 
+function normalizarNomeQualidade(qualidade: string): string {
+  return qualidade
+    .normalize("NFKC")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .trim()
+    .replace(/\s+/g, " ");
+}
+
+function chaveQualidade(qualidade: string): string {
+  return normalizarNomeQualidade(qualidade).toLocaleLowerCase("pt-BR");
+}
+
 function lerQualidadesPersonalizadas(): string[] {
   try {
     const salvas = JSON.parse(localStorage.getItem(QUALIDADES_PERSONALIZADAS_STORAGE) ?? "[]");
     return Array.isArray(salvas)
-      ? salvas.filter((qualidade): qualidade is string => typeof qualidade === "string" && qualidade.trim().length > 0)
+      ? salvas
+          .filter((qualidade): qualidade is string => typeof qualidade === "string")
+          .map(normalizarNomeQualidade)
+          .filter(Boolean)
       : [];
   } catch {
     return [];
@@ -36,10 +51,10 @@ function lerQualidadesPersonalizadas(): string[] {
 
 function mesclarQualidadesPersonalizadas(atuais: string[], novas: string[]): string[] {
   const resultado = [...atuais];
-  const conhecidas = new Set([...QUALIDADES, ...QUALIDADES_BATERIA, ...atuais].map((q) => q.trim().toLocaleLowerCase()));
+  const conhecidas = new Set([...QUALIDADES, ...QUALIDADES_BATERIA, ...atuais].map(chaveQualidade));
   for (const qualidade of novas) {
-    const nome = qualidade.trim();
-    const chave = nome.toLocaleLowerCase();
+    const nome = normalizarNomeQualidade(qualidade);
+    const chave = chaveQualidade(nome);
     if (!nome || conhecidas.has(chave)) continue;
     resultado.push(nome);
     conhecidas.add(chave);
@@ -1184,9 +1199,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                 ...pecasExistentes.map((peca) => peca.qualidade.trim()),
                 ...(!r.qualidadeOutra && r.qualidade ? [r.qualidade.trim()] : []),
               ]
+                .map(normalizarNomeQualidade)
                 .filter(Boolean)
-                .map((q) => [q.toLocaleLowerCase(), q] as const),
+                .map((q) => [chaveQualidade(q), q] as const),
             ).values()];
+            const qualidadeSelecionada = qualidadesAtivas.find((q) => chaveQualidade(q) === chaveQualidade(r.qualidade)) ?? r.qualidade;
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
             const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
@@ -1288,14 +1305,20 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                 <div>
                   <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qualidade</label>
                   <Select
-                    value={r.qualidadeOutra ? QUALIDADE_OUTRA : r.qualidade}
+                    value={r.qualidadeOutra ? QUALIDADE_OUTRA : qualidadeSelecionada}
                     onValueChange={(v) => v === QUALIDADE_OUTRA
                       ? updateComPreco(i, { qualidade: "", qualidadeOutra: true })
                       : updateComPreco(i, { qualidade: v, qualidadeOutra: false })}
                   >
                     <SelectTrigger className="h-9"><SelectValue placeholder="Escolha a qualidade" /></SelectTrigger>
                     <SelectContent className="max-h-48 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
-                      {qualidadesAtivas.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                      {qualidadesAtivas.map((q) => (
+                        <SelectItem key={chaveQualidade(q)} value={q}>
+                          {QUALIDADES.some((padrao) => chaveQualidade(padrao) === chaveQualidade(q))
+                            ? q.toLocaleUpperCase("pt-BR")
+                            : q}
+                        </SelectItem>
+                      ))}
                       <SelectItem value={QUALIDADE_OUTRA}>OUTRA</SelectItem>
                     </SelectContent>
                   </Select>
