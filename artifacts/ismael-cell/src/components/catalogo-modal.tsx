@@ -1200,7 +1200,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                         value={r.buscaCorrecao ?? ""}
                         onChange={(e) => update(i, { buscaCorrecao: e.target.value })}
                         onFocus={() => setFocusBuscaIdx(i)}
-                        onBlur={() => setTimeout(() => setFocusBuscaIdx((c) => (c === i ? null : c)), 150)}
+                        onBlur={() => setTimeout(() => setFocusBuscaIdx((c) => (c === i ? null : c)), 300)}
                         autoComplete="off"
                         placeholder="Digite parte do modelo, ex.: Note 60"
                         className="h-8 border-violet-200 focus-visible:ring-violet-400"
@@ -1217,7 +1217,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                             <button
                               key={`${peca.id}-${peca.gemeaId}`}
                               type="button"
-                              onPointerDown={(e) => { e.preventDefault(); selecionarCorrecaoManual(i, peca); }}
+                              onClick={() => selecionarCorrecaoManual(i, peca)}
                               className="block w-full text-left px-3 py-2.5 text-sm hover:bg-violet-50 active:bg-violet-100 border-b last:border-b-0"
                             >
                               <span className="font-medium">{peca.modelo}</span>
