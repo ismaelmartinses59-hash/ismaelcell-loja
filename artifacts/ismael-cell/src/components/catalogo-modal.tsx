@@ -17,9 +17,35 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
 const QUALIDADES = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
 const QUALIDADES_BATERIA = ["Skaiky", "Foxcomm", "Original China"];
+const QUALIDADE_OUTRA = "__qualidade_outra__";
+const QUALIDADES_PERSONALIZADAS_STORAGE = "ismael-cell-qualidades-personalizadas";
 const SUGESTOES_QUALIDADE: Array<{ palavra: string; opcoes: string[] }> = [
   { palavra: "bateria", opcoes: QUALIDADES_BATERIA },
 ];
+
+function lerQualidadesPersonalizadas(): string[] {
+  try {
+    const salvas = JSON.parse(localStorage.getItem(QUALIDADES_PERSONALIZADAS_STORAGE) ?? "[]");
+    return Array.isArray(salvas)
+      ? salvas.filter((qualidade): qualidade is string => typeof qualidade === "string" && qualidade.trim().length > 0)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function mesclarQualidadesPersonalizadas(atuais: string[], novas: string[]): string[] {
+  const resultado = [...atuais];
+  const conhecidas = new Set([...QUALIDADES, ...QUALIDADES_BATERIA, ...atuais].map((q) => q.trim().toLocaleLowerCase()));
+  for (const qualidade of novas) {
+    const nome = qualidade.trim();
+    const chave = nome.toLocaleLowerCase();
+    if (!nome || conhecidas.has(chave)) continue;
+    resultado.push(nome);
+    conhecidas.add(chave);
+  }
+  return resultado;
+}
 
 interface Peca {
   id: number;
@@ -810,6 +836,7 @@ function PreviewLojistaDialog({ open, data, onConfirm, onCancel, onVoltar, loadi
 interface ImportRow {
   modelo: string;
   qualidade: string;
+  qualidadeOutra?: boolean;
   quantidade: string;
   valorCusto: string;
   valorCliente: string;
@@ -957,6 +984,7 @@ interface ImportarNotaDialogProps {
   open: boolean;
   itensIniciais: ImportRow[];
   pecasExistentes: PecaExistenteImport[];
+  qualidadesPersonalizadas: string[];
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
   onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
   onClose: () => void;
@@ -968,7 +996,7 @@ interface ImportarNotaDialogProps {
   loading: boolean;
 }
 
-function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExistentes, onConfirm, onClose, onCancel, onDraftChange, formaInvestInicial, destinoInicial, fornecedorInicial, loading }: ImportarNotaDialogProps) {
+function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPersonalizadas, precosExistentes, onConfirm, onClose, onCancel, onDraftChange, formaInvestInicial, destinoInicial, fornecedorInicial, loading }: ImportarNotaDialogProps) {
   const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
   const [formaInvest, setFormaInvest] = useState<FormaInvest>(formaInvestInicial);
   // "Esse pedido chegou?" — estoque (já chegou) ou encomenda (a caminho)
@@ -1116,7 +1144,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
   const remove = (i: number) => setRows((cur) => cur.filter((_, idx) => idx !== i));
 
   const rowValida = (r: ImportRow) =>
-    r.modelo.trim() && r.qualidade && r.valorCliente.trim() && r.valorLojista.trim() && (parseInt(r.quantidade) || 0) >= 1;
+    r.modelo.trim() && r.qualidade.trim() && r.valorCliente.trim() && r.valorLojista.trim() && (parseInt(r.quantidade) || 0) >= 1;
   const todasValidas = rows.length > 0 && rows.every(rowValida);
   const faltando = rows.filter((r) => !rowValida(r)).length;
 
@@ -1149,7 +1177,16 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
           {rows.map((r, i) => {
             const lower = r.modelo.toLowerCase();
             const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
-            const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
+            const qualidadesAtivas = [...new Map(
+              [
+                ...(match ? match.opcoes : QUALIDADES),
+                ...qualidadesPersonalizadas,
+                ...pecasExistentes.map((peca) => peca.qualidade.trim()),
+                ...(!r.qualidadeOutra && r.qualidade ? [r.qualidade.trim()] : []),
+              ]
+                .filter(Boolean)
+                .map((q) => [q.toLocaleLowerCase(), q] as const),
+            ).values()];
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
             const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
@@ -1250,12 +1287,28 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                 </div>
                 <div>
                   <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qualidade</label>
-                  <Select value={r.qualidade} onValueChange={(v) => updateComPreco(i, { qualidade: v })}>
+                  <Select
+                    value={r.qualidadeOutra ? QUALIDADE_OUTRA : r.qualidade}
+                    onValueChange={(v) => v === QUALIDADE_OUTRA
+                      ? updateComPreco(i, { qualidade: "", qualidadeOutra: true })
+                      : updateComPreco(i, { qualidade: v, qualidadeOutra: false })}
+                  >
                     <SelectTrigger className="h-9"><SelectValue placeholder="Escolha a qualidade" /></SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-48 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
                       {qualidadesAtivas.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+                      <SelectItem value={QUALIDADE_OUTRA}>OUTRA</SelectItem>
                     </SelectContent>
                   </Select>
+                  {r.qualidadeOutra && (
+                    <Input
+                      autoFocus
+                      value={r.qualidade}
+                      onChange={(e) => updateComPreco(i, { qualidade: e.target.value, qualidadeOutra: true })}
+                      placeholder="Digite o nome da qualidade"
+                      aria-label="Digite o nome da qualidade"
+                      className="mt-2 h-9"
+                    />
+                  )}
                 </div>
                 {candidatosOutraQualidade.length > 0 && (
                   <div className="rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-2 text-[11px] text-amber-900 flex items-start gap-1.5">
@@ -1710,6 +1763,15 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [importDestino, setImportDestino] = useState<Destino>("estoque");
   const [importFornecedor, setImportFornecedor] = useState("");
   const [importSaving, setImportSaving] = useState(false);
+  const [qualidadesPersonalizadas, setQualidadesPersonalizadas] = useState<string[]>(lerQualidadesPersonalizadas);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(QUALIDADES_PERSONALIZADAS_STORAGE, JSON.stringify(qualidadesPersonalizadas));
+    } catch {
+      // O cadastro continua funcionando mesmo quando o navegador bloqueia o armazenamento local.
+    }
+  }, [qualidadesPersonalizadas]);
 
   const limparRascunhoImportacao = () => {
     setImportRows([]);
@@ -1779,7 +1841,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               formaInvestimento,
               itens: rows.map((r) => ({
                 modelo: r.modelo.trim(),
-                qualidade: r.qualidade,
+                qualidade: r.qualidade.trim(),
                 quantidade: parseInt(r.quantidade) || 0,
                 valorCusto: r.valorCusto.trim(),
                 valorCliente: r.valorCliente.trim(),
@@ -1787,6 +1849,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
               })),
             }),
           });
+          setQualidadesPersonalizadas((atuais) =>
+            mesclarQualidadesPersonalizadas(atuais, rows.map((r) => r.qualidade)),
+          );
           qc.invalidateQueries({ queryKey: ["encomendas"] });
           setImportOpen(false);
           limparRascunhoImportacao();
@@ -1799,7 +1864,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           formaInvestimento,
           itens: rows.map((r) => ({
             modelo: r.modelo.trim(),
-            qualidade: r.qualidade,
+            qualidade: r.qualidade.trim(),
             quantidade: parseInt(r.quantidade) || 0,
             valorCusto: r.valorCusto.trim(),
             valorCliente: r.valorCliente.trim(),
@@ -1809,6 +1874,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
           })),
         }),
       });
+      setQualidadesPersonalizadas((atuais) =>
+        mesclarQualidadesPersonalizadas(atuais, rows.map((r) => r.qualidade)),
+      );
       invalidatePecas();
       setImportOpen(false);
       limparRascunhoImportacao();
@@ -2481,6 +2549,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   );
                   return gemea ? [{ id: p.id, gemeaId: gemea.id, modelo: p.modelo, qualidade: p.qualidade }] : [];
                 })}
+                qualidadesPersonalizadas={qualidadesPersonalizadas}
                 precosExistentes={precosExistentes}
                 onConfirm={confirmImport}
                 onClose={() => { if (!importSaving) setImportOpen(false); }}
