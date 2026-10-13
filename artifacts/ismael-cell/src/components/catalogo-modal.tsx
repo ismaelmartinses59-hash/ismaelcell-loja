@@ -1006,7 +1006,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
       const chave = `${peca.modelo.trim().toLowerCase()}|${peca.qualidade.trim().toLowerCase()}`;
       if (!encontrados.has(chave)) encontrados.set(chave, peca);
     }
-    return [...encontrados.values()].slice(0, 6);
+    return [...encontrados.values()];
   };
   const candidatosOutraQualidadePara = (row: ImportRow): PecaExistenteImport[] => {
     if (!row.modelo.trim() || !row.qualidade.trim()) return [];
@@ -1209,7 +1209,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, precosExiste
                         Se você sabe que é a mesma peça, selecione o nome antigo aqui. A decisão de corrigir é sua, mesmo com nomes diferentes.
                       </p>
                       {focusBuscaIdx === i && candidatosBuscaPara(r).length > 0 && (
-                        <div className="relative z-50 mt-1 bg-white border border-violet-200 rounded-lg shadow-lg overflow-hidden max-h-44 overflow-y-auto">
+                        <div className="relative z-50 mt-1 bg-white border border-violet-200 rounded-lg shadow-lg overflow-x-hidden max-h-56 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
                           <div className="px-3 py-1.5 text-[10px] uppercase text-violet-700 bg-violet-50">
                             Toque para associar à peça cadastrada
                           </div>
