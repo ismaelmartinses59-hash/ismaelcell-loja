@@ -292,32 +292,24 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
     const nomeItem =
       item.modelo
       + (item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : "")
-      + (item.devolvidaAt ? " — DEVOLVIDA" : "");
+      + (item.devolvidaAt ? " — Devolvida" : "");
     ctx.font = `800 16px ${FONT}`;
-    txt(ctx, fitText(ctx, nomeItem, 356), CX + 66, top + 10, "800 16px", item.devolvidaAt ? "#b45309" : "#0c2256", "left", "top");
+    txt(ctx, fitText(ctx, nomeItem, 356), CX + 66, top + 10, "800 16px", "#0c2256", "left", "top");
     const formatItemDate = (date: string) => new Date(date).toLocaleString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: "America/Sao_Paulo",
     });
     const saleDate = formatItemDate(item.createdAt);
     const dateDescription = item.devolvidaAt
-      ? `Venda: ${saleDate} · devolvida: ${formatItemDate(item.devolvidaAt)}`
+      ? `Venda: ${saleDate} · Devolvida em ${formatItemDate(item.devolvidaAt)}`
       : saleDate;
-    txt(ctx, fitText(ctx, dateDescription, 356), CX + 66, top + 38, "400 11px", item.devolvidaAt ? "#b45309" : "#64748b", "left", "top");
-    txt(ctx, item.devolvidaAt ? "Valor original" : "Valor", RIGHT - 16, top + 15, "600 11px", "#64748b", "right", "top");
-    txt(ctx, formatMoney(item.valor), RIGHT - 16, top + 29, "800 18px", item.devolvidaAt ? "#94a3b8" : "#16a34a", "right", "top");
-    if (item.devolvidaAt) {
-      const amountWidth = ctx.measureText(formatMoney(item.valor)).width;
-      ctx.strokeStyle = "#94a3b8";
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(RIGHT - 16 - amountWidth, top + 39);
-      ctx.lineTo(RIGHT - 16, top + 39);
-      ctx.stroke();
-    }
+    txt(ctx, fitText(ctx, dateDescription, 356), CX + 66, top + 38, "400 11px", "#64748b", "left", "top");
+    txt(ctx, "Valor", RIGHT - 16, top + 15, "600 11px", "#64748b", "right", "top");
+    txt(ctx, formatMoney(item.valor), RIGHT - 16, top + 29, "800 18px", "#16a34a", "right", "top");
     if (i < itens.length - 1) {
       ctx.strokeStyle = "#e2e8f0";
       ctx.lineWidth = 1;
