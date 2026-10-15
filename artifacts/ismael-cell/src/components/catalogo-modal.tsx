@@ -1629,6 +1629,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [expandedContaId, setExpandedContaId] = useState<number | null>(null);
   const [deletingContaId, setDeletingContaId] = useState<number | null>(null);
   const [deletingItemId, setDeletingItemId] = useState<number | null>(null);
+  const [returningItemId, setReturningItemId] = useState<number | null>(null);
   const [deletingPagamentoId, setDeletingPagamentoId] = useState<number | null>(null);
   const [periodo, setPeriodo] = useState<"dia" | "semana" | "mes">("dia");
   // Adicionar serviço/item a uma conta existente
@@ -2235,7 +2236,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   // ── Contas a Receber ──────────────────────────────────────────────────────────
   interface ContaResumo {
     conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
-    itens: Array<{ id: number; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; dataRecebimento: string | null; createdAt: string }>;
+    itens: Array<{ id: number; vendaId?: number | null; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; dataRecebimento: string | null; createdAt: string }>;
     pagamentos: Array<{ id: number; valor: string; formaPagamento: string | null; createdAt: string }>;
     totalItens: number;
     totalPago: number;
@@ -2262,6 +2263,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["financeiro-ia"] }); setDeletingItemId(null); toast({ title: "Item removido" }); },
     onError: () => toast({ title: "Erro ao remover", variant: "destructive" }),
   });
+  const devolverItemMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/contas-receber/itens/${id}/devolver`, { method: "POST" }),
+    onSuccess: () => {
+      invalidateContas();
+      invalidatePecas();
+      invalidateVendas();
+      invalidateCaixa();
+      qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
+      setReturningItemId(null);
+      toast({ title: "Peça devolvida ao estoque", description: "A peça voltou ao estoque e foi removida da conta." });
+    },
+    onError: (error: Error) => toast({ title: "Não foi possível devolver a peça", description: error.message, variant: "destructive" }),
+  });
+
   const apagarPagamentoMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/pagamentos/${id}`, { method: "DELETE" }),
     onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); qc.invalidateQueries({ queryKey: ["financeiro-ia"] }); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
@@ -3206,6 +3221,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                     <button
                       type="button"
                       onClick={() => setExpandedContaId(expanded ? null : c.conta.id)}
+                      aria-expanded={expanded}
+                      aria-controls={`conta-itens-${c.conta.id}`}
                       className="w-full px-3 py-2.5 flex items-center gap-3 text-left"
                     >
                       <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${c.conta.tipo === "lojista" ? "bg-blue-100 text-blue-600" : "bg-purple-100 text-purple-600"}`}>
@@ -3231,9 +3248,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                         <div className={`font-extrabold text-base ${aberta ? "text-orange-700" : "text-green-700"}`}>{fmtBRL(c.saldo)}</div>
                         {c.totalPago > 0 && <div className="text-[10px] text-muted-foreground">Pago: {fmtBRL(c.totalPago)}</div>}
                       </div>
+                      <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
                     </button>
                     {expanded && (
-                      <div className="border-t bg-gray-50 px-3 py-2.5 space-y-2.5">
+                      <div id={`conta-itens-${c.conta.id}`} className="border-t bg-gray-50 px-3 py-2.5 space-y-2.5">
                         {/* Botões de ação */}
                         {aberta && !isPagando && !isDeleting && addItemContaId !== c.conta.id && (
                           <div className="flex gap-2">
@@ -3511,8 +3529,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                   ? new Date(item.dataRecebimento).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "America/Sao_Paulo" })
                                   : null;
                                 const isDel = deletingItemId === item.id;
+                                const isReturning = returningItemId === item.id;
+                                const canReturn = Boolean(item.vendaId) && c.conta.closedAt === null;
                                 return (
-                                  <div key={item.id} className={`flex items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : "bg-white"}`}>
+                                  <div key={item.id} className={`flex flex-wrap items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : isReturning ? "bg-amber-50" : "bg-white"}`}>
                                     <div className="flex-1 min-w-0">
                                       <div className="font-semibold truncate">{item.modelo}</div>
                                       <div className="text-[10px] text-muted-foreground">
@@ -3521,15 +3541,34 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                       </div>
                                     </div>
                                     <div className="font-bold text-orange-700">{formatMoney(item.valor)}</div>
-                                    {isDel ? (
+                                    {isReturning ? (
+                                      <div className="w-full flex items-center justify-between gap-2 border-t border-amber-200 pt-1.5">
+                                        <span className="text-[10px] text-amber-800">Devolver ao estoque e retirar da conta?</span>
+                                        <div className="flex gap-1 shrink-0">
+                                          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setReturningItemId(null)}>Cancelar</Button>
+                                          <Button size="sm" className="h-7 px-2 text-xs bg-amber-600 hover:bg-amber-700 text-white" disabled={devolverItemMutation.isPending} onClick={() => devolverItemMutation.mutate(item.id)}>
+                                            {devolverItemMutation.isPending ? "..." : "Confirmar devolução"}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    ) : isDel ? (
                                       <div className="flex gap-0.5">
                                         <Button size="icon" variant="ghost" className="h-6 w-6 text-xs" onClick={() => setDeletingItemId(null)}><X className="w-3 h-3" /></Button>
                                         <Button size="icon" variant="destructive" className="h-6 w-6" disabled={apagarItemMutation.isPending} onClick={() => apagarItemMutation.mutate(item.id)}><Check className="w-3 h-3" /></Button>
                                       </div>
                                     ) : (
-                                      <button type="button" onClick={() => setDeletingItemId(item.id)} className="text-red-400 hover:text-red-600 p-0.5">
-                                        <Trash2 className="w-3 h-3" />
-                                      </button>
+                                      <div className="flex items-center gap-1">
+                                        {canReturn && (
+                                          <Button size="sm" variant="outline" className="h-7 px-2 text-[10px] text-amber-700 border-amber-300 hover:bg-amber-50" onClick={() => setReturningItemId(item.id)}>
+                                            <Undo2 className="w-3 h-3 mr-1" /> Devolver
+                                          </Button>
+                                        )}
+                                        {!item.vendaId && (
+                                          <button type="button" onClick={() => setDeletingItemId(item.id)} className="text-red-400 hover:text-red-600 p-0.5" aria-label="Remover item da conta">
+                                            <Trash2 className="w-3 h-3" />
+                                          </button>
+                                        )}
+                                      </div>
                                     )}
                                   </div>
                                 );
