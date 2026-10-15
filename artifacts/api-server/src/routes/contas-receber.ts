@@ -446,6 +446,81 @@ router.post("/contas-receber/novo-servico", async (req, res): Promise<void> => {
   res.json(await getContaResumo(contaId));
 });
 
+// Devolve uma peça vendida em conta aberta: remove o item da dívida e restaura o estoque.
+router.post("/contas-receber/itens/:id/devolver", async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "ID inválido" });
+    return;
+  }
+  const resultado = await db.transaction(async (tx) => {
+    const [item] = await tx
+      .select()
+      .from(contasReceberItensTable)
+      .where(eq(contasReceberItensTable.id, id))
+      .for("update");
+    if (!item) return { status: 404, error: "Item não encontrado" };
+    if (!item.vendaId) return { status: 409, error: "Este item não está vinculado a uma peça do estoque" };
+
+    const [conta] = await tx
+      .select()
+      .from(contasReceberTable)
+      .where(eq(contasReceberTable.id, item.contaId))
+      .for("update");
+    if (!conta) return { status: 404, error: "Conta não encontrada" };
+    if (conta.closedAt != null) {
+      return { status: 409, error: "A conta já foi quitada. Faça o estorno do pagamento antes de devolver a peça." };
+    }
+    if (item.formaPagamento && item.formaPagamento !== "fiado") {
+      return { status: 409, error: "Esta peça teve pagamento registrado. Faça o estorno do pagamento antes da devolução." };
+    }
+    const [movimentoCaixa] = await tx
+      .select({ id: caixaTable.id })
+      .from(caixaTable)
+      .where(eq(caixaTable.vendaId, item.vendaId));
+    const [pagamentoDaVenda] = await tx
+      .select({ id: contasReceberPagamentosTable.id })
+      .from(contasReceberPagamentosTable)
+      .where(eq(contasReceberPagamentosTable.vendaId, item.vendaId));
+    if (movimentoCaixa || pagamentoDaVenda) {
+      return { status: 409, error: "Esta peça tem recebimento ligado. Faça o estorno no Caixa antes da devolução." };
+    }
+
+    const itensConta = await tx
+      .select()
+      .from(contasReceberItensTable)
+      .where(eq(contasReceberItensTable.contaId, item.contaId));
+    const pagamentosConta = await tx
+      .select()
+      .from(contasReceberPagamentosTable)
+      .where(eq(contasReceberPagamentosTable.contaId, item.contaId));
+    const totalRestante = itensConta
+      .filter((outroItem) => outroItem.id !== item.id)
+      .reduce((total, outroItem) => total + parseValor(outroItem.valor), 0);
+    const totalPagoRestante = pagamentosConta
+      .filter((pagamento) => pagamento.vendaId !== item.vendaId)
+      .reduce((total, pagamento) => total + parseValor(pagamento.valor), 0);
+    if (totalPagoRestante > totalRestante + 0.01) {
+      return { status: 409, error: "Os pagamentos registrados excedem o valor restante da conta. Ajuste o pagamento antes da devolução." };
+    }
+
+    await restaurarEstoqueDaVenda(item.vendaId, tx);
+    await tx.delete(contasReceberItensTable).where(eq(contasReceberItensTable.id, id));
+    if (totalRestante - totalPagoRestante <= 0) {
+      await tx
+        .update(contasReceberTable)
+        .set({ closedAt: new Date() })
+        .where(eq(contasReceberTable.id, item.contaId));
+    }
+    return { status: 200, error: null };
+  });
+  if (resultado.error) {
+    res.status(resultado.status).json({ error: resultado.error });
+    return;
+  }
+  res.status(204).send();
+});
+
 // Apagar item da conta
 router.delete("/contas-receber/itens/:id", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
