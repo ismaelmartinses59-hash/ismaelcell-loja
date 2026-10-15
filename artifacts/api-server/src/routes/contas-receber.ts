@@ -66,7 +66,9 @@ async function getContaResumo(contaId: number) {
     .from(contasReceberPagamentosTable)
     .where(eq(contasReceberPagamentosTable.contaId, contaId))
     .orderBy(sql`${contasReceberPagamentosTable.createdAt} desc`);
-  const totalItens = itens.reduce((a, i) => a + parseValor(i.valor), 0);
+  const totalItens = itens
+    .filter((item) => item.devolvidaAt == null)
+    .reduce((a, i) => a + parseValor(i.valor), 0);
   const totalPago = pagamentos.reduce((a, p) => a + parseValor(p.valor), 0);
   const saldo = totalItens - totalPago;
   return { conta, itens, pagamentos, totalItens, totalPago, saldo };
@@ -245,7 +247,9 @@ router.post("/contas-receber/:id/pagamento", async (req, res): Promise<void> => 
       .select()
       .from(contasReceberPagamentosTable)
       .where(eq(contasReceberPagamentosTable.contaId, id));
-    const totalItens = itens.reduce((acc, item) => acc + parseValor(item.valor), 0);
+    const totalItens = itens
+      .filter((item) => item.devolvidaAt == null)
+      .reduce((acc, item) => acc + parseValor(item.valor), 0);
     const totalPago = pagamentos.reduce((acc, pagamento) => acc + parseValor(pagamento.valor), 0);
     if (totalItens - totalPago <= 0) {
       await tx
@@ -446,7 +450,7 @@ router.post("/contas-receber/novo-servico", async (req, res): Promise<void> => {
   res.json(await getContaResumo(contaId));
 });
 
-// Devolve uma peça vendida em conta aberta: remove o item da dívida e restaura o estoque.
+// Devolve uma peça vendida em conta aberta: marca o item no histórico, abate a dívida e restaura o estoque.
 router.post("/contas-receber/itens/:id/devolver", async (req, res): Promise<void> => {
   const id = parseInt(req.params.id, 10);
   if (isNaN(id)) {
@@ -461,6 +465,7 @@ router.post("/contas-receber/itens/:id/devolver", async (req, res): Promise<void
       .for("update");
     if (!item) return { status: 404, error: "Item não encontrado" };
     if (!item.vendaId) return { status: 409, error: "Este item não está vinculado a uma peça do estoque" };
+    if (item.devolvidaAt != null) return { status: 409, error: "Esta peça já foi devolvida" };
 
     const [conta] = await tx
       .select()
@@ -495,7 +500,7 @@ router.post("/contas-receber/itens/:id/devolver", async (req, res): Promise<void
       .from(contasReceberPagamentosTable)
       .where(eq(contasReceberPagamentosTable.contaId, item.contaId));
     const totalRestante = itensConta
-      .filter((outroItem) => outroItem.id !== item.id)
+      .filter((outroItem) => outroItem.id !== item.id && outroItem.devolvidaAt == null)
       .reduce((total, outroItem) => total + parseValor(outroItem.valor), 0);
     const totalPagoRestante = pagamentosConta
       .filter((pagamento) => pagamento.vendaId !== item.vendaId)
@@ -505,7 +510,10 @@ router.post("/contas-receber/itens/:id/devolver", async (req, res): Promise<void
     }
 
     await restaurarEstoqueDaVenda(item.vendaId, tx);
-    await tx.delete(contasReceberItensTable).where(eq(contasReceberItensTable.id, id));
+    await tx
+      .update(contasReceberItensTable)
+      .set({ devolvidaAt: new Date() })
+      .where(eq(contasReceberItensTable.id, id));
     if (totalRestante - totalPagoRestante <= 0) {
       await tx
         .update(contasReceberTable)
@@ -535,6 +543,7 @@ router.delete("/contas-receber/itens/:id", async (req, res): Promise<void> => {
       .where(eq(contasReceberItensTable.id, id))
       .for("update");
     if (!item) return false;
+    if (item.devolvidaAt != null) return false;
     const [conta] = await tx
       .select()
       .from(contasReceberTable)
@@ -604,7 +613,7 @@ router.delete("/contas-receber/:id", async (req, res): Promise<void> => {
       .where(eq(contasReceberItensTable.contaId, id));
     if (conta?.closedAt == null) {
       for (const item of itens) {
-        if (item.vendaId) await restaurarEstoqueDaVenda(item.vendaId, tx);
+        if (item.vendaId && item.devolvidaAt == null) await restaurarEstoqueDaVenda(item.vendaId, tx);
       }
     }
     await tx.delete(contasReceberTable).where(eq(contasReceberTable.id, id));

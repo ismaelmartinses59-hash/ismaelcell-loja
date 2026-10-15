@@ -8,6 +8,7 @@ export interface ExtratoItem {
   qualidade?: string | null;
   valor: string;
   createdAt: string;
+  devolvidaAt?: string | null;
 }
 
 export interface ExtratoPagamento {
@@ -168,6 +169,7 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
   const nItens = Math.max(itens.length, 1);
+  const ITEM_ROW = 72;
   const nPag = pagamentos.length;
   const hasPag = nPag > 0;
   const totalItens = data.totalItens ?? itens.reduce((s, it) => s + (parseFloat(it.valor.replace(",", ".")) || 0), 0);
@@ -183,7 +185,7 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
   const infoTop = titleTop + 34 + 20; // 190
   const itemsBarTop = infoTop + 64 + 20; // 274
   const itemsTop = itemsBarTop + 42 + 12; // 328
-  const itemsBottom = itemsTop + nItens * 66;
+  const itemsBottom = itemsTop + nItens * ITEM_ROW;
 
   const pagBarTop = itemsBottom + 16;
   const pagTop = pagBarTop + 42 + 12;
@@ -276,38 +278,53 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
   txt(ctx, "PRODUTOS E SERVIÇOS", CX + 42, itemsBarTop + 21, "700 16px", "#ffffff", "left", "middle");
 
   // Lista de itens
-  rrPath(ctx, CX, itemsTop, CW, nItens * 66, 10);
+  rrPath(ctx, CX, itemsTop, CW, nItens * ITEM_ROW, 10);
   ctx.strokeStyle = "#e2e8f0";
   ctx.lineWidth = 1;
   ctx.stroke();
   itens.forEach((item, i) => {
-    const top = itemsTop + i * 66;
+    const top = itemsTop + i * ITEM_ROW;
     ctx.fillStyle = "#0c2256";
     ctx.beginPath();
     ctx.arc(CX + 14 + 20, top + 13 + 20, 20, 0, 2 * Math.PI);
     ctx.fill();
     strokeIcon(ctx, CX + 14 + 20, top + 13 + 20, 10, iconClipboard);
     const nomeItem =
-      item.modelo + (item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : "");
+      item.modelo
+      + (item.qualidade && item.qualidade !== "Serviço" ? ` (${item.qualidade})` : "")
+      + (item.devolvidaAt ? " — DEVOLVIDA" : "");
     ctx.font = `800 16px ${FONT}`;
-    txt(ctx, fitText(ctx, nomeItem, 356), CX + 66, top + 13, "800 16px", "#0c2256", "left", "top");
-    const d = new Date(item.createdAt).toLocaleString("pt-BR", {
+    txt(ctx, fitText(ctx, nomeItem, 356), CX + 66, top + 10, "800 16px", item.devolvidaAt ? "#b45309" : "#0c2256", "left", "top");
+    const formatItemDate = (date: string) => new Date(date).toLocaleString("pt-BR", {
       day: "2-digit",
       month: "2-digit",
       year: "numeric",
       hour: "2-digit",
       minute: "2-digit",
     });
-    txt(ctx, d, CX + 66, top + 36, "400 12px", "#64748b", "left", "top");
-    txt(ctx, "Valor", RIGHT - 16, top + 15, "600 11px", "#64748b", "right", "top");
-    txt(ctx, formatMoney(item.valor), RIGHT - 16, top + 29, "800 18px", "#16a34a", "right", "top");
+    const saleDate = formatItemDate(item.createdAt);
+    const dateDescription = item.devolvidaAt
+      ? `Venda: ${saleDate} · devolvida: ${formatItemDate(item.devolvidaAt)}`
+      : saleDate;
+    txt(ctx, fitText(ctx, dateDescription, 356), CX + 66, top + 38, "400 11px", item.devolvidaAt ? "#b45309" : "#64748b", "left", "top");
+    txt(ctx, item.devolvidaAt ? "Valor original" : "Valor", RIGHT - 16, top + 15, "600 11px", "#64748b", "right", "top");
+    txt(ctx, formatMoney(item.valor), RIGHT - 16, top + 29, "800 18px", item.devolvidaAt ? "#94a3b8" : "#16a34a", "right", "top");
+    if (item.devolvidaAt) {
+      const amountWidth = ctx.measureText(formatMoney(item.valor)).width;
+      ctx.strokeStyle = "#94a3b8";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(RIGHT - 16 - amountWidth, top + 39);
+      ctx.lineTo(RIGHT - 16, top + 39);
+      ctx.stroke();
+    }
     if (i < itens.length - 1) {
       ctx.strokeStyle = "#e2e8f0";
       ctx.lineWidth = 1;
       ctx.setLineDash([4, 3]);
       ctx.beginPath();
-      ctx.moveTo(CX, top + 66);
-      ctx.lineTo(RIGHT, top + 66);
+      ctx.moveTo(CX, top + ITEM_ROW);
+      ctx.lineTo(RIGHT, top + ITEM_ROW);
       ctx.stroke();
       ctx.setLineDash([]);
     }
@@ -375,7 +392,7 @@ export async function generateExtratoBlob(data: ExtratoData): Promise<Blob> {
     txt(ctx, fmtBRL(saldo), 128, totalTop + 30, "800 28px", "#16a34a", "left", "top");
     txt(
       ctx,
-      `Total dos itens: ${fmtBRL(totalItens)}   •   Pago (AV): ${fmtBRL(totalPago)}`,
+      `Total dos itens ativos: ${fmtBRL(totalItens)}   •   Pago (AV): ${fmtBRL(totalPago)}`,
       128,
       totalTop + 70,
       "600 12px",

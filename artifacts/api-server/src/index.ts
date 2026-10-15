@@ -169,6 +169,9 @@ async function ensureSchema(): Promise<void> {
   await runStatement("contas_receber_itens.data_recebimento", db.execute(sql`
     ALTER TABLE contas_receber_itens ADD COLUMN IF NOT EXISTS data_recebimento timestamptz
   `));
+  await runStatement("contas_receber_itens.devolvida_at", db.execute(sql`
+    ALTER TABLE contas_receber_itens ADD COLUMN IF NOT EXISTS devolvida_at timestamptz
+  `));
   await runStatement("contas_receber_pagamentos", db.execute(sql`
     CREATE TABLE IF NOT EXISTS contas_receber_pagamentos (
       id serial PRIMARY KEY,

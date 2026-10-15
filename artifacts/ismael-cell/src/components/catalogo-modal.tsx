@@ -2236,7 +2236,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   // ── Contas a Receber ──────────────────────────────────────────────────────────
   interface ContaResumo {
     conta: { id: number; nome: string; tipo: string; createdAt: string; closedAt: string | null };
-    itens: Array<{ id: number; vendaId?: number | null; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; dataRecebimento: string | null; createdAt: string }>;
+    itens: Array<{ id: number; vendaId?: number | null; modelo: string; qualidade: string; valor: string; formaPagamento: string | null; dataRecebimento: string | null; devolvidaAt: string | null; createdAt: string }>;
     pagamentos: Array<{ id: number; valor: string; formaPagamento: string | null; createdAt: string }>;
     totalItens: number;
     totalPago: number;
@@ -2272,7 +2272,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       invalidateCaixa();
       qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
       setReturningItemId(null);
-      toast({ title: "Peça devolvida ao estoque", description: "A peça voltou ao estoque e foi removida da conta." });
+      toast({ title: "Peça devolvida ao estoque", description: "A peça voltou ao estoque e ficou marcada como devolvida no histórico." });
     },
     onError: (error: Error) => toast({ title: "Não foi possível devolver a peça", description: error.message, variant: "destructive" }),
   });
@@ -3530,20 +3530,25 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                   : null;
                                 const isDel = deletingItemId === item.id;
                                 const isReturning = returningItemId === item.id;
-                                const canReturn = Boolean(item.vendaId) && c.conta.closedAt === null;
+                                const dataDevolucao = item.devolvidaAt
+                                  ? new Date(item.devolvidaAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", timeZone: "America/Sao_Paulo" })
+                                  : null;
+                                const canReturn = Boolean(item.vendaId) && !item.devolvidaAt && c.conta.closedAt === null;
                                 return (
-                                  <div key={item.id} className={`flex flex-wrap items-center gap-2 px-2 py-1.5 rounded text-xs ${isDel ? "bg-red-50" : isReturning ? "bg-amber-50" : "bg-white"}`}>
+                                  <div key={item.id} className={`flex flex-wrap items-center gap-2 px-2 py-1.5 rounded text-xs ${item.devolvidaAt ? "bg-amber-50" : isDel ? "bg-red-50" : isReturning ? "bg-amber-50" : "bg-white"}`}>
                                     <div className="flex-1 min-w-0">
-                                      <div className="font-semibold truncate">{item.modelo}</div>
+                                      <div className={`font-semibold truncate ${item.devolvidaAt ? "text-amber-800" : ""}`}>
+                                        {item.modelo}{item.devolvidaAt ? " — DEVOLVIDA" : ""}
+                                      </div>
                                       <div className="text-[10px] text-muted-foreground">
-                                        {item.qualidade} · {dia} às {hora}{formaLabel ? <span className="font-semibold text-orange-600"> · {formaLabel}</span> : ""}
+                                        {item.qualidade} · {dia} às {hora}{dataDevolucao ? <span className="font-semibold text-amber-700"> · Devolvida em {dataDevolucao}</span> : ""}{formaLabel ? <span className="font-semibold text-orange-600"> · {formaLabel}</span> : ""}
                                         {prevReceb && <span className="text-amber-600 font-semibold"> · Receber: {prevReceb}</span>}
                                       </div>
                                     </div>
-                                    <div className="font-bold text-orange-700">{formatMoney(item.valor)}</div>
+                                    <div className={`font-bold ${item.devolvidaAt ? "text-slate-400 line-through" : "text-orange-700"}`}>{formatMoney(item.valor)}</div>
                                     {isReturning ? (
                                       <div className="w-full flex items-center justify-between gap-2 border-t border-amber-200 pt-1.5">
-                                        <span className="text-[10px] text-amber-800">Devolver ao estoque e retirar da conta?</span>
+                                        <span className="text-[10px] text-amber-800">Devolver ao estoque e manter no histórico como devolvida?</span>
                                         <div className="flex gap-1 shrink-0">
                                           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setReturningItemId(null)}>Cancelar</Button>
                                           <Button size="sm" className="h-7 px-2 text-xs bg-amber-600 hover:bg-amber-700 text-white" disabled={devolverItemMutation.isPending} onClick={() => devolverItemMutation.mutate(item.id)}>
