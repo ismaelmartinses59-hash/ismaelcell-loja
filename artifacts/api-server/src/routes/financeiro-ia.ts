@@ -1,3 +1,258 @@
+import { Router, type IRouter } from "express";
+import { and, desc, eq, gt, gte, isNotNull, isNull, sql } from "drizzle-orm";
+import { db, appConfigTable, caixaTable, caixaSessoesTable, pecasTable, reservaAjustesTable, reservaUtilizacoesTable } from "@workspace/db";
+import { requireFinanceSession } from "./auth";
+import { ai } from "@workspace/integrations-gemini-ai";
+import {
+  calcularAlocacaoSemanal,
+  calcularAumentoReservaSemanal,
+  calcularDisponibilidade,
+  dataFinanceiraLocal,
+  diaFinanceiroLocal,
+  somarMovimentosElegiveisDoPeriodo,
+  mediaDasSemanasComCompra,
+  proximoCicloReservaSemanal,
+  somarEntradasNovas,
+  type CicloReservaSemanal,
+} from "./financeiro-ia-calculos.js";
+import { analisarAlertasFinanceiros } from "./financeiro-ia-alertas.js";
+
+const router: IRouter = Router();
+router.use(requireFinanceSession);
+const voiceRequests = new Map<string, { count: number; resetAt: number }>();
+
+const keys = {
+  reserva: "ia_fin_reserva_valor",
+  proteger: "ia_fin_reserva_ativa",
+  meta: "ia_fin_meta_compra",
+  ultimoLancamentoReserva: "ia_fin_reserva_ultimo_lancamento",
+  reservaSemana: "ia_fin_reserva_semanal_valor",
+  cicloReservaSemana: "ia_fin_reserva_semanal_ciclo",
+  modeloAcumulacaoReserva: "ia_fin_reserva_modelo_acumulacao",
+};
+const MODELO_ACUMULACAO_RESERVA = "alocacao-semanal-40-v1";
+const categorias = [
+  "pecas", "frete", "aluguel", "energia", "internet", "agua",
+  "combustivel", "ferramentas", "alimentacao", "retirada pessoal",
+  "parcelas", "outros",
+] as const;
+type Categoria = (typeof categorias)[number];
+
+function cents(value: string | null | undefined): number {
+  const clean = String(value ?? "").replace(/[^\d,.-]/g, "");
+  const normalized = clean.includes(",")
+    ? clean.replace(/\./g, "").replace(",", ".") : clean;
+  const n = Number(normalized);
+  return Number.isFinite(n) ? Math.round(n * 100) : 0;
+}
+const reais = (value: number) =>
+  (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const money = (value: number) => Math.round(value) / 100;
+const daySP = dataFinanceiraLocal;
+function daysAgo(days: number): string {
+  return daySP(new Date(Date.now() - days * 86400000));
+}
+const dayIndex = diaFinanceiroLocal;
+const inputMoney = (value: unknown): number | null => {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const raw = String(value).trim();
+  if (!/^\d+(?:[.,]\d{1,2})?$/.test(raw)) return null;
+  const amount = cents(raw);
+  return amount <= 10000000000 ? amount : null;
+};
+function classificar(categoria: string | null, motivo: string): Categoria | null {
+  if (categorias.includes(categoria as Categoria)) return categoria as Categoria;
+  // Entradas antigas de nota fiscal possuem um motivo padronizado e inequívoco.
+  return /^(compra de peças \(nota do fornecedor\)|compra de estoque:)/i.test(motivo.trim()) ? "pecas" : null;
+}
+
+async function readConfig() {
+  const rows = await db.select().from(appConfigTable);
+  const config = new Map(rows.map(({ key, value }) => [key, value]));
+  return {
+    rows: config,
+    reserva: cents(config.get(keys.reserva) ?? "0"),
+    reservaSemana: cents(config.get(keys.reservaSemana) ?? "0"),
+    proteger: config.get(keys.proteger) !== "false",
+    meta: cents(config.get(keys.meta) ?? "0"),
+  };
+}
+
+function lerCicloReservaSemanal(value: string | undefined): CicloReservaSemanal | null {
+  if (value === undefined) return null;
+  try {
+    const ciclo = JSON.parse(value) as Partial<CicloReservaSemanal>;
+    if (
+      typeof ciclo.chave !== "string" ||
+      !Number.isSafeInteger(ciclo.inicioDia) ||
+      !Number.isSafeInteger(ciclo.inicioId) ||
+      (ciclo.inicioDia as number) < 0 ||
+      (ciclo.inicioId as number) < 0
+    ) throw new Error();
+    return ciclo as CicloReservaSemanal;
+  } catch {
+    throw new Error("Ciclo semanal da reserva inválido");
+  }
+}
+
+async function atualizarReservaGradual(
+  total: number | null,
+  reserva: number,
+  reservaSemana: number,
+  compraPlanejada: number,
+  contasPrevistas: number,
+  protecaoAlocadaSemana: number,
+  necessidadeOperacional: number,
+  percentualProtecao: number,
+  hojeDia: number,
+  segundaDia: number,
+) {
+  return db.transaction(async tx => {
+    // Avança o marcador e a reserva juntos: repetir a consulta não duplica o aporte.
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
+    const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
+    const atual = cents(config.get(keys.reserva) ?? (reserva / 100).toFixed(2));
+    const ativa = config.get(keys.proteger) !== "false";
+    const migrarAcumulacaoReserva = config.get(keys.modeloAcumulacaoReserva) !== MODELO_ACUMULACAO_RESERVA;
+    const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
+    const marcador = config.get(keys.ultimoLancamentoReserva);
+    const cicloSalvo = lerCicloReservaSemanal(config.get(keys.cicloReservaSemana));
+    // O limite inferior inclui qualquer fuso brasileiro; dayIndex aplica o fuso da loja.
+    const entradasSegunda = await tx.select({
+      id: caixaTable.id,
+      tipo: caixaTable.tipo,
+      valor: caixaTable.valor,
+      formaPagamento: caixaTable.formaPagamento,
+      createdAt: caixaTable.createdAt,
+    }).from(caixaTable)
+      .where(gte(caixaTable.createdAt, new Date((segundaDia - 1) * 86400000)))
+      .orderBy(caixaTable.createdAt, caixaTable.id);
+    const primeiraEntradaSegundaId = entradasSegunda.find(row =>
+      dayIndex(row.createdAt) === segundaDia &&
+      row.tipo === "entrada" &&
+      (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix") &&
+      cents(row.valor) > 0,
+    )?.id ?? null;
+    const proximoCiclo = proximoCicloReservaSemanal(
+      hojeDia, segundaDia, primeiraEntradaSegundaId, cicloSalvo,
+    );
+    const ciclo = proximoCiclo ?? cicloSalvo ?? {
+      chave: `base:${segundaDia}`,
+      inicioDia: segundaDia,
+      inicioId: 0,
+    };
+    let reservaSemanaAtual = cents(config.get(keys.reservaSemana) ?? (reservaSemana / 100).toFixed(2));
+    if (proximoCiclo || !cicloSalvo) {
+      const ajustesDaSemana = await tx.select({
+        aumento: reservaAjustesTable.aumento,
+        createdAt: reservaAjustesTable.createdAt,
+      }).from(reservaAjustesTable)
+        .where(gte(reservaAjustesTable.createdAt, new Date((ciclo.inicioDia - 1) * 86400000)));
+      // Reconstrói a semana corrente a partir do histórico ao iniciar ou detectar um ciclo novo.
+      const totalHistoricoSemana = ajustesDaSemana.reduce((soma, ajuste) => {
+        const dia = dayIndex(ajuste.createdAt);
+        return soma + (dia >= ciclo.inicioDia && dia <= hojeDia ? ajuste.aumento : 0);
+      }, 0);
+      const usosDaSemana = await tx.select({
+        valorCentavos: reservaUtilizacoesTable.valorCentavos,
+        createdAt: reservaUtilizacoesTable.createdAt,
+        estornadaAt: reservaUtilizacoesTable.estornadaAt,
+      }).from(reservaUtilizacoesTable)
+        .where(gte(reservaUtilizacoesTable.createdAt, new Date((ciclo.inicioDia - 1) * 86400000)));
+      const usoLiquido = usosDaSemana.reduce((soma, uso) => {
+        const diaUso = dayIndex(uso.createdAt);
+        if (diaUso < ciclo.inicioDia || diaUso > hojeDia) return soma;
+        const diaEstorno = uso.estornadaAt ? dayIndex(uso.estornadaAt) : null;
+        return soma - uso.valorCentavos + (diaEstorno !== null && diaEstorno >= ciclo.inicioDia && diaEstorno <= hojeDia
+          ? uso.valorCentavos : 0);
+      }, 0);
+      reservaSemanaAtual = Math.min(atual, Math.max(0, totalHistoricoSemana + usoLiquido));
+    }
+    if (total === null) {
+      const valorSemana = (reservaSemanaAtual / 100).toFixed(2);
+      const cicloJson = JSON.stringify(ciclo);
+      if (
+        config.get(keys.reservaSemana) !== valorSemana ||
+        config.get(keys.cicloReservaSemana) !== cicloJson
+      ) {
+        for (const [key, value] of [
+          [keys.reservaSemana, valorSemana],
+          [keys.cicloReservaSemana, cicloJson],
+        ]) await tx.insert(appConfigTable).values({ key, value })
+          .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+      }
+      return {
+        reserva: atual,
+        reservaSemana: reservaSemanaAtual,
+        aporte: 0,
+        entradaNova: 0,
+        inicioAgora: false,
+        compraPlanejada: 0,
+        protecaoAtiva: ativa,
+        saldosAtuais: null as { dinheiro: number; pix: number } | null,
+      };
+    }
+    if (marcador === undefined) {
+      // Ao ativar o rastreamento, não reaproveita entradas antigas como se
+      // tivessem acabado de ser recebidas.
+      const [ultimo] = await tx.select({ id: caixaTable.id }).from(caixaTable).orderBy(desc(caixaTable.id)).limit(1);
+      const reconciliarSemana = migrarAcumulacaoReserva && ativa && protecaoAlocadaSemana > 0;
+      const reservaSemanaBase = reconciliarSemana ? 0 : reservaSemanaAtual;
+      const aumentoInicial = reconciliarSemana
+        ? calcularAumentoReservaSemanal(total, reservaSemanaBase, protecaoAlocadaSemana, 0, ativa, true)
+        : 0;
+      const reservaInicial = atual + aumentoInicial;
+      reservaSemanaAtual = Math.min(reservaInicial, reservaSemanaBase + aumentoInicial);
+      if (aumentoInicial > 0) {
+        await tx.insert(appConfigTable).values({ key: keys.reserva, value: (reservaInicial / 100).toFixed(2) })
+          .onConflictDoUpdate({
+            target: appConfigTable.key,
+            set: { value: (reservaInicial / 100).toFixed(2), updatedAt: new Date() },
+          });
+      }
+      await tx.insert(appConfigTable).values({ key: keys.ultimoLancamentoReserva, value: String(ultimo?.id ?? 0) })
+        .onConflictDoUpdate({ target: appConfigTable.key, set: { value: String(ultimo?.id ?? 0), updatedAt: new Date() } });
+      for (const [key, value] of [
+        [keys.reservaSemana, (reservaSemanaAtual / 100).toFixed(2)],
+        [keys.cicloReservaSemana, JSON.stringify(ciclo)],
+        ...(reconciliarSemana ? [[keys.modeloAcumulacaoReserva, MODELO_ACUMULACAO_RESERVA]] : []),
+      ]) await tx.insert(appConfigTable).values({ key, value })
+        .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+      const aposContas = Math.max(0, total - contasPrevistas);
+      return {
+        reserva: reservaInicial,
+        reservaSemana: reservaSemanaAtual,
+        aporte: aumentoInicial,
+        entradaNova: 0,
+        inicioAgora: true,
+        compraPlanejada: Math.min(compra, Math.max(0, aposContas - reservaInicial)),
+        protecaoAtiva: ativa,
+        saldosAtuais: null as { dinheiro: number; pix: number } | null,
+      };
+    }
+    const cursor = Number(marcador);
+    if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Marcador da reserva inválido");
+    const novos = await tx.select({
+      id: caixaTable.id, tipo: caixaTable.tipo, valor: caixaTable.valor,
+      formaPagamento: caixaTable.formaPagamento, createdAt: caixaTable.createdAt,
+    }).from(caixaTable).where(gt(caixaTable.id, cursor)).orderBy(caixaTable.id);
+    const entradaNova = somarEntradasNovas(
+      novos.map(row => ({ ...row, valorCentavos: cents(row.valor) })), cursor,
+    );
+    const entradaNovaSemana = novos.reduce((soma, row) => {
+      const elegivel = row.tipo === "entrada" &&
+        (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix");
+      const dia = dayIndex(row.createdAt);
+      return soma + (elegivel && dia >= ciclo.inicioDia && dia <= hojeDia ? cents(row.valor) : 0);
+    }, 0);
+    let dinheiroAtual: number | null = null;
+    let pixAtual = 0;
+    if (entradaNova > 0 && ativa) {
+      // Consulta o saldo depois de ver a entrada confirmada no Caixa.
+      const [sessao] = await tx.select().from(caixaSessoesTable).orderBy(desc(caixaSessoesTable.aberturaAt)).limit(1);
+      const dataBase = sessao?.fechamentoAt ?? sessao?.aberturaAt ?? null;
+      if (dataBase) {
+        const saldoBase = sessao.fechamentoAt
           ? cents(sessao.valorContado ?? sessao.valorFinal ?? sessao.valorInicial)
           : cents(sessao.valorInicial);
         const movimentos = await tx.select().from(caixaTable).where(gte(caixaTable.createdAt, dataBase));
