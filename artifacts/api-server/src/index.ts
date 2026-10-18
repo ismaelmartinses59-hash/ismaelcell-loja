@@ -221,6 +221,31 @@ async function ensureSchema(): Promise<void> {
     ON caixa (reembolso_origem_id)
     WHERE reembolso_origem_id IS NOT NULL
   `));
+  await runStatement("reserva_utilizacoes", db.execute(sql`
+    CREATE TABLE IF NOT EXISTS reserva_utilizacoes (
+      id serial PRIMARY KEY,
+      request_key text NOT NULL UNIQUE,
+      valor_centavos integer NOT NULL CHECK (valor_centavos > 0),
+      saldo_anterior_centavos integer NOT NULL,
+      saldo_novo_centavos integer NOT NULL CHECK (saldo_novo_centavos >= 0),
+      tipo text NOT NULL CHECK (tipo IN ('despesa', 'transferencia')),
+      categoria text NOT NULL,
+      motivo text NOT NULL,
+      descricao text,
+      forma_pagamento text,
+      caixa_id integer UNIQUE,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      estornada_at timestamptz,
+      motivo_estorno text,
+      saldo_anterior_estorno_centavos integer,
+      saldo_novo_estorno_centavos integer
+    )
+  `));
+  await runStatement("reserva_utilizacoes.estorno_saldos", db.execute(sql`
+    ALTER TABLE reserva_utilizacoes
+    ADD COLUMN IF NOT EXISTS saldo_anterior_estorno_centavos integer,
+    ADD COLUMN IF NOT EXISTS saldo_novo_estorno_centavos integer
+  `));
   await runStatement("caixa_sessoes", db.execute(sql`
     CREATE TABLE IF NOT EXISTS caixa_sessoes (
       id serial PRIMARY KEY,

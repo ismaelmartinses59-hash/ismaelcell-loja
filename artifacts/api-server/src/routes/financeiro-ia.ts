@@ -1,245 +1,3 @@
-import { Router, type IRouter } from "express";
-import { and, desc, eq, gt, gte, isNotNull, sql } from "drizzle-orm";
-import { db, appConfigTable, caixaTable, caixaSessoesTable, pecasTable, reservaAjustesTable } from "@workspace/db";
-import { requireFinanceSession } from "./auth";
-import { ai } from "@workspace/integrations-gemini-ai";
-import {
-  calcularAlocacaoSemanal,
-  calcularAumentoReservaSemanal,
-  calcularDisponibilidade,
-  dataFinanceiraLocal,
-  diaFinanceiroLocal,
-  somarMovimentosElegiveisDoPeriodo,
-  mediaDasSemanasComCompra,
-  proximoCicloReservaSemanal,
-  somarEntradasNovas,
-  type CicloReservaSemanal,
-} from "./financeiro-ia-calculos.js";
-import { analisarAlertasFinanceiros } from "./financeiro-ia-alertas.js";
-
-const router: IRouter = Router();
-router.use(requireFinanceSession);
-const voiceRequests = new Map<string, { count: number; resetAt: number }>();
-
-const keys = {
-  reserva: "ia_fin_reserva_valor",
-  proteger: "ia_fin_reserva_ativa",
-  meta: "ia_fin_meta_compra",
-  ultimoLancamentoReserva: "ia_fin_reserva_ultimo_lancamento",
-  reservaSemana: "ia_fin_reserva_semanal_valor",
-  cicloReservaSemana: "ia_fin_reserva_semanal_ciclo",
-  modeloAcumulacaoReserva: "ia_fin_reserva_modelo_acumulacao",
-};
-const MODELO_ACUMULACAO_RESERVA = "alocacao-semanal-40-v1";
-const categorias = [
-  "pecas", "frete", "aluguel", "energia", "internet", "agua",
-  "combustivel", "ferramentas", "alimentacao", "retirada pessoal",
-  "parcelas", "outros",
-] as const;
-type Categoria = (typeof categorias)[number];
-
-function cents(value: string | null | undefined): number {
-  const clean = String(value ?? "").replace(/[^\d,.-]/g, "");
-  const normalized = clean.includes(",")
-    ? clean.replace(/\./g, "").replace(",", ".") : clean;
-  const n = Number(normalized);
-  return Number.isFinite(n) ? Math.round(n * 100) : 0;
-}
-const reais = (value: number) =>
-  (value / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-const money = (value: number) => Math.round(value) / 100;
-const daySP = dataFinanceiraLocal;
-function daysAgo(days: number): string {
-  return daySP(new Date(Date.now() - days * 86400000));
-}
-const dayIndex = diaFinanceiroLocal;
-const inputMoney = (value: unknown): number | null => {
-  if (typeof value !== "string" && typeof value !== "number") return null;
-  const raw = String(value).trim();
-  if (!/^\d+(?:[.,]\d{1,2})?$/.test(raw)) return null;
-  const amount = cents(raw);
-  return amount <= 10000000000 ? amount : null;
-};
-function classificar(categoria: string | null, motivo: string): Categoria | null {
-  if (categorias.includes(categoria as Categoria)) return categoria as Categoria;
-  // Entradas antigas de nota fiscal possuem um motivo padronizado e inequívoco.
-  return /^(compra de peças \(nota do fornecedor\)|compra de estoque:)/i.test(motivo.trim()) ? "pecas" : null;
-}
-
-async function readConfig() {
-  const rows = await db.select().from(appConfigTable);
-  const config = new Map(rows.map(({ key, value }) => [key, value]));
-  return {
-    rows: config,
-    reserva: cents(config.get(keys.reserva) ?? "0"),
-    reservaSemana: cents(config.get(keys.reservaSemana) ?? "0"),
-    proteger: config.get(keys.proteger) !== "false",
-    meta: cents(config.get(keys.meta) ?? "0"),
-  };
-}
-
-function lerCicloReservaSemanal(value: string | undefined): CicloReservaSemanal | null {
-  if (value === undefined) return null;
-  try {
-    const ciclo = JSON.parse(value) as Partial<CicloReservaSemanal>;
-    if (
-      typeof ciclo.chave !== "string" ||
-      !Number.isSafeInteger(ciclo.inicioDia) ||
-      !Number.isSafeInteger(ciclo.inicioId) ||
-      (ciclo.inicioDia as number) < 0 ||
-      (ciclo.inicioId as number) < 0
-    ) throw new Error();
-    return ciclo as CicloReservaSemanal;
-  } catch {
-    throw new Error("Ciclo semanal da reserva inválido");
-  }
-}
-
-async function atualizarReservaGradual(
-  total: number | null,
-  reserva: number,
-  reservaSemana: number,
-  compraPlanejada: number,
-  contasPrevistas: number,
-  protecaoAlocadaSemana: number,
-  necessidadeOperacional: number,
-  percentualProtecao: number,
-  hojeDia: number,
-  segundaDia: number,
-) {
-  return db.transaction(async tx => {
-    // Avança o marcador e a reserva juntos: repetir a consulta não duplica o aporte.
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
-    const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
-    const atual = cents(config.get(keys.reserva) ?? (reserva / 100).toFixed(2));
-    const ativa = config.get(keys.proteger) !== "false";
-    const migrarAcumulacaoReserva = config.get(keys.modeloAcumulacaoReserva) !== MODELO_ACUMULACAO_RESERVA;
-    const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
-    const marcador = config.get(keys.ultimoLancamentoReserva);
-    const cicloSalvo = lerCicloReservaSemanal(config.get(keys.cicloReservaSemana));
-    // O limite inferior inclui qualquer fuso brasileiro; dayIndex aplica o fuso da loja.
-    const entradasSegunda = await tx.select({
-      id: caixaTable.id,
-      tipo: caixaTable.tipo,
-      valor: caixaTable.valor,
-      formaPagamento: caixaTable.formaPagamento,
-      createdAt: caixaTable.createdAt,
-    }).from(caixaTable)
-      .where(gte(caixaTable.createdAt, new Date((segundaDia - 1) * 86400000)))
-      .orderBy(caixaTable.createdAt, caixaTable.id);
-    const primeiraEntradaSegundaId = entradasSegunda.find(row =>
-      dayIndex(row.createdAt) === segundaDia &&
-      row.tipo === "entrada" &&
-      (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix") &&
-      cents(row.valor) > 0,
-    )?.id ?? null;
-    const proximoCiclo = proximoCicloReservaSemanal(
-      hojeDia, segundaDia, primeiraEntradaSegundaId, cicloSalvo,
-    );
-    const ciclo = proximoCiclo ?? cicloSalvo ?? {
-      chave: `base:${segundaDia}`,
-      inicioDia: segundaDia,
-      inicioId: 0,
-    };
-    let reservaSemanaAtual = cents(config.get(keys.reservaSemana) ?? (reservaSemana / 100).toFixed(2));
-    if (proximoCiclo || !cicloSalvo) {
-      const ajustesDaSemana = await tx.select({
-        aumento: reservaAjustesTable.aumento,
-        createdAt: reservaAjustesTable.createdAt,
-      }).from(reservaAjustesTable)
-        .where(gte(reservaAjustesTable.createdAt, new Date((ciclo.inicioDia - 1) * 86400000)));
-      // Reconstrói a semana corrente a partir do histórico ao iniciar ou detectar um ciclo novo.
-      const totalHistoricoSemana = ajustesDaSemana.reduce((soma, ajuste) => {
-        const dia = dayIndex(ajuste.createdAt);
-        return soma + (dia >= ciclo.inicioDia && dia <= hojeDia ? ajuste.aumento : 0);
-      }, 0);
-      reservaSemanaAtual = Math.min(atual, totalHistoricoSemana);
-    }
-    if (total === null) {
-      const valorSemana = (reservaSemanaAtual / 100).toFixed(2);
-      const cicloJson = JSON.stringify(ciclo);
-      if (
-        config.get(keys.reservaSemana) !== valorSemana ||
-        config.get(keys.cicloReservaSemana) !== cicloJson
-      ) {
-        for (const [key, value] of [
-          [keys.reservaSemana, valorSemana],
-          [keys.cicloReservaSemana, cicloJson],
-        ]) await tx.insert(appConfigTable).values({ key, value })
-          .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
-      }
-      return {
-        reserva: atual,
-        reservaSemana: reservaSemanaAtual,
-        aporte: 0,
-        entradaNova: 0,
-        inicioAgora: false,
-        compraPlanejada: 0,
-        protecaoAtiva: ativa,
-        saldosAtuais: null as { dinheiro: number; pix: number } | null,
-      };
-    }
-    if (marcador === undefined) {
-      // Ao ativar o rastreamento, não reaproveita entradas antigas como se
-      // tivessem acabado de ser recebidas.
-      const [ultimo] = await tx.select({ id: caixaTable.id }).from(caixaTable).orderBy(desc(caixaTable.id)).limit(1);
-      const reconciliarSemana = migrarAcumulacaoReserva && ativa && protecaoAlocadaSemana > 0;
-      const reservaSemanaBase = reconciliarSemana ? 0 : reservaSemanaAtual;
-      const aumentoInicial = reconciliarSemana
-        ? calcularAumentoReservaSemanal(total, reservaSemanaBase, protecaoAlocadaSemana, 0, ativa, true)
-        : 0;
-      const reservaInicial = atual + aumentoInicial;
-      reservaSemanaAtual = Math.min(reservaInicial, reservaSemanaBase + aumentoInicial);
-      if (aumentoInicial > 0) {
-        await tx.insert(appConfigTable).values({ key: keys.reserva, value: (reservaInicial / 100).toFixed(2) })
-          .onConflictDoUpdate({
-            target: appConfigTable.key,
-            set: { value: (reservaInicial / 100).toFixed(2), updatedAt: new Date() },
-          });
-      }
-      await tx.insert(appConfigTable).values({ key: keys.ultimoLancamentoReserva, value: String(ultimo?.id ?? 0) })
-        .onConflictDoUpdate({ target: appConfigTable.key, set: { value: String(ultimo?.id ?? 0), updatedAt: new Date() } });
-      for (const [key, value] of [
-        [keys.reservaSemana, (reservaSemanaAtual / 100).toFixed(2)],
-        [keys.cicloReservaSemana, JSON.stringify(ciclo)],
-        ...(reconciliarSemana ? [[keys.modeloAcumulacaoReserva, MODELO_ACUMULACAO_RESERVA]] : []),
-      ]) await tx.insert(appConfigTable).values({ key, value })
-        .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
-      const aposContas = Math.max(0, total - contasPrevistas);
-      return {
-        reserva: reservaInicial,
-        reservaSemana: reservaSemanaAtual,
-        aporte: aumentoInicial,
-        entradaNova: 0,
-        inicioAgora: true,
-        compraPlanejada: Math.min(compra, Math.max(0, aposContas - reservaInicial)),
-        protecaoAtiva: ativa,
-        saldosAtuais: null as { dinheiro: number; pix: number } | null,
-      };
-    }
-    const cursor = Number(marcador);
-    if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Marcador da reserva inválido");
-    const novos = await tx.select({
-      id: caixaTable.id, tipo: caixaTable.tipo, valor: caixaTable.valor,
-      formaPagamento: caixaTable.formaPagamento, createdAt: caixaTable.createdAt,
-    }).from(caixaTable).where(gt(caixaTable.id, cursor)).orderBy(caixaTable.id);
-    const entradaNova = somarEntradasNovas(
-      novos.map(row => ({ ...row, valorCentavos: cents(row.valor) })), cursor,
-    );
-    const entradaNovaSemana = novos.reduce((soma, row) => {
-      const elegivel = row.tipo === "entrada" &&
-        (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix");
-      const dia = dayIndex(row.createdAt);
-      return soma + (elegivel && dia >= ciclo.inicioDia && dia <= hojeDia ? cents(row.valor) : 0);
-    }, 0);
-    let dinheiroAtual: number | null = null;
-    let pixAtual = 0;
-    if (entradaNova > 0 && ativa) {
-      // Consulta o saldo depois de ver a entrada confirmada no Caixa.
-      const [sessao] = await tx.select().from(caixaSessoesTable).orderBy(desc(caixaSessoesTable.aberturaAt)).limit(1);
-      const dataBase = sessao?.fechamentoAt ?? sessao?.aberturaAt ?? null;
-      if (dataBase) {
-        const saldoBase = sessao.fechamentoAt
           ? cents(sessao.valorContado ?? sessao.valorFinal ?? sessao.valorInicial)
           : cents(sessao.valorInicial);
         const movimentos = await tx.select().from(caixaTable).where(gte(caixaTable.createdAt, dataBase));
@@ -327,7 +85,7 @@ async function snapshot() {
   const now = new Date();
   const today = dayIndex(now);
   const todayString = daySP(now);
-  const [config, sessoes, recent, pixRows, pecas, ultimoFechamento] = await Promise.all([
+  const [config, sessoes, cashRecent, pixRows, pecas, ultimoFechamento, reservaUsosAtivos] = await Promise.all([
     readConfig(),
     db.select().from(caixaSessoesTable).orderBy(desc(caixaSessoesTable.aberturaAt)).limit(1),
     db.select().from(caixaTable).where(gte(caixaTable.createdAt, new Date(Date.now() - 120 * 86400000))),
@@ -337,7 +95,14 @@ async function snapshot() {
     db.select({ fechamentoAt: caixaSessoesTable.fechamentoAt }).from(caixaSessoesTable)
       .where(isNotNull(caixaSessoesTable.fechamentoAt))
       .orderBy(desc(caixaSessoesTable.fechamentoAt)).limit(1),
+    db.select({ caixaId: reservaUtilizacoesTable.caixaId }).from(reservaUtilizacoesTable)
+      .where(isNull(reservaUtilizacoesTable.estornadaAt)),
   ]);
+  // Despesas financiadas pela reserva continuam no Caixa real, mas não reduzem
+  // novamente o orçamento operacional da IA.
+  const caixasPagosPelaReserva = new Set(reservaUsosAtivos
+    .map(row => row.caixaId).filter((id): id is number => id !== null));
+  const recent = cashRecent.filter(row => !caixasPagosPelaReserva.has(row.id));
   const produtos = pecas.filter(p => p.setor === "cliente");
   const custoPorId = new Map(pecas.map(p => [p.id, p.valorCusto]));
   const sessao = sessoes[0] ?? null;
@@ -655,6 +420,167 @@ router.put("/financeiro-ia/config", async (req, res) => {
     });
     res.json(await snapshot());
   } catch (err) { req.log.error({ err }, "financeiro-ia/config"); res.status(500).json({ error: "Não foi possível salvar a configuração." }); }
+});
+
+router.get("/financeiro-ia/reserva", async (_req, res) => {
+  const [config, ajustes, usos, saidas] = await Promise.all([
+    readConfig(),
+    db.select().from(reservaAjustesTable).orderBy(desc(reservaAjustesTable.id)),
+    db.select().from(reservaUtilizacoesTable).orderBy(desc(reservaUtilizacoesTable.createdAt)),
+    db.select().from(caixaTable).where(eq(caixaTable.tipo, "saida")).orderBy(desc(caixaTable.createdAt)).limit(100),
+  ]);
+  const vinculadas = new Set(usos.filter(uso => uso.estornadaAt === null).map(uso => uso.caixaId).filter((id): id is number => id !== null));
+  const contribuicoes = ajustes.reduce((total, ajuste) => total + ajuste.aumento, 0);
+  const usado = usos.filter(uso => uso.estornadaAt === null).reduce((total, uso) => total + uso.valorCentavos, 0);
+  const saldo = cents(config.rows.get(keys.reserva) ?? "0");
+  const saldoInicial = Math.max(0, saldo + usado - contribuicoes);
+  res.json({
+    saldo: money(saldo),
+    saldoInicial: money(saldoInicial),
+    totalContribuido: money(contribuicoes),
+    totalUtilizado: money(usado),
+    saidasDisponiveis: saidas.filter(saida => !vinculadas.has(saida.id)).map(saida => ({
+      id: saida.id, valor: saida.valor, motivo: saida.motivo,
+      categoria: saida.categoria, createdAt: saida.createdAt.toISOString(),
+      formaPagamento: saida.formaPagamento,
+    })),
+    historico: [
+      ...ajustes.map(ajuste => ({
+        id: `aporte-${ajuste.id}`, tipo: "contribuicao" as const,
+        valor: money(ajuste.aumento), data: ajuste.createdAt.toISOString(),
+        motivo: "Contribuição automática da reserva", estornada: false,
+        saldoAnterior: money(ajuste.valorAnterior), saldoNovo: money(ajuste.valorNovo),
+      })),
+      ...usos.flatMap(uso => [
+        {
+          id: `uso-${uso.id}`, usoId: uso.id, tipo: uso.tipo,
+          valor: money(uso.valorCentavos), data: uso.createdAt.toISOString(),
+          motivo: uso.motivo, categoria: uso.categoria, descricao: uso.descricao,
+          caixaId: uso.caixaId, formaPagamento: uso.formaPagamento,
+          estornada: uso.estornadaAt !== null,
+          saldoAnterior: money(uso.saldoAnteriorCentavos), saldoNovo: money(uso.saldoNovoCentavos),
+        },
+        ...(uso.estornadaAt ? [{
+          id: `estorno-${uso.id}`, tipo: "estorno" as const,
+          valor: money(uso.valorCentavos), data: uso.estornadaAt.toISOString(),
+          motivo: uso.motivoEstorno ?? `Estorno de ${uso.motivo}`, estornada: false,
+          saldoAnterior: money(uso.saldoAnteriorEstornoCentavos ?? uso.saldoNovoCentavos),
+          saldoNovo: money(uso.saldoNovoEstornoCentavos ?? uso.saldoAnteriorCentavos),
+        }] : []),
+      ]),
+    ].sort((a, b) => Date.parse(b.data) - Date.parse(a.data)),
+  });
+});
+
+router.post("/financeiro-ia/reserva/utilizacoes", async (req, res) => {
+  const requestKey = String(req.body?.requestKey ?? "").trim();
+  const valorCentavos = inputMoney(req.body?.valor);
+  const tipo = req.body?.tipo === "transferencia" ? "transferencia" : "despesa";
+  const categoria = String(req.body?.categoria ?? "outros").trim().slice(0, 40);
+  const motivo = String(req.body?.motivo ?? "").trim().slice(0, 120);
+  const descricao = String(req.body?.descricao ?? "").trim().slice(0, 500) || null;
+  const dataRaw = String(req.body?.data ?? "");
+  const data = new Date(dataRaw);
+  const caixaIdRaw = req.body?.caixaId;
+  const caixaId = caixaIdRaw == null || caixaIdRaw === "" ? null : Number(caixaIdRaw);
+  let forma = req.body?.formaPagamento === "pix" ? "pix" : req.body?.formaPagamento === "dinheiro" ? "dinheiro" : null;
+  const origemDinheiro = String(req.body?.origemDinheiro ?? "").trim().slice(0, 80);
+  if (tipo === "transferencia") forma = origemDinheiro || null;
+  if (requestKey.length < 8 || requestKey.length > 120 || valorCentavos === null || valorCentavos <= 0 ||
+    !motivo || !categoria || !Number.isFinite(data.getTime()) || data.getTime() > Date.now() ||
+    (tipo === "despesa" && caixaId !== null && !Number.isSafeInteger(caixaId)) ||
+    (tipo === "despesa" && caixaId === null && !forma)) {
+    res.status(400).json({ error: "Informe valor, data/hora, motivo e os dados da saída." }); return;
+  }
+  try {
+    const result = await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
+      const [prior] = await tx.select().from(reservaUtilizacoesTable)
+        .where(eq(reservaUtilizacoesTable.requestKey, requestKey)).for("update");
+      if (prior) return { duplicated: true, id: prior.id };
+      const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
+      const saldoAnterior = cents(config.get(keys.reserva) ?? "0");
+      if (valorCentavos > saldoAnterior) throw new Error("O valor ultrapassa o saldo protegido disponível.");
+      let linkedCashId: number | null = null;
+      let dataMovimento = data;
+      if (tipo === "despesa") {
+        if (caixaId !== null) {
+          const [saida] = await tx.select().from(caixaTable).where(eq(caixaTable.id, caixaId)).for("update");
+          if (!saida || saida.tipo !== "saida") throw new Error("Selecione uma saída válida do Caixa.");
+          if (cents(saida.valor) !== valorCentavos) throw new Error("O valor precisa ser igual ao da saída já registrada.");
+          dataMovimento = saida.createdAt;
+          forma = saida.formaPagamento;
+          const [usoExistente] = await tx.select({ id: reservaUtilizacoesTable.id })
+            .from(reservaUtilizacoesTable)
+            .where(and(eq(reservaUtilizacoesTable.caixaId, caixaId), isNull(reservaUtilizacoesTable.estornadaAt)));
+          if (usoExistente) throw new Error("Esta saída já está vinculada a uma utilização da reserva.");
+          linkedCashId = caixaId;
+        } else {
+          const [saida] = await tx.insert(caixaTable).values({
+            tipo: "saida", valor: (valorCentavos / 100).toFixed(2).replace(".", ","),
+            motivo, observacao: descricao, categoria, formaPagamento: forma,
+            createdAt: data,
+          }).returning({ id: caixaTable.id });
+          linkedCashId = saida.id;
+        }
+      }
+      const saldoNovo = saldoAnterior - valorCentavos;
+      const saldoSemana = cents(config.get(keys.reservaSemana) ?? "0");
+      await tx.insert(reservaUtilizacoesTable).values({
+        requestKey, valorCentavos, saldoAnteriorCentavos: saldoAnterior,
+        saldoNovoCentavos: saldoNovo, tipo, categoria, motivo, descricao,
+        formaPagamento: forma, caixaId: linkedCashId, createdAt: dataMovimento,
+      });
+      for (const [key, value] of [
+        [keys.reserva, (saldoNovo / 100).toFixed(2)],
+        [keys.reservaSemana, (Math.min(saldoNovo, Math.max(0, saldoSemana - valorCentavos)) / 100).toFixed(2)],
+      ]) await tx.insert(appConfigTable).values({ key, value })
+        .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+      return { duplicated: false };
+    });
+    res.status(result.duplicated ? 200 : 201).json({ ...result, resumo: await snapshot() });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Não foi possível registrar a utilização.";
+    res.status(message.includes("saldo protegido") || message.includes("vinculada") || message.includes("saída") ? 409 : 500)
+      .json({ error: message });
+  }
+});
+
+router.post("/financeiro-ia/reserva/utilizacoes/:id/estornar", async (req, res) => {
+  const id = Number(req.params.id);
+  const motivo = String(req.body?.motivo ?? "").trim().slice(0, 200) || "Utilização estornada";
+  if (!Number.isSafeInteger(id) || id <= 0) { res.status(400).json({ error: "Utilização inválida." }); return; }
+  try {
+    await db.transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
+      const [uso] = await tx.select().from(reservaUtilizacoesTable)
+        .where(eq(reservaUtilizacoesTable.id, id)).for("update");
+      if (!uso) throw new Error("Utilização não encontrada.");
+      if (uso.estornadaAt) return;
+      const config = new Map((await tx.select().from(appConfigTable)).map(row => [row.key, row.value]));
+      const saldo = cents(config.get(keys.reserva) ?? "0");
+      const semana = cents(config.get(keys.reservaSemana) ?? "0");
+      const novo = saldo + uso.valorCentavos;
+      const hoje = dayIndex(new Date());
+      const semanaInicio = hoje - ((new Date(`${daySP(new Date())}T12:00:00Z`).getUTCDay() + 6) % 7);
+      const semanaNova = dayIndex(uso.createdAt) >= semanaInicio
+        ? Math.min(novo, semana + uso.valorCentavos) : Math.min(novo, semana);
+      await tx.update(reservaUtilizacoesTable)
+        .set({
+          estornadaAt: new Date(), motivoEstorno: motivo,
+          saldoAnteriorEstornoCentavos: saldo, saldoNovoEstornoCentavos: novo,
+        })
+        .where(eq(reservaUtilizacoesTable.id, id));
+      for (const [key, value] of [
+        [keys.reserva, (novo / 100).toFixed(2)],
+        [keys.reservaSemana, (semanaNova / 100).toFixed(2)],
+      ]) await tx.insert(appConfigTable).values({ key, value })
+        .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+    });
+    res.json({ resumo: await snapshot() });
+  } catch (err) {
+    res.status(409).json({ error: err instanceof Error ? err.message : "Não foi possível estornar." });
+  }
 });
 
 router.post("/financeiro-ia/retiradas", async (req, res) => {

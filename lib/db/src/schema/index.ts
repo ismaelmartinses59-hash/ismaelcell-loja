@@ -12,3 +12,4 @@ export * from "./encomendas";
 export * from "./pecas-espera";
 export * from "./devolucoes";
 export * from "./pedidos";
+export * from "./reserva-utilizacoes";

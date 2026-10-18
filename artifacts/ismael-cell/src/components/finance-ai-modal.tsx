@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { requestMicrophone, turnOffMicrophone, useMicrophoneActive } from "@/lib/microphone";
+import { ReservaUtilizacaoPanel } from "./reserva-utilizacao-panel";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const FINANCIAL_NOTES_HIDDEN_AT = "finance-ai-warnings-hidden-after-message-at";
@@ -374,6 +375,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     {!financialNotesHidden && <p className="text-[11px] text-emerald-700">{summary.protecaoAtiva ? "60% do saldo líquido positivo; com a proteção calculada, soma exatamente o líquido." : "Com a proteção desativada, o saldo líquido positivo fica todo na operação."}</p>}
                   </div>
                 </div>
+                <ReservaUtilizacaoPanel saldo={summary.reserva} />
                 <p data-testid="text-lancamentos-sem-forma-semana" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                   Lançamentos com forma de pagamento não informada, excluídos do cálculo: entradas {fmt(data.movimentoSemana.entradasSemForma)} e saídas {fmt(data.movimentoSemana.saidasSemForma)}. O app não presume que sejam dinheiro ou PIX.
                 </p>
