@@ -5,6 +5,7 @@ import { requireFinanceSession } from "./auth";
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   calcularAlocacaoSemanal,
+  calcularAjusteReservaAteAlvoCentavos,
   calcularAumentoReservaSemanal,
   calcularDisponibilidade,
   dataFinanceiraLocal,
@@ -40,6 +41,8 @@ const keys = {
   operacaoAberturaAt: "ia_fin_operacao_abertura_at",
   operacaoModelo: "ia_fin_operacao_modelo",
   operacaoCorrecaoPedidoOutubro: "ia_fin_operacao_correcao_pedido_outubro_2026",
+  operacaoCorrecaoPedidoOutubroDelta: "ia_fin_operacao_correcao_pedido_outubro_delta_centavos",
+  reservaCorrecaoSaldoOutubro: "ia_fin_reserva_correcao_saldo_outubro_2026",
 };
 const MODELO_ACUMULACAO_RESERVA = "alocacao-semanal-40-v1";
 const MODELO_ACUMULACAO_OPERACAO = "pedidos-no-ciclo-anterior-v2";
@@ -48,6 +51,7 @@ const CORRECAO_PEDIDO_OUTUBRO = {
   valor: 155000,
   reservaAdicional: 52773,
   saldoOperacaoInicial: 102979,
+  saldoReservaAlvo: 272494,
 };
 const categorias = [
   "pecas", "frete", "aluguel", "energia", "internet", "agua",
@@ -273,35 +277,70 @@ async function carregarSaldoOperacionalBase(
       (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix") &&
       cents(movimento.valor) === CORRECAO_PEDIDO_OUTUBRO.valor,
     );
-    if (
-      orderPresent &&
-      config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada"
-    ) {
-      // Reclassifica o saldo corrigido da semana 12–18/10 uma vez:
-      // R$ 1.319,32 em pool -> R$ 791,59 operação + R$ 527,73 proteção.
-      saldoBase = CORRECAO_PEDIDO_OUTUBRO.saldoOperacaoInicial;
-      const reservaNova = cents(config.get(keys.reserva) ?? "0") + CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
-      const reservaSemanaNova = cents(config.get(keys.reservaSemana) ?? "0") + CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
-      for (const [key, value] of [
-        [keys.reserva, (reservaNova / 100).toFixed(2)],
-        [keys.reservaSemana, (reservaSemanaNova / 100).toFixed(2)],
-        [keys.operacaoCorrecaoPedidoOutubro, "aplicada"],
-      ]) await tx.insert(appConfigTable).values({ key, value })
-        .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+    let deltaOperacaoPendente = Number(config.get(keys.operacaoCorrecaoPedidoOutubroDelta) ?? "0");
+    if (orderPresent) {
+      const correcaoOperacaoAplicada =
+        config.get(keys.operacaoCorrecaoPedidoOutubro) === "aplicada";
+      const corrigirOperacao = !correcaoOperacaoAplicada ||
+        config.get(keys.operacaoCorrecaoPedidoOutubroDelta) === undefined;
+      if (corrigirOperacao) {
+        // O saldo corrigido fica como base; a abertura real continua pendente.
+        // Guardamos o delta separadamente para que leituras seguintes o reapliquem
+        // sem marcar a semana como consolidada nem perder os débitos do período.
+        deltaOperacaoPendente = CORRECAO_PEDIDO_OUTUBRO.saldoOperacaoInicial - saldoBase;
+        const configuracoes: [string, string][] = [
+          [keys.operacaoCorrecaoPedidoOutubroDelta, String(deltaOperacaoPendente)],
+        ];
+        if (!correcaoOperacaoAplicada) {
+          // R$ 1.319,32 reclassificados: R$ 791,59 operação + R$ 527,73 proteção.
+          const reservaNova = cents(config.get(keys.reserva) ?? "0") +
+            CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
+          const reservaSemanaNova = cents(config.get(keys.reservaSemana) ?? "0") +
+            CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
+          configuracoes.push(
+            [keys.reserva, (reservaNova / 100).toFixed(2)],
+            [keys.reservaSemana, (reservaSemanaNova / 100).toFixed(2)],
+            [keys.operacaoCorrecaoPedidoOutubro, "aplicada"],
+          );
+        }
+        for (const [key, value] of configuracoes) {
+          await tx.insert(appConfigTable).values({ key, value })
+            .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+        }
+      }
+      if (config.get(keys.reservaCorrecaoSaldoOutubro) !== "aplicada") {
+        const reservaAtual = cents(config.get(keys.reserva) ?? "0");
+        const aumento = calcularAjusteReservaAteAlvoCentavos(
+          reservaAtual, CORRECAO_PEDIDO_OUTUBRO.saldoReservaAlvo,
+        );
+        const reservaNova = reservaAtual + aumento;
+        for (const [key, value] of [
+          [keys.reserva, (reservaNova / 100).toFixed(2)],
+          [keys.reservaCorrecaoSaldoOutubro, "aplicada"],
+        ]) await tx.insert(appConfigTable).values({ key, value })
+          .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+      }
     }
+    if (!Number.isSafeInteger(deltaOperacaoPendente)) {
+      throw new Error("Ajuste do saldo operacional de outubro inválido");
+    }
+    saldoBase += deltaOperacaoPendente;
     const semanaValor = String(semanaAtual);
     const saldoValor = String(saldoBase);
     if (consolidarAbertura && (
       config.get(keys.operacaoSemana) !== semanaValor ||
       config.get(keys.operacaoSaldoBase) !== saldoValor ||
       modeloSalvo !== MODELO_ACUMULACAO_OPERACAO ||
-      (aberturaRealAt !== null && config.get(keys.operacaoAberturaAt) !== aberturaRealAt.toISOString())
+      (aberturaRealAt !== null && config.get(keys.operacaoAberturaAt) !== aberturaRealAt.toISOString()) ||
+      deltaOperacaoPendente !== 0
     )) {
       for (const [key, value] of [
         [keys.operacaoSemana, semanaValor],
         [keys.operacaoSaldoBase, saldoValor],
         [keys.operacaoModelo, MODELO_ACUMULACAO_OPERACAO],
         ...(aberturaRealAt ? [[keys.operacaoAberturaAt, aberturaRealAt.toISOString()]] : []),
+        ...(deltaOperacaoPendente !== 0
+          ? [[keys.operacaoCorrecaoPedidoOutubroDelta, "0"]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
       aberturaPeriodoAt = aberturaRealAt;

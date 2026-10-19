@@ -83,6 +83,13 @@ export function calcularSaldoOperacionalAcumulado(
   return saldoAnterior + alocacaoAtual - saidasOperacionais;
 }
 
+export function calcularAjusteReservaAteAlvoCentavos(
+  saldoAtualCentavos: number,
+  saldoAlvoCentavos: number,
+): number {
+  return Math.max(0, Math.trunc(saldoAlvoCentavos) - Math.trunc(saldoAtualCentavos));
+}
+
 /**
  * A operação pendente só passa para o saldo carregado quando há uma abertura
  * real do Caixa. A data do período identifica a virada pendente; reabrir ou
