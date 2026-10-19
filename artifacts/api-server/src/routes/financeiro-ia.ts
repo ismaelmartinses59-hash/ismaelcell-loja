@@ -120,7 +120,7 @@ async function carregarSaldoOperacionalBase(
       if (!Number.isSafeInteger(inicioSalvo) || !Number.isSafeInteger(saldoLido) || inicioSalvo > semanaAtual) {
         throw new Error("Saldo operacional semanal inválido");
       }
-      saldoBase = Math.max(0, saldoLido);
+      saldoBase = saldoLido;
       if (inicioSalvo < semanaAtual) {
         const [rows, usosAtivos] = await Promise.all([
           tx.select({
@@ -141,7 +141,7 @@ async function carregarSaldoOperacionalBase(
           const alocacao = calcularAlocacaoSemanal(
             fluxo.entradas, fluxo.saidas, null, 0, protecaoAtiva,
           ).operacaoCentavos;
-          saldoBase = calcularSaldoOperacionalAcumulado(saldoBase, alocacao, fluxo.saidasSegunda);
+          saldoBase = calcularSaldoOperacionalAcumulado(saldoBase, alocacao, fluxo.saidasOperacionais);
         }
       }
     }
@@ -570,7 +570,7 @@ async function snapshot() {
     weekStart, config.proteger, movimentosRecentes,
   );
   const saldoOperacionalDisponivel = calcularSaldoOperacionalAcumulado(
-    saldoOperacionalAnterior, alocacaoSemana.operacaoCentavos, fluxoOperacionalSemana.saidasSegunda,
+    saldoOperacionalAnterior, alocacaoSemana.operacaoCentavos, fluxoOperacionalSemana.saidasOperacionais,
   );
   const entradasSemana = movimentosElegiveisSemana.entradas;
   const taxaReserva = alocacaoSemana.percentualProtecao;
@@ -676,6 +676,7 @@ async function snapshot() {
       alocacaoOperacao: money(alocacaoSemana.operacaoCentavos),
       saldoOperacionalAnterior: money(saldoOperacionalAnterior),
       saidasSegunda: money(fluxoOperacionalSemana.saidasSegunda),
+      saidasOperacionais: money(fluxoOperacionalSemana.saidasOperacionais),
       saldoOperacionalDisponivel: money(saldoOperacionalDisponivel),
       necessidadeOperacional: money(alocacaoSemana.necessidadeOperacionalCentavos),
       saldoOperacional: money(alocacaoSemana.fluxoLiquidoCentavos),
@@ -983,12 +984,13 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
     const s = await snapshot();
     const q = normalize(question);
     const saldo = s.saldos;
-    const limiteOperacionalCentavos = Math.max(0, Math.round(s.movimentoSemana.saldoOperacionalDisponivel * 100));
+    const limiteOperacionalCentavos = Math.round(s.movimentoSemana.saldoOperacionalDisponivel * 100);
     let answer: string | null = null;
     const amount = question.match(/(?:r\$\s*)?((?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?)/i);
     const target = amount ? inputMoney(amount[1].replace(/\./g, "")) : null;
     if (/posso comprar|comprar.*peca|comprar.*estoque/.test(q)) {
       if (saldo.disponivel === null) answer = insufficient;
+      else if (limiteOperacionalCentavos < 0) answer = `O saldo operacional está negativo em ${reais(Math.abs(limiteOperacionalCentavos))}. As próximas alocações de operação cobrirão esse déficit antes de liberar novos gastos. Nenhum valor foi movimentado.`;
       else if (target === null) answer = `Disponível após a reserva protegida: ${reais(Math.round(saldo.disponivel * 100))}. Saldo operacional acumulado: ${reais(limiteOperacionalCentavos)}. Margem conservadora depois das contas previstas e da meta de compra: ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. Informe o valor do pedido para comparar.`;
       else if (target > Math.round(saldo.disponivel * 100)) {
         const gap = target - Math.round(saldo.disponivel * 100);
@@ -1001,7 +1003,7 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
         });
       } else if (target > limiteOperacionalCentavos) {
         const diferenca = target - limiteOperacionalCentavos;
-        answer = `O pedido cabe no disponível após a reserva protegida, mas excede em ${reais(diferenca)} o saldo operacional acumulado de ${reais(limiteOperacionalCentavos)}. As saídas de segunda consomem a sobra anterior até zero, sem reduzir a alocação desta semana. Nenhum valor foi movimentado.`;
+        answer = `O pedido cabe no disponível após a reserva protegida, mas excede em ${reais(diferenca)} o saldo operacional acumulado de ${reais(limiteOperacionalCentavos)}. As saídas operacionais reduzem o saldo acumulado, e futuras alocações cobrem o déficit. Nenhum valor foi movimentado.`;
       } else if (saldo.podeGastar !== null && target > Math.round(saldo.podeGastar * 100)) {
         const margem = Math.round(saldo.podeGastar * 100);
         answer = `O pedido de ${reais(target)} cabe no disponível após a reserva protegida (${reais(Math.round(saldo.disponivel * 100))}), mas ultrapassa em ${reais(target - margem)} a margem conservadora (${reais(margem)}), que preserva contas previstas nos próximos 7 dias e a meta de compra. Ele pode comprometer esse planejamento; nenhum valor foi movimentado.`;
@@ -1014,10 +1016,11 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
       const margemCaixa = saldo.podeGastar === null ? null : Math.round(saldo.podeGastar * 100);
       const limite = margemCaixa === null ? null : Math.min(margemCaixa, limiteOperacionalCentavos);
       answer = limite === null ? insufficient
+        : limite < 0 ? `Não há limite para novos gastos: o saldo operacional está negativo em ${reais(Math.abs(limite))}. Futuras alocações de operação serão usadas para cobrir o déficit.`
         : `Limite conservador registrado: ${reais(limite)}. Considera a margem do Caixa após contas previstas e meta de compra (${reais(margemCaixa!)}) e o saldo operacional acumulado (${reais(limiteOperacionalCentavos)}); prevalece o menor. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
       const positivo = Math.max(0, Math.round(s.movimentoSemana.saldoOperacional * 100));
-      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e as saídas consideradas no rateio foram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. Saídas elegíveis de segunda-feira (${reais(Math.round(s.movimentoSemana.saidasSegunda * 100))}) foram descontadas da sobra anterior, não do fluxo desta semana. O saldo líquido do rateio é ${reais(Math.round(s.movimentoSemana.entradas * 100))} − ${reais(Math.round(s.movimentoSemana.saidas * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}. ${positivo > 0 && s.saldos.protecaoAtiva ? `Com a proteção ativa, a divisão é 60% para operação (${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))}) e 40% para proteção (${reais(Math.round(s.movimentoSemana.protecao * 100))}); os valores somam exatamente ${reais(positivo)} após o arredondamento.` : positivo > 0 ? `Com a proteção desativada, os ${reais(positivo)} ficam na operação.` : "Como o saldo líquido não é positivo, não há parcelas positivas para dividir."} O saldo operacional disponível agora é ${reais(Math.round(s.movimentoSemana.saldoOperacionalDisponivel * 100))}: sobra anterior de ${reais(Math.round(s.movimentoSemana.saldoOperacionalAnterior * 100))} mais a alocação desta semana, menos as saídas de segunda-feira. O valor calculado para proteção é somado ao total protegido conforme entram novos lançamentos elegíveis; é uma classificação contábil, não uma saída nem transferência. Há lançamentos sem forma de pagamento informada que foram excluídos: ${reais(Math.round(s.movimentoSemana.entradasSemForma * 100))} em entradas e ${reais(Math.round(s.movimentoSemana.saidasSemForma * 100))} em saídas. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O valor considerado protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}. O saldo protegido total continua acumulando sem teto máximo.`;
+      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e as saídas consideradas no rateio foram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. Saídas elegíveis de segunda-feira (${reais(Math.round(s.movimentoSemana.saidasSegunda * 100))}) continuam fora do rateio semanal. O saldo líquido do rateio é ${reais(Math.round(s.movimentoSemana.entradas * 100))} − ${reais(Math.round(s.movimentoSemana.saidas * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}. ${positivo > 0 && s.saldos.protecaoAtiva ? `Com a proteção ativa, a divisão é 60% para operação (${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))}) e 40% para proteção (${reais(Math.round(s.movimentoSemana.protecao * 100))}); os valores somam exatamente ${reais(positivo)} após o arredondamento.` : positivo > 0 ? `Com a proteção desativada, os ${reais(positivo)} ficam na operação.` : "Como o saldo líquido não é positivo, não há parcelas positivas para dividir."} O saldo operacional acumulado é ${reais(Math.round(s.movimentoSemana.saldoOperacionalDisponivel * 100))}: saldo anterior ${reais(Math.round(s.movimentoSemana.saldoOperacionalAnterior * 100))} + alocação atual ${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))} − saídas elegíveis ${reais(Math.round(s.movimentoSemana.saidasOperacionais * 100))}. Se ficar negativo, o déficit é carregado e futuras alocações de operação o cobrem. O valor calculado para proteção é somado ao total protegido conforme entram novos lançamentos elegíveis; é uma classificação contábil, não uma saída nem transferência. Há lançamentos sem forma de pagamento informada que foram excluídos: ${reais(Math.round(s.movimentoSemana.entradasSemForma * 100))} em entradas e ${reais(Math.round(s.movimentoSemana.saidasSemForma * 100))} em saídas. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O valor considerado protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}. O saldo protegido total continua acumulando sem teto máximo.`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

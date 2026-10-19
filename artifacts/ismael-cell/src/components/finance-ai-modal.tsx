@@ -41,6 +41,7 @@ type FinanceSnapshot = {
     alocacaoOperacao: number;
     saldoOperacionalAnterior: number;
     saidasSegunda: number;
+    saidasOperacionais: number;
     saldoOperacionalDisponivel: number;
     necessidadeOperacional: number;
     saldoOperacional: number;
@@ -363,7 +364,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Líquido usado no rateio</p>
                     <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacional)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas do período ({fmt(data.movimentoSemana.saidas)}). A saída de segunda continua no histórico do Caixa, mas consome a sobra anterior até zero e não entra neste rateio.</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas do período ({fmt(data.movimentoSemana.saidas)}). Saídas elegíveis de segunda continuam fora deste rateio; todas as saídas elegíveis reduzem o saldo operacional acumulado.</p>}
                   </div>
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
@@ -372,10 +373,10 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                       {!financialNotesHidden && "Acumulado das semanas anteriores e da atual · sem teto máximo."}
                     </p>
                   </div>
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Disponível para operação</p>
-                    <p data-testid="text-alocacao-operacao-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Sobra anterior {fmt(data.movimentoSemana.saldoOperacionalAnterior)}, abatida até zero pelas saídas de segunda ({fmt(data.movimentoSemana.saidasSegunda)}), + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)}.</p>}
+                  <div className={`rounded-xl border p-3 ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
+                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "Déficit operacional" : "Disponível para operação"}</p>
+                    <p data-testid="text-alocacao-operacao-semana" className={`mt-1 font-bold ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-900" : "text-emerald-900"}`}>{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
+                    {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}>Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAnterior)} + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)} − saídas elegíveis {fmt(data.movimentoSemana.saidasOperacionais)}. Se ficar negativo, futuras alocações cobrem o déficit.</p>}
                   </div>
                 </div>
                 <ReservaUtilizacaoPanel saldo={summary.reserva} />

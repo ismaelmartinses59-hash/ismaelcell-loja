@@ -157,18 +157,22 @@ test("pedido de segunda reduz a sobra anterior e não entra no rateio da semana 
     { dia: 21, tipo: "entrada", formaPagamento: "pix", valorCentavos: 500000 },
     { dia: 21, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 100000 },
   ], 20, 26);
-  assert.deepEqual(semana, { entradas: 500000, saidas: 100000, saidasSegunda: 180000 });
+  assert.deepEqual(semana, {
+    entradas: 500000, saidas: 100000, saidasSegunda: 180000, saidasOperacionais: 280000,
+  });
   const alocacao = calcularAlocacaoSemanal(semana.entradas, semana.saidas, null, 0, true);
   assert.equal(alocacao.operacaoCentavos, 240000);
-  assert.equal(calcularSaldoOperacionalAcumulado(200000, alocacao.operacaoCentavos, semana.saidasSegunda), 260000);
+  assert.equal(calcularSaldoOperacionalAcumulado(200000, alocacao.operacaoCentavos, semana.saidasOperacionais), 160000);
 });
 test("a sobra operacional acumula ao fechar cada semana sem recontar o pedido de segunda", () => {
   const saldoFechado = calcularSaldoOperacionalAcumulado(200000, 300000, 180000);
   assert.equal(saldoFechado, 320000);
 });
-test("saídas de segunda acima da sobra anterior não geram saldo operacional negativo", () => {
-  assert.equal(calcularSaldoOperacionalAcumulado(200000, 300000, 450000), 300000);
-  assert.equal(calcularSaldoOperacionalAcumulado(0, 0, 450000), 0);
+test("saídas operacionais podem gerar déficit e futuras alocações o reduzem", () => {
+  const deficit = calcularSaldoOperacionalAcumulado(131932, 23820, 341300);
+  assert.equal(deficit, -185548);
+  assert.equal(calcularSaldoOperacionalAcumulado(deficit, 200000, 0), 14452);
+  assert.equal(calcularSaldoOperacionalAcumulado(0, 0, 450000), -450000);
 });
 test("resumo diário reinicia à meia-noite local e ignora dias e formas de pagamento inelegíveis", () => {
   const antesDaVirada = new Date("2026-10-05T02:59:59.000Z");

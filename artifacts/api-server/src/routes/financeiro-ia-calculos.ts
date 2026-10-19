@@ -54,18 +54,19 @@ export function separarSaidasDeSegundaDoFluxoOperacional(
   return {
     ...somarMovimentosElegiveisDoPeriodo(movimentosDaSemana, segunda, fim),
     saidasSegunda,
+    saidasOperacionais: somarMovimentosElegiveisDoPeriodo(movimentos, segunda, fim).saidas,
   };
 }
 
 export function calcularSaldoOperacionalAcumulado(
   saldoAnteriorCentavos: number,
   alocacaoAtualCentavos: number,
-  saidasSegundaCentavos: number,
+  saidasOperacionaisCentavos: number,
 ): number {
-  const sobraAnterior = Math.max(0, Math.trunc(saldoAnteriorCentavos));
-  const saidasSegunda = Math.max(0, Math.trunc(saidasSegundaCentavos));
-  const alocacaoAtual = Math.max(0, Math.trunc(alocacaoAtualCentavos));
-  return Math.max(0, sobraAnterior - saidasSegunda) + alocacaoAtual;
+  const saldoAnterior = Math.trunc(saldoAnteriorCentavos);
+  const alocacaoAtual = Math.trunc(alocacaoAtualCentavos);
+  const saidasOperacionais = Math.max(0, Math.trunc(saidasOperacionaisCentavos));
+  return saldoAnterior + alocacaoAtual - saidasOperacionais;
 }
 
 export function somarEntradasNovas(
