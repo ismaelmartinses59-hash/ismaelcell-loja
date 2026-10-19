@@ -841,6 +841,10 @@ async function snapshot() {
     expensesTotal + compraOperacional,
     config.proteger,
   );
+  const resultadoOperacionalSemana = calcularVariacaoOperacionalSemana(
+    alocacaoSemana.fluxoLiquidoCentavos,
+    alocacaoSemana.operacaoCentavos,
+  );
   const saldoOperacionalAntesPedidos = estadoOperacional.saldoBase;
   const saldoOperacionalAnterior = calcularSaldoOperacionalAcumulado(
     saldoOperacionalAntesPedidos, 0, fluxoOperacionalSemana.saidasCicloAnterior,
@@ -964,6 +968,8 @@ async function snapshot() {
       saidasCicloAnterior: money(fluxoOperacionalSemana.saidasCicloAnterior),
       saidasOperacionais: money(fluxoOperacionalSemana.saidasOperacionais),
       saldoOperacionalDisponivel: money(saldoOperacionalDisponivel),
+      resultadoOperacionalSemana: money(resultadoOperacionalSemana),
+      aberturaRealNoPeriodo: aberturaNoPeriodoAtual,
       necessidadeOperacional: money(alocacaoSemana.necessidadeOperacionalCentavos),
       saldoOperacional: money(alocacaoSemana.fluxoLiquidoCentavos),
       entradasSemForma: money(semFormaEntradas),

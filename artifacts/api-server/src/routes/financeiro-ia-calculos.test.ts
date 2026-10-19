@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calcularAjusteReservaAteAlvoCentavos, calcularSaldoOperacionalAcumulado, deveConsolidarOperacaoNaAbertura, somarProtecaoPendenteSemanal } from "./financeiro-ia-calculos.js";
+import { calcularAjusteReservaAteAlvoCentavos, calcularSaldoOperacionalAcumulado, calcularVariacaoOperacionalSemana, deveConsolidarOperacaoNaAbertura, somarProtecaoPendenteSemanal } from "./financeiro-ia-calculos.js";
 
 test("consolida somente após uma abertura real e uma vez por período", () => {
   const monday = 20_000;
@@ -30,4 +30,10 @@ test("ajuste contábil da reserva alcança o alvo sem reduzir ou duplicar valore
   assert.equal(calcularAjusteReservaAteAlvoCentavos(240521, 272494), 31973);
   assert.equal(calcularAjusteReservaAteAlvoCentavos(272494, 272494), 0);
   assert.equal(calcularAjusteReservaAteAlvoCentavos(280000, 272494), 0);
+});
+
+
+test("exibe o resultado operacional semanal com sinal positivo ou negativo", () => {
+  assert.equal(calcularVariacaoOperacionalSemana(90500, 54300), 54300);
+  assert.equal(calcularVariacaoOperacionalSemana(-15000, 0), -15000);
 });
