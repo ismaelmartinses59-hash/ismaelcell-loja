@@ -30,6 +30,44 @@ export function somarMovimentosElegiveisDoPeriodo(
   }, { entradas: 0, saidas: 0 });
 }
 
+export function separarSaidasDeSegundaDoFluxoOperacional(
+  movimentos: {
+    dia: number;
+    tipo: string;
+    formaPagamento: string | null;
+    valorCentavos: number;
+  }[],
+  segunda: number,
+  fim: number,
+) {
+  const saidasSegunda = movimentos.reduce((total, movimento) => {
+    if (
+      movimento.dia === segunda &&
+      movimento.tipo === "saida" &&
+      (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix")
+    ) return total + Math.max(0, Math.trunc(movimento.valorCentavos));
+    return total;
+  }, 0);
+  const movimentosDaSemana = movimentos.filter(movimento =>
+    !(movimento.dia === segunda && movimento.tipo === "saida"),
+  );
+  return {
+    ...somarMovimentosElegiveisDoPeriodo(movimentosDaSemana, segunda, fim),
+    saidasSegunda,
+  };
+}
+
+export function calcularSaldoOperacionalAcumulado(
+  saldoAnteriorCentavos: number,
+  alocacaoAtualCentavos: number,
+  saidasSegundaCentavos: number,
+): number {
+  const sobraAnterior = Math.max(0, Math.trunc(saldoAnteriorCentavos));
+  const saidasSegunda = Math.max(0, Math.trunc(saidasSegundaCentavos));
+  const alocacaoAtual = Math.max(0, Math.trunc(alocacaoAtualCentavos));
+  return Math.max(0, sobraAnterior - saidasSegunda) + alocacaoAtual;
+}
+
 export function somarEntradasNovas(
   movimentos: {
     id: number;

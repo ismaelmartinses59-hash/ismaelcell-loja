@@ -4,11 +4,13 @@ import {
   calcularAlocacaoSemanal,
   calcularAumentoReservaSemanal,
   calcularDisponibilidade,
+  calcularSaldoOperacionalAcumulado,
   dataFinanceiraLocal,
   diaFinanceiroLocal,
   mediaDasSemanasComCompra,
   proximoCicloReservaSemanal,
   somarMovimentosElegiveisDoPeriodo,
+  separarSaidasDeSegundaDoFluxoOperacional,
   somarEntradasNovas,
 } from "./financeiro-ia-calculos.js";
 
@@ -148,6 +150,25 @@ test("soma somente entradas e saídas elegíveis entre o início e o fim da sema
     { dia: 13, tipo: "entrada", formaPagamento: null, valorCentavos: 2500 },
     { dia: 13, tipo: "saida", formaPagamento: null, valorCentavos: 1800 },
   ], 11, 13), { entradas: 109500, saidas: 10000 });
+});
+test("pedido de segunda reduz a sobra anterior e não entra no rateio da semana nova", () => {
+  const semana = separarSaidasDeSegundaDoFluxoOperacional([
+    { dia: 20, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 180000 },
+    { dia: 21, tipo: "entrada", formaPagamento: "pix", valorCentavos: 500000 },
+    { dia: 21, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 100000 },
+  ], 20, 26);
+  assert.deepEqual(semana, { entradas: 500000, saidas: 100000, saidasSegunda: 180000 });
+  const alocacao = calcularAlocacaoSemanal(semana.entradas, semana.saidas, null, 0, true);
+  assert.equal(alocacao.operacaoCentavos, 240000);
+  assert.equal(calcularSaldoOperacionalAcumulado(200000, alocacao.operacaoCentavos, semana.saidasSegunda), 260000);
+});
+test("a sobra operacional acumula ao fechar cada semana sem recontar o pedido de segunda", () => {
+  const saldoFechado = calcularSaldoOperacionalAcumulado(200000, 300000, 180000);
+  assert.equal(saldoFechado, 320000);
+});
+test("saídas de segunda acima da sobra anterior não geram saldo operacional negativo", () => {
+  assert.equal(calcularSaldoOperacionalAcumulado(200000, 300000, 450000), 300000);
+  assert.equal(calcularSaldoOperacionalAcumulado(0, 0, 450000), 0);
 });
 test("resumo diário reinicia à meia-noite local e ignora dias e formas de pagamento inelegíveis", () => {
   const antesDaVirada = new Date("2026-10-05T02:59:59.000Z");

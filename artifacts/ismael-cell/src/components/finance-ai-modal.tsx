@@ -39,6 +39,9 @@ type FinanceSnapshot = {
     percentualProtecao: number;
     protecao: number;
     alocacaoOperacao: number;
+    saldoOperacionalAnterior: number;
+    saidasSegunda: number;
+    saldoOperacionalDisponivel: number;
     necessidadeOperacional: number;
     saldoOperacional: number;
     entradasSemForma: number;
@@ -358,9 +361,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     {!financialNotesHidden && <p className="text-[11px] text-violet-700">{summary.protecaoAtiva ? "40% do saldo líquido positivo, depois de subtrair as saídas; fecha o rateio junto com a operação." : "Proteção desativada; nenhum valor é destinado à reserva."}</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Fluxo líquido da semana</p>
+                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Líquido usado no rateio</p>
                     <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacional)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas registradas ({fmt(data.movimentoSemana.saidas)}). A referência de proteção não é uma saída.</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas do período ({fmt(data.movimentoSemana.saidas)}). A saída de segunda continua no histórico do Caixa, mas consome a sobra anterior até zero e não entra neste rateio.</p>}
                   </div>
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
@@ -370,9 +373,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     </p>
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Saldo de operação · {summary.protecaoAtiva ? "60%" : "100%"}</p>
-                    <p data-testid="text-alocacao-operacao-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.alocacaoOperacao)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">{summary.protecaoAtiva ? "60% do saldo líquido positivo; com a proteção calculada, soma exatamente o líquido." : "Com a proteção desativada, o saldo líquido positivo fica todo na operação."}</p>}
+                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Disponível para operação</p>
+                    <p data-testid="text-alocacao-operacao-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Sobra anterior {fmt(data.movimentoSemana.saldoOperacionalAnterior)}, abatida até zero pelas saídas de segunda ({fmt(data.movimentoSemana.saidasSegunda)}), + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)}.</p>}
                   </div>
                 </div>
                 <ReservaUtilizacaoPanel saldo={summary.reserva} />
