@@ -83,6 +83,54 @@ export function calcularSaldoOperacionalAcumulado(
   return saldoAnterior + alocacaoAtual - saidasOperacionais;
 }
 
+/**
+ * A operação pendente só passa para o saldo carregado quando há uma abertura
+ * real do Caixa. A data do período identifica a virada pendente; reabrir ou
+ * consultar o Financeiro no mesmo período não pode consolidar novamente.
+ */
+export function deveConsolidarOperacaoNaAbertura(
+  periodoPendente: number,
+  periodoJaConsolidado: number | null,
+  aberturaRealDia: number | null,
+): boolean {
+  return aberturaRealDia !== null &&
+    aberturaRealDia >= periodoPendente &&
+    (periodoJaConsolidado === null || periodoPendente > periodoJaConsolidado);
+}
+
+export function calcularVariacaoOperacionalSemana(
+  fluxoLiquidoCentavos: number,
+  operacaoCentavos: number,
+): number {
+  const liquido = Math.trunc(fluxoLiquidoCentavos);
+  return liquido < 0 ? liquido : Math.trunc(operacaoCentavos);
+}
+
+export function somarProtecaoPendenteSemanal(
+  movimentos: {
+    dia: number;
+    tipo: string;
+    formaPagamento: string | null;
+    valorCentavos: number;
+    categoria?: string | null;
+  }[],
+  inicioDia: number,
+  fimDia: number,
+  protecaoAtiva: boolean,
+): number {
+  if (!protecaoAtiva || fimDia < inicioDia) return 0;
+  let total = 0;
+  for (let inicio = inicioDia; inicio <= fimDia; inicio += 7) {
+    const fluxo = separarSaidasDeSegundaDoFluxoOperacional(
+      movimentos, inicio, Math.min(inicio + 6, fimDia),
+    );
+    total += calcularAlocacaoSemanal(
+      fluxo.entradas, fluxo.saidas, null, 0, true,
+    ).protecaoCentavos;
+  }
+  return total;
+}
+
 export function somarEntradasNovas(
   movimentos: {
     id: number;

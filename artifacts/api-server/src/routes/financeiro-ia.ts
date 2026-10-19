@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gt, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, isNull, lt, lte, sql } from "drizzle-orm";
 import { db, appConfigTable, caixaTable, caixaSessoesTable, pecasTable, reservaAjustesTable, reservaUtilizacoesTable } from "@workspace/db";
 import { requireFinanceSession } from "./auth";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -10,10 +10,13 @@ import {
   dataFinanceiraLocal,
   diaFinanceiroLocal,
   calcularSaldoOperacionalAcumulado,
+  calcularVariacaoOperacionalSemana,
+  deveConsolidarOperacaoNaAbertura,
   separarSaidasDeSegundaDoFluxoOperacional,
   somarMovimentosElegiveisDoPeriodo,
   mediaDasSemanasComCompra,
   proximoCicloReservaSemanal,
+  somarProtecaoPendenteSemanal,
   somarEntradasNovas,
   type CicloReservaSemanal,
 } from "./financeiro-ia-calculos.js";
@@ -30,9 +33,11 @@ const keys = {
   ultimoLancamentoReserva: "ia_fin_reserva_ultimo_lancamento",
   reservaSemana: "ia_fin_reserva_semanal_valor",
   cicloReservaSemana: "ia_fin_reserva_semanal_ciclo",
+  reservaAberturaProcessada: "ia_fin_reserva_abertura_processada",
   modeloAcumulacaoReserva: "ia_fin_reserva_modelo_acumulacao",
   operacaoSemana: "ia_fin_operacao_semana_inicio",
   operacaoSaldoBase: "ia_fin_operacao_saldo_base_centavos",
+  operacaoAberturaAt: "ia_fin_operacao_abertura_at",
   operacaoModelo: "ia_fin_operacao_modelo",
   operacaoCorrecaoPedidoOutubro: "ia_fin_operacao_correcao_pedido_outubro_2026",
 };
@@ -111,12 +116,14 @@ function lerCicloReservaSemanal(value: string | undefined): CicloReservaSemanal 
 async function carregarSaldoOperacionalBase(
   semanaAtual: number,
   protecaoAtiva: boolean,
+  aberturaRealAt: Date | null,
   movimentosAtuais: {
     dia: number;
     tipo: string;
     formaPagamento: string | null;
     valorCentavos: number;
     categoria?: string | null;
+    createdAt?: Date;
   }[],
 ) {
   return db.transaction(async tx => {
@@ -125,7 +132,19 @@ async function carregarSaldoOperacionalBase(
     const semanaSalva = config.get(keys.operacaoSemana);
     const saldoSalvo = config.get(keys.operacaoSaldoBase);
     const modeloSalvo = config.get(keys.operacaoModelo);
+    let aberturaPeriodoAt: Date | null = null;
+    const aberturaSalva = config.get(keys.operacaoAberturaAt);
+    if (aberturaSalva) {
+      const parsed = new Date(aberturaSalva);
+      if (!Number.isNaN(parsed.getTime())) aberturaPeriodoAt = parsed;
+    }
+    const periodoJaConsolidado = semanaSalva === undefined ? null : Number(semanaSalva);
+    const aberturaRealDia = aberturaRealAt ? dayIndex(aberturaRealAt) : null;
+    const consolidarAbertura = deveConsolidarOperacaoNaAbertura(
+      semanaAtual, periodoJaConsolidado, aberturaRealDia,
+    );
     let saldoBase: number;
+    let operacaoPendente = 0;
 
     if (semanaSalva === undefined || saldoSalvo === undefined) {
       const anterior = somarMovimentosElegiveisDoPeriodo(movimentosAtuais, semanaAtual - 7, semanaAtual - 1);
@@ -150,7 +169,9 @@ async function carregarSaldoOperacionalBase(
             .where(isNull(reservaUtilizacoesTable.estornadaAt)),
         ]);
         const caixasDaReserva = new Set(usosAtivos.map(row => row.caixaId).filter((id): id is number => id !== null));
-        const historico = rows.filter(row => !caixasDaReserva.has(row.id)).map(row => ({
+        const historico = rows.filter(row =>
+          !caixasDaReserva.has(row.id) && (!aberturaPeriodoAt || row.createdAt > aberturaPeriodoAt),
+        ).map(row => ({
           dia: dayIndex(row.createdAt), tipo: row.tipo, formaPagamento: row.formaPagamento,
           valorCentavos: cents(row.valor), categoria: row.categoria,
         }));
@@ -181,37 +202,83 @@ async function carregarSaldoOperacionalBase(
             .where(isNull(reservaUtilizacoesTable.estornadaAt)),
         ]);
         const caixasDaReserva = new Set(usosAtivos.map(row => row.caixaId).filter((id): id is number => id !== null));
-        const historico = rows.filter(row => !caixasDaReserva.has(row.id)).map(row => ({
+        const historico = rows.filter(row =>
+          !caixasDaReserva.has(row.id) && (!aberturaPeriodoAt || row.createdAt > aberturaPeriodoAt),
+        ).map(row => ({
           dia: dayIndex(row.createdAt), tipo: row.tipo, formaPagamento: row.formaPagamento,
           valorCentavos: cents(row.valor), categoria: row.categoria,
         }));
+        let saidasPendentes = 0;
         for (let inicio = inicioSalvo; inicio < semanaAtual; inicio += 7) {
           const fluxo = separarSaidasDeSegundaDoFluxoOperacional(historico, inicio, inicio + 6);
+          saidasPendentes += fluxo.saidasCicloAnterior + fluxo.saidasOperacionais;
           saldoBase = calcularSaldoOperacionalAcumulado(saldoBase, 0, fluxo.saidasCicloAnterior);
-          const alocacao = calcularAlocacaoSemanal(
+          const rateio = calcularAlocacaoSemanal(
             fluxo.entradas, fluxo.saidas, null, 0, protecaoAtiva,
-          ).operacaoCentavos;
-          saldoBase = calcularSaldoOperacionalAcumulado(saldoBase, alocacao, fluxo.saidasOperacionais);
+          );
+          const variacaoOperacional = calcularVariacaoOperacionalSemana(
+            rateio.fluxoLiquidoCentavos, rateio.operacaoCentavos,
+          );
+          if (!consolidarAbertura) operacaoPendente += rateio.operacaoCentavos;
+          saldoBase = calcularSaldoOperacionalAcumulado(saldoBase, variacaoOperacional, 0);
         }
+        if (!consolidarAbertura) saldoBase = saldoLido - saidasPendentes;
       }
     }
-    // O rateio filtra gastos pagos pela reserva; a correção histórica valida o Caixa bruto.
-      const pedidoOutubro = await tx.select({
-        tipo: caixaTable.tipo,
-        valor: caixaTable.valor,
-        formaPagamento: caixaTable.formaPagamento,
-        createdAt: caixaTable.createdAt,
-      }).from(caixaTable).where(and(
-        gte(caixaTable.createdAt, new Date((CORRECAO_PEDIDO_OUTUBRO.dia - 1) * 86400000)),
-        lt(caixaTable.createdAt, new Date((CORRECAO_PEDIDO_OUTUBRO.dia + 2) * 86400000)),
-      ));
-      const pedidoOutubroPresente = pedidoOutubro.some(movimento =>
-        dayIndex(movimento.createdAt) === CORRECAO_PEDIDO_OUTUBRO.dia &&
-        movimento.tipo === "saida" &&
-        (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix") &&
-        cents(movimento.valor) === CORRECAO_PEDIDO_OUTUBRO.valor,
+    if (consolidarAbertura && aberturaRealAt) {
+      const [rows, usosAtivos] = await Promise.all([
+        tx.select({
+          id: caixaTable.id, tipo: caixaTable.tipo, valor: caixaTable.valor,
+          formaPagamento: caixaTable.formaPagamento, categoria: caixaTable.categoria,
+          createdAt: caixaTable.createdAt,
+        }).from(caixaTable).where(and(
+          gte(caixaTable.createdAt, new Date((semanaAtual - 1) * 86400000)),
+          lte(caixaTable.createdAt, aberturaRealAt),
+        )),
+        tx.select({ caixaId: reservaUtilizacoesTable.caixaId }).from(reservaUtilizacoesTable)
+          .where(isNull(reservaUtilizacoesTable.estornadaAt)),
+      ]);
+      const caixasDaReserva = new Set(usosAtivos.map(row => row.caixaId).filter((id): id is number => id !== null));
+      const movimentosAntesAbertura = rows.filter(row => !caixasDaReserva.has(row.id)).map(row => ({
+        dia: dayIndex(row.createdAt), tipo: row.tipo, formaPagamento: row.formaPagamento,
+        valorCentavos: cents(row.valor), categoria: row.categoria,
+      }));
+      const fluxoPendente = separarSaidasDeSegundaDoFluxoOperacional(
+        movimentosAntesAbertura, semanaAtual, dayIndex(aberturaRealAt),
       );
-    if (pedidoOutubroPresente && config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada") {
+      const rateioPendente = calcularAlocacaoSemanal(
+        fluxoPendente.entradas, fluxoPendente.saidas, null, 0, protecaoAtiva,
+      );
+      saldoBase = calcularSaldoOperacionalAcumulado(
+        saldoBase, calcularVariacaoOperacionalSemana(
+          rateioPendente.fluxoLiquidoCentavos, rateioPendente.operacaoCentavos,
+        ), fluxoPendente.saidasCicloAnterior + fluxoPendente.saidasOperacionais,
+      );
+    }
+    // A lista usada no rateio exclui saídas já financiadas pela reserva.
+    // A correção histórica precisa validar o lançamento bruto do Caixa,
+    // sem alterar a regra que evita descontar o mesmo gasto duas vezes.
+    const pedidoOutubro = await tx.select({
+      tipo: caixaTable.tipo,
+      valor: caixaTable.valor,
+      formaPagamento: caixaTable.formaPagamento,
+      createdAt: caixaTable.createdAt,
+    }).from(caixaTable).where(and(
+      gte(caixaTable.createdAt, new Date((CORRECAO_PEDIDO_OUTUBRO.dia - 1) * 86400000)),
+      lt(caixaTable.createdAt, new Date((CORRECAO_PEDIDO_OUTUBRO.dia + 2) * 86400000)),
+    ));
+    const orderPresent = pedidoOutubro.some(movimento =>
+      dayIndex(movimento.createdAt) === CORRECAO_PEDIDO_OUTUBRO.dia &&
+      movimento.tipo === "saida" &&
+      (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix") &&
+      cents(movimento.valor) === CORRECAO_PEDIDO_OUTUBRO.valor,
+    );
+    if (
+      orderPresent &&
+      config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada"
+    ) {
+      // Reclassifica o saldo corrigido da semana 12–18/10 uma vez:
+      // R$ 1.319,32 em pool -> R$ 791,59 operação + R$ 527,73 proteção.
       saldoBase = CORRECAO_PEDIDO_OUTUBRO.saldoOperacaoInicial;
       const reservaNova = cents(config.get(keys.reserva) ?? "0") + CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
       const reservaSemanaNova = cents(config.get(keys.reservaSemana) ?? "0") + CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
@@ -224,19 +291,28 @@ async function carregarSaldoOperacionalBase(
     }
     const semanaValor = String(semanaAtual);
     const saldoValor = String(saldoBase);
-    if (
+    if (consolidarAbertura && (
       config.get(keys.operacaoSemana) !== semanaValor ||
       config.get(keys.operacaoSaldoBase) !== saldoValor ||
-      modeloSalvo !== MODELO_ACUMULACAO_OPERACAO
-    ) {
+      modeloSalvo !== MODELO_ACUMULACAO_OPERACAO ||
+      (aberturaRealAt !== null && config.get(keys.operacaoAberturaAt) !== aberturaRealAt.toISOString())
+    )) {
       for (const [key, value] of [
         [keys.operacaoSemana, semanaValor],
         [keys.operacaoSaldoBase, saldoValor],
         [keys.operacaoModelo, MODELO_ACUMULACAO_OPERACAO],
+        ...(aberturaRealAt ? [[keys.operacaoAberturaAt, aberturaRealAt.toISOString()]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
+      aberturaPeriodoAt = aberturaRealAt;
     }
-    return saldoBase;
+    // Sem abertura real, os períodos vencidos continuam pendentes e não podem
+    // aumentar o limite operacional disponível para pedidos.
+    return {
+      saldoBase,
+      aberturaPeriodoAt: consolidarAbertura ? aberturaRealAt : aberturaPeriodoAt,
+      operacaoPendente: consolidarAbertura ? 0 : operacaoPendente,
+    };
   });
 }
 
@@ -251,6 +327,7 @@ async function atualizarReservaGradual(
   percentualProtecao: number,
   hojeDia: number,
   segundaDia: number,
+  aberturaRealAt: Date | null,
 ) {
   return db.transaction(async tx => {
     // Avança o marcador e a reserva juntos: repetir a consulta não duplica o aporte.
@@ -262,6 +339,50 @@ async function atualizarReservaGradual(
     const compra = Math.max(compraPlanejada, cents(config.get(keys.meta) ?? "0"));
     const marcador = config.get(keys.ultimoLancamentoReserva);
     const cicloSalvo = lerCicloReservaSemanal(config.get(keys.cicloReservaSemana));
+    const aberturaRealDia = aberturaRealAt ? dayIndex(aberturaRealAt) : null;
+    const aberturaJaProcessada = config.get(keys.reservaAberturaProcessada);
+    const reservaJaConsolidadaDia = aberturaJaProcessada === undefined
+      ? null : Number(aberturaJaProcessada);
+    const consolidarNaAbertura = deveConsolidarOperacaoNaAbertura(
+      segundaDia, reservaJaConsolidadaDia, aberturaRealDia,
+    );
+    if (!consolidarNaAbertura) {
+      let protecaoPendente = 0;
+      if (marcador !== undefined) {
+        const cursorPendente = Number(marcador);
+        if (!Number.isSafeInteger(cursorPendente) || cursorPendente < 0) {
+          throw new Error("Marcador da reserva inválido");
+        }
+        const [novosPendentes, usosAtivos] = await Promise.all([
+          tx.select({
+            id: caixaTable.id, tipo: caixaTable.tipo, valor: caixaTable.valor,
+            formaPagamento: caixaTable.formaPagamento, categoria: caixaTable.categoria,
+            createdAt: caixaTable.createdAt,
+          }).from(caixaTable).where(gt(caixaTable.id, cursorPendente)).orderBy(caixaTable.id),
+          tx.select({ caixaId: reservaUtilizacoesTable.caixaId }).from(reservaUtilizacoesTable)
+            .where(isNull(reservaUtilizacoesTable.estornadaAt)),
+        ]);
+        const caixasDaReserva = new Set(usosAtivos.map(row => row.caixaId).filter((id): id is number => id !== null));
+        const movimentosPendentes = novosPendentes.filter(row => !caixasDaReserva.has(row.id)).map(row => ({
+          dia: dayIndex(row.createdAt), tipo: row.tipo, formaPagamento: row.formaPagamento,
+          valorCentavos: cents(row.valor), categoria: row.categoria,
+        }));
+        protecaoPendente = somarProtecaoPendenteSemanal(
+          movimentosPendentes, cicloSalvo?.inicioDia ?? segundaDia, hojeDia, ativa,
+        );
+      }
+      return {
+        reserva: atual,
+        reservaSemana: cents(config.get(keys.reservaSemana) ?? (reservaSemana / 100).toFixed(2)),
+        aporte: 0,
+        entradaNova: 0,
+        protecaoPendente,
+        inicioAgora: false,
+        compraPlanejada: 0,
+        protecaoAtiva: ativa,
+        saldosAtuais: null as { dinheiro: number; pix: number } | null,
+      };
+    }
     // O limite inferior inclui qualquer fuso brasileiro; dayIndex aplica o fuso da loja.
     const entradasSegunda = await tx.select({
       id: caixaTable.id,
@@ -281,11 +402,12 @@ async function atualizarReservaGradual(
     const proximoCiclo = proximoCicloReservaSemanal(
       hojeDia, segundaDia, primeiraEntradaSegundaId, cicloSalvo,
     );
-    const ciclo = proximoCiclo ?? cicloSalvo ?? {
-      chave: `base:${segundaDia}`,
+    const ciclo = proximoCiclo ?? (cicloSalvo && cicloSalvo.inicioDia >= segundaDia
+      ? cicloSalvo : {
+      chave: `abertura:${segundaDia}`,
       inicioDia: segundaDia,
       inicioId: 0,
-    };
+    });
     let reservaSemanaAtual = cents(config.get(keys.reservaSemana) ?? (reservaSemana / 100).toFixed(2));
     if (proximoCiclo || !cicloSalvo) {
       const ajustesDaSemana = await tx.select({
@@ -318,11 +440,13 @@ async function atualizarReservaGradual(
       const cicloJson = JSON.stringify(ciclo);
       if (
         config.get(keys.reservaSemana) !== valorSemana ||
-        config.get(keys.cicloReservaSemana) !== cicloJson
+        config.get(keys.cicloReservaSemana) !== cicloJson ||
+        config.get(keys.reservaAberturaProcessada) !== String(segundaDia)
       ) {
         for (const [key, value] of [
           [keys.reservaSemana, valorSemana],
           [keys.cicloReservaSemana, cicloJson],
+          [keys.reservaAberturaProcessada, String(segundaDia)],
         ]) await tx.insert(appConfigTable).values({ key, value })
           .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
       }
@@ -331,6 +455,7 @@ async function atualizarReservaGradual(
         reservaSemana: reservaSemanaAtual,
         aporte: 0,
         entradaNova: 0,
+        protecaoPendente: 0,
         inicioAgora: false,
         compraPlanejada: 0,
         protecaoAtiva: ativa,
@@ -340,7 +465,9 @@ async function atualizarReservaGradual(
     if (marcador === undefined) {
       // Ao ativar o rastreamento, não reaproveita entradas antigas como se
       // tivessem acabado de ser recebidas.
-      const [ultimo] = await tx.select({ id: caixaTable.id }).from(caixaTable).orderBy(desc(caixaTable.id)).limit(1);
+      const [ultimo] = await tx.select({ id: caixaTable.id }).from(caixaTable)
+        .where(aberturaRealAt ? lte(caixaTable.createdAt, aberturaRealAt) : undefined)
+        .orderBy(desc(caixaTable.id)).limit(1);
       const reconciliarSemana = migrarAcumulacaoReserva && ativa && protecaoAlocadaSemana > 0;
       const reservaSemanaBase = reconciliarSemana ? 0 : reservaSemanaAtual;
       const aumentoInicial = reconciliarSemana
@@ -360,6 +487,7 @@ async function atualizarReservaGradual(
       for (const [key, value] of [
         [keys.reservaSemana, (reservaSemanaAtual / 100).toFixed(2)],
         [keys.cicloReservaSemana, JSON.stringify(ciclo)],
+        [keys.reservaAberturaProcessada, String(segundaDia)],
         ...(reconciliarSemana ? [[keys.modeloAcumulacaoReserva, MODELO_ACUMULACAO_RESERVA]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
@@ -369,6 +497,7 @@ async function atualizarReservaGradual(
         reservaSemana: reservaSemanaAtual,
         aporte: aumentoInicial,
         entradaNova: 0,
+        protecaoPendente: 0,
         inicioAgora: true,
         compraPlanejada: Math.min(compra, Math.max(0, aposContas - reservaInicial)),
         protecaoAtiva: ativa,
@@ -379,17 +508,26 @@ async function atualizarReservaGradual(
     if (!Number.isSafeInteger(cursor) || cursor < 0) throw new Error("Marcador da reserva inválido");
     const novos = await tx.select({
       id: caixaTable.id, tipo: caixaTable.tipo, valor: caixaTable.valor,
-      formaPagamento: caixaTable.formaPagamento, createdAt: caixaTable.createdAt,
+      formaPagamento: caixaTable.formaPagamento, categoria: caixaTable.categoria,
+      createdAt: caixaTable.createdAt,
     }).from(caixaTable).where(gt(caixaTable.id, cursor)).orderBy(caixaTable.id);
-    const entradaNova = somarEntradasNovas(
-      novos.map(row => ({ ...row, valorCentavos: cents(row.valor) })), cursor,
+    const usosAtivos = await tx.select({ caixaId: reservaUtilizacoesTable.caixaId })
+      .from(reservaUtilizacoesTable).where(isNull(reservaUtilizacoesTable.estornadaAt));
+    const caixasDaReserva = new Set(usosAtivos.map(row => row.caixaId).filter((id): id is number => id !== null));
+    const novosProcessados = novos.filter(row =>
+      !caixasDaReserva.has(row.id) && (!aberturaRealAt || row.createdAt <= aberturaRealAt),
     );
-    const entradaNovaSemana = novos.reduce((soma, row) => {
-      const elegivel = row.tipo === "entrada" &&
-        (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix");
-      const dia = dayIndex(row.createdAt);
-      return soma + (elegivel && dia >= ciclo.inicioDia && dia <= hojeDia ? cents(row.valor) : 0);
-    }, 0);
+    const entradaNova = somarEntradasNovas(
+      novosProcessados.map(row => ({ ...row, valorCentavos: cents(row.valor) })), cursor,
+    );
+    const inicioPendente = cicloSalvo?.inicioDia ?? segundaDia;
+    const movimentosPendentes = novosProcessados.map(row => ({
+      dia: dayIndex(row.createdAt), tipo: row.tipo, formaPagamento: row.formaPagamento,
+      valorCentavos: cents(row.valor), categoria: row.categoria,
+    }));
+    const protecaoPendente = somarProtecaoPendenteSemanal(
+      movimentosPendentes, inicioPendente, aberturaRealDia ?? hojeDia, ativa,
+    );
     let dinheiroAtual: number | null = null;
     let pixAtual = 0;
     if (entradaNova > 0 && ativa) {
@@ -413,11 +551,12 @@ async function atualizarReservaGradual(
     }
     const totalAtual = dinheiroAtual === null ? total : dinheiroAtual + pixAtual;
     const reconciliarSemana = migrarAcumulacaoReserva && ativa && protecaoAlocadaSemana > 0;
+    const protecaoAConsolidar = reconciliarSemana ? protecaoAlocadaSemana : protecaoPendente;
     const reservaSemanaBase = reconciliarSemana ? 0 : reservaSemanaAtual;
-    const aumentoPlanejado = reconciliarSemana || entradaNovaSemana > 0
+    const aumentoPlanejado = reconciliarSemana || entradaNova > 0
       ? calcularAumentoReservaSemanal(
-          totalAtual, reservaSemanaBase, protecaoAlocadaSemana,
-          entradaNovaSemana, ativa, reconciliarSemana,
+          totalAtual, reservaSemanaBase, protecaoAConsolidar,
+          entradaNova, ativa, reconciliarSemana,
         )
       : 0;
     const novo = atual + aumentoPlanejado;
@@ -436,7 +575,7 @@ async function atualizarReservaGradual(
           target: appConfigTable.key,
           set: { value: (novo / 100).toFixed(2), updatedAt: new Date() },
         });
-      if (novos.length && !reconciliarSemana) {
+      if (novosProcessados.length && !reconciliarSemana) {
         await tx.insert(reservaAjustesTable).values({
           valorAnterior: atual,
           aumento: novo - atual,
@@ -445,16 +584,16 @@ async function atualizarReservaGradual(
           percentual: percentualProtecao,
           contasProtegidas: contasPrevistas,
           pedidosProtegidos: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)),
-          ultimoLancamentoId: novos.at(-1)!.id,
+          ultimoLancamentoId: novosProcessados.at(-1)!.id,
         });
       }
     }
     // Sem base física, não consome a entrada; tenta novamente após abrir a gaveta.
-    if (novos.length && (entradaNova === 0 || !ativa || dinheiroAtual !== null)) {
-      await tx.insert(appConfigTable).values({ key: keys.ultimoLancamentoReserva, value: String(novos.at(-1)!.id) })
+    if (novosProcessados.length && (entradaNova === 0 || !ativa || dinheiroAtual !== null)) {
+      await tx.insert(appConfigTable).values({ key: keys.ultimoLancamentoReserva, value: String(novosProcessados.at(-1)!.id) })
         .onConflictDoUpdate({
           target: appConfigTable.key,
-          set: { value: String(novos.at(-1)!.id), updatedAt: new Date() },
+          set: { value: String(novosProcessados.at(-1)!.id), updatedAt: new Date() },
         });
     }
     const reservaSemanaSalva = (reservaSemanaAtual / 100).toFixed(2);
@@ -462,11 +601,13 @@ async function atualizarReservaGradual(
     if (
       config.get(keys.reservaSemana) !== reservaSemanaSalva ||
       config.get(keys.cicloReservaSemana) !== cicloSalvoJson ||
+      config.get(keys.reservaAberturaProcessada) !== String(segundaDia) ||
       (reconciliarSemana && config.get(keys.modeloAcumulacaoReserva) !== MODELO_ACUMULACAO_RESERVA)
     ) {
       for (const [key, value] of [
         [keys.reservaSemana, reservaSemanaSalva],
         [keys.cicloReservaSemana, cicloSalvoJson],
+        [keys.reservaAberturaProcessada, String(segundaDia)],
         ...(reconciliarSemana ? [[keys.modeloAcumulacaoReserva, MODELO_ACUMULACAO_RESERVA]] : []),
       ]) await tx.insert(appConfigTable).values({ key, value })
         .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
@@ -474,6 +615,7 @@ async function atualizarReservaGradual(
     return {
       reserva: novo, reservaSemana: reservaSemanaAtual, aporte: novo - atual,
       entradaNova: dinheiroAtual === null ? 0 : entradaNova, inicioAgora: false,
+      protecaoPendente: 0,
       compraPlanejada: Math.min(pedidosPreservados, Math.max(0, aposContas - novo)),
       protecaoAtiva: ativa,
       saldosAtuais: dinheiroAtual === null ? null : { dinheiro: dinheiroAtual, pix: pixAtual },
@@ -613,13 +755,24 @@ async function snapshot() {
   const expensesTotal = expenses.reduce((sum, e) => sum + e.valor, 0);
   const movimentosRecentes = recent.map(row => ({
     dia: dayIndex(row.createdAt),
+    createdAt: row.createdAt,
     tipo: row.tipo,
     formaPagamento: row.formaPagamento,
     valorCentavos: cents(row.valor),
     categoria: row.categoria,
   }));
+  const estadoOperacional = await carregarSaldoOperacionalBase(
+    weekStart, config.proteger, sessao?.aberturaAt ?? null, movimentosRecentes,
+  );
+  const aberturaNoPeriodoAtual = estadoOperacional.aberturaPeriodoAt !== null &&
+    dayIndex(estadoOperacional.aberturaPeriodoAt) >= weekStart;
+  const movimentosOperacionaisSemana = aberturaNoPeriodoAtual
+    ? movimentosRecentes.filter(row => row.createdAt > estadoOperacional.aberturaPeriodoAt!)
+    : movimentosRecentes;
   const fluxoOperacionalSemana = separarSaidasDeSegundaDoFluxoOperacional(
-    movimentosRecentes, weekStart, today,
+    movimentosOperacionaisSemana,
+    aberturaNoPeriodoAtual ? dayIndex(estadoOperacional.aberturaPeriodoAt!) : weekStart,
+    today,
   );
   const movimentosElegiveisSemana = {
     entradas: fluxoOperacionalSemana.entradas,
@@ -649,14 +802,12 @@ async function snapshot() {
     expensesTotal + compraOperacional,
     config.proteger,
   );
-  const saldoOperacionalAntesPedidos = await carregarSaldoOperacionalBase(
-    weekStart, config.proteger, movimentosRecentes,
-  );
+  const saldoOperacionalAntesPedidos = estadoOperacional.saldoBase;
   const saldoOperacionalAnterior = calcularSaldoOperacionalAcumulado(
     saldoOperacionalAntesPedidos, 0, fluxoOperacionalSemana.saidasCicloAnterior,
   );
   const saldoOperacionalDisponivel = calcularSaldoOperacionalAcumulado(
-    saldoOperacionalAnterior, alocacaoSemana.operacaoCentavos, fluxoOperacionalSemana.saidasOperacionais,
+    saldoOperacionalAnterior, 0, fluxoOperacionalSemana.saidasOperacionais,
   );
   const entradasSemana = movimentosElegiveisSemana.entradas;
   const taxaReserva = alocacaoSemana.percentualProtecao;
@@ -669,6 +820,7 @@ async function snapshot() {
     taxaReserva,
     today,
     weekStart,
+    sessao?.aberturaAt ?? null,
   );
   const historicoReserva = await db.select().from(reservaAjustesTable)
     .orderBy(desc(reservaAjustesTable.id));
@@ -729,6 +881,7 @@ async function snapshot() {
       reservaSemana: money(reservaAutomatica.reservaSemana),
       aporte: money(reservaAutomatica.aporte),
       entradaNova: money(reservaAutomatica.entradaNova),
+      protecaoPendente: money(reservaAutomatica.protecaoPendente),
       percentual: taxaReserva,
       entradasSemana: money(entradasSemana),
       // Mantém o campo antigo para consumidores que ainda não migraram o nome.
@@ -753,13 +906,18 @@ async function snapshot() {
       })),
     },
     movimentoSemana: {
-      inicio: daySP(new Date(weekStart * 86400000 + 43200000)),
+      inicio: daySP(new Date(
+        (aberturaNoPeriodoAtual
+          ? dayIndex(estadoOperacional.aberturaPeriodoAt!)
+          : weekStart) * 86400000 + 43200000,
+      )),
       fim: todayString,
       entradas: money(movimentosElegiveisSemana.entradas),
       saidas: money(movimentosElegiveisSemana.saidas),
       percentualProtecao: config.proteger ? taxaReserva : 0,
       protecao: money(alocacaoSemana.protecaoCentavos),
       alocacaoOperacao: money(alocacaoSemana.operacaoCentavos),
+      operacaoPendente: money(estadoOperacional.operacaoPendente + alocacaoSemana.operacaoCentavos),
       saldoOperacionalAntesPedidos: money(saldoOperacionalAntesPedidos),
       saldoOperacionalAnterior: money(saldoOperacionalAnterior),
       saidasSegunda: money(fluxoOperacionalSemana.saidasSegunda),
@@ -982,7 +1140,7 @@ router.post("/financeiro-ia/reserva/utilizacoes/:id/estornar", async (req, res) 
 });
 
 router.post("/financeiro-ia/retiradas", async (req, res) => {
-    const amount = question.match(/(?:r\$\s*)?((?:\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?)/i);
+  const amount = inputMoney(req.body?.valor);
   const motivo = String(req.body?.motivo ?? "").trim().slice(0, 120);
   const observacao = String(req.body?.observacao ?? "").trim().slice(0, 500);
   const date = String(req.body?.data ?? "");
@@ -1047,10 +1205,17 @@ router.post("/financeiro-ia/transcrever", async (req, res): Promise<void> => {
     : { count: 1, resetAt: now + 60_000 });
 
   try {
-        const response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: `Você é um assistente financeiro de uma loja. Responda em português usando SOMENTE os fatos JSON a seguir; se a pergunta exigir dados ausentes, diga exatamente "${insufficient}". Nunca proponha ações automáticas, nunca invente valores nem faça julgamentos vagos (errado, ruim, administrando mal). Se identificar algo que merece atenção, use cinco partes: O que aconteceu? Qual dado provocou o alerta? Como isso afetou o caixa? O que pode acontecer se continuar? Qual ação considerar? Diferencie fatos de riscos condicionais, e deixe a decisão com o usuário. Fatos: ${facts}. Pergunta: ${question}`,
-        });
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType, data: audioBase64 } },
+          { text: 'Transcreva o áudio em português. Responda somente como JSON válido no formato {"pergunta":"texto transcrito"}, sem markdown.' },
+        ],
+      }],
+      config: { responseMimeType: "application/json", maxOutputTokens: 512 },
+    });
     const parsed: unknown = JSON.parse(response.text ?? "{}");
     const text = String((parsed as { pergunta?: unknown })?.pergunta ?? "").trim();
     if (!text || text.length > 400) {
@@ -1109,7 +1274,7 @@ router.post("/financeiro-ia/perguntar", async (req, res) => {
         : `Limite conservador registrado: ${reais(limite)}. Considera a margem do Caixa após contas previstas e meta de compra (${reais(margemCaixa!)}) e o saldo operacional acumulado (${reais(limiteOperacionalCentavos)}); prevalece o menor. Não inclui despesas não cadastradas.`;
     } else if (/reserva|disponivel|caixa/.test(q)) {
       const positivo = Math.max(0, Math.round(s.movimentoSemana.saldoOperacional * 100));
-      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e as saídas do rateio foram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. Pedidos de estoque (${reais(Math.round(s.movimentoSemana.saidasPedidosEstoque * 100))}) e saídas de segunda-feira (${reais(Math.round(s.movimentoSemana.saidasSegunda * 100))}) ficam fora do rateio e estão incluídos, sem duplicação, nos ${reais(Math.round(s.movimentoSemana.saidasCicloAnterior * 100))} debitados do ciclo operacional anterior. O saldo líquido usado no rateio é ${reais(Math.round(s.movimentoSemana.entradas * 100))} − ${reais(Math.round(s.movimentoSemana.saidas * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}. ${positivo > 0 && s.saldos.protecaoAtiva ? `Com a proteção ativa, a divisão é 60% para operação (${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))}) e 40% para proteção (${reais(Math.round(s.movimentoSemana.protecao * 100))}); os valores somam exatamente ${reais(positivo)} após o arredondamento.` : positivo > 0 ? `Com a proteção desativada, os ${reais(positivo)} ficam na operação.` : "Como o saldo líquido não é positivo, não há parcelas positivas para dividir."} A conta operacional fica: saldo anterior antes dos pedidos ${reais(Math.round(s.movimentoSemana.saldoOperacionalAntesPedidos * 100))} − débitos do ciclo anterior ${reais(Math.round(s.movimentoSemana.saidasCicloAnterior * 100))} = saldo carregado ${reais(Math.round(s.movimentoSemana.saldoOperacionalAnterior * 100))}; depois, + alocação atual ${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))} − outras saídas desta semana ${reais(Math.round(s.movimentoSemana.saidasOperacionais * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacionalDisponivel * 100))}. Se ficar negativo, o déficit é carregado e futuras alocações de operação o cobrem. O valor calculado para proteção é somado ao total protegido conforme entram novos lançamentos elegíveis; é uma classificação contábil, não uma saída nem transferência. Há lançamentos sem forma de pagamento informada que foram excluídos: ${reais(Math.round(s.movimentoSemana.entradasSemForma * 100))} em entradas e ${reais(Math.round(s.movimentoSemana.saidasSemForma * 100))} em saídas. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O valor considerado protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}. O saldo protegido total continua acumulando sem teto máximo.`;
+      answer = `Nesta semana, de ${s.movimentoSemana.inicio} até ${s.movimentoSemana.fim}, entraram ${reais(Math.round(s.movimentoSemana.entradas * 100))} em dinheiro/PIX e as saídas do rateio foram ${reais(Math.round(s.movimentoSemana.saidas * 100))}. Pedidos de estoque (${reais(Math.round(s.movimentoSemana.saidasPedidosEstoque * 100))}) e saídas de segunda-feira (${reais(Math.round(s.movimentoSemana.saidasSegunda * 100))}) ficam fora do rateio e estão incluídos, sem duplicação, nos ${reais(Math.round(s.movimentoSemana.saidasCicloAnterior * 100))} debitados do ciclo operacional anterior. O saldo líquido usado no rateio é ${reais(Math.round(s.movimentoSemana.entradas * 100))} − ${reais(Math.round(s.movimentoSemana.saidas * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacional * 100))}. ${positivo > 0 && s.saldos.protecaoAtiva ? `Com a proteção ativa, a divisão é 60% para operação (${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))}) e 40% para proteção (${reais(Math.round(s.movimentoSemana.protecao * 100))}); os valores somam exatamente ${reais(positivo)} após o arredondamento.` : positivo > 0 ? `Com a proteção desativada, os ${reais(positivo)} ficam na operação.` : "Como o saldo líquido não é positivo, não há parcelas positivas para dividir."} A operação pendente até a primeira abertura real não aumenta o limite para pedidos. A conta operacional fica: saldo anterior antes dos pedidos ${reais(Math.round(s.movimentoSemana.saldoOperacionalAntesPedidos * 100))} − débitos do ciclo anterior ${reais(Math.round(s.movimentoSemana.saidasCicloAnterior * 100))} = saldo carregado ${reais(Math.round(s.movimentoSemana.saldoOperacionalAnterior * 100))}; depois, + alocação atual ${reais(Math.round(s.movimentoSemana.alocacaoOperacao * 100))} − outras saídas desta semana ${reais(Math.round(s.movimentoSemana.saidasOperacionais * 100))} = ${reais(Math.round(s.movimentoSemana.saldoOperacionalDisponivel * 100))}. Se ficar negativo, o déficit é carregado e futuras alocações de operação o cobrem. A proteção calculada fica pendente até a primeira abertura real do Caixa no período; não aumenta o total protegido antes da abertura. Há lançamentos sem forma de pagamento informada que foram excluídos: ${reais(Math.round(s.movimentoSemana.entradasSemForma * 100))} em entradas e ${reais(Math.round(s.movimentoSemana.saidasSemForma * 100))} em saídas. O Caixa + PIX registrado agora soma ${saldo.total === null ? "indisponível" : reais(Math.round(saldo.total * 100))}; após a reserva protegida total de ${reais(Math.round(saldo.reserva * 100))}, ficam ${saldo.disponivel === null ? "indisponível" : reais(Math.round(saldo.disponivel * 100))} disponíveis. A margem conservadora para gastos após contas previstas e meta de compra é ${saldo.podeGastar === null ? "indisponível" : reais(Math.round(saldo.podeGastar * 100))}. O valor considerado protegido nesta semana foi ${reais(Math.round(s.reservaAutomatica.reservaSemana * 100))}. O saldo protegido total continua acumulando sem teto máximo.`;
     } else if (/maior despesa/.test(q)) {
       answer = s.maiorDespesa
         ? `Maior saída registrada nos últimos 120 dias: ${reais(Math.round(s.maiorDespesa.valor * 100))}, ${s.maiorDespesa.motivo} (${s.maiorDespesa.categoria}), em ${s.maiorDespesa.data}.`

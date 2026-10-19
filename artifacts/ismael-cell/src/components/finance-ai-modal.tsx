@@ -28,7 +28,7 @@ type FinanceSnapshot = {
   metaCompra: number;
   reservaAutomatica: {
     reservaSemana: number; aporte: number; entradaNova: number; percentual: number;
-    entradasSemana: number; compraProtegida: number; contasProtegidas: number;
+    entradasSemana: number; protecaoPendente: number; compraProtegida: number; contasProtegidas: number;
     estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_aumento" | "acumulando";
   };
   movimentoSemana: {
@@ -39,6 +39,7 @@ type FinanceSnapshot = {
     percentualProtecao: number;
     protecao: number;
     alocacaoOperacao: number;
+    operacaoPendente: number;
     saldoOperacionalAntesPedidos: number;
     saldoOperacionalAnterior: number;
     saidasSegunda: number;
@@ -362,7 +363,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção calculada · {data.movimentoSemana.percentualProtecao}% do saldo líquido positivo</p>
                     <p data-testid="text-protecao-calculada-semana" className="mt-1 font-bold text-violet-900">{fmt(data.movimentoSemana.protecao)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">{summary.protecaoAtiva ? "40% do saldo líquido positivo, depois de subtrair as saídas; fecha o rateio junto com a operação." : "Proteção desativada; nenhum valor é destinado à reserva."}</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">{summary.protecaoAtiva ? `Pendente até a próxima abertura real do Caixa: ${fmt(data.reservaAutomatica.protecaoPendente)}. A reserva total não aumenta antes da abertura.` : "Proteção desativada; nenhum valor é destinado à reserva."}</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Líquido usado no rateio</p>
@@ -379,7 +380,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   <div className={`rounded-xl border p-3 ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
                     <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "Déficit operacional" : "Disponível para operação"}</p>
                     <p data-testid="text-alocacao-operacao-semana" className={`mt-1 font-bold ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-900" : "text-emerald-900"}`}>{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
-                    {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}>Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAntesPedidos)} − pedidos/saídas atribuídos ao ciclo anterior {fmt(data.movimentoSemana.saidasCicloAnterior)} (pedidos de estoque: {fmt(data.movimentoSemana.saidasPedidosEstoque)}) = {fmt(data.movimentoSemana.saldoOperacionalAnterior)}. Depois: + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)} − outras saídas {fmt(data.movimentoSemana.saidasOperacionais)}. Déficits são cobertos pelas próximas alocações.</p>}
+                    {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}>Operação pendente até a próxima abertura real: {fmt(data.movimentoSemana.operacaoPendente)} (não aumenta o limite para pedidos). Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAntesPedidos)} − pedidos/saídas atribuídos ao ciclo anterior {fmt(data.movimentoSemana.saidasCicloAnterior)} (pedidos de estoque: {fmt(data.movimentoSemana.saidasPedidosEstoque)}) = {fmt(data.movimentoSemana.saldoOperacionalAnterior)}. Depois: + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)} − outras saídas {fmt(data.movimentoSemana.saidasOperacionais)}. Déficits são cobertos pelas próximas alocações.</p>}
                   </div>
                 </div>
                 <ReservaUtilizacaoPanel saldo={summary.reserva} />
