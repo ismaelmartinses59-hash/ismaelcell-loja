@@ -678,52 +678,29 @@ router.put("/financeiro-ia/config", async (req, res) => {
 });
 
 router.get("/financeiro-ia/reserva", async (_req, res) => {
-  const [config, ajustes, usos, saidas] = await Promise.all([
+  const [config, usos, saidas] = await Promise.all([
     readConfig(),
-    db.select().from(reservaAjustesTable).orderBy(desc(reservaAjustesTable.id)),
     db.select().from(reservaUtilizacoesTable).orderBy(desc(reservaUtilizacoesTable.createdAt)),
     db.select().from(caixaTable).where(eq(caixaTable.tipo, "saida")).orderBy(desc(caixaTable.createdAt)).limit(100),
   ]);
   const vinculadas = new Set(usos.filter(uso => uso.estornadaAt === null).map(uso => uso.caixaId).filter((id): id is number => id !== null));
-  const contribuicoes = ajustes.reduce((total, ajuste) => total + ajuste.aumento, 0);
-  const usado = usos.filter(uso => uso.estornadaAt === null).reduce((total, uso) => total + uso.valorCentavos, 0);
   const saldo = cents(config.rows.get(keys.reserva) ?? "0");
-  const saldoInicial = Math.max(0, saldo + usado - contribuicoes);
   res.json({
     saldo: money(saldo),
-    saldoInicial: money(saldoInicial),
-    totalContribuido: money(contribuicoes),
-    totalUtilizado: money(usado),
     saidasDisponiveis: saidas.filter(saida => !vinculadas.has(saida.id)).map(saida => ({
       id: saida.id, valor: saida.valor, motivo: saida.motivo,
       categoria: saida.categoria, createdAt: saida.createdAt.toISOString(),
       formaPagamento: saida.formaPagamento,
     })),
-    historico: [
-      ...ajustes.map(ajuste => ({
-        id: `aporte-${ajuste.id}`, tipo: "contribuicao" as const,
-        valor: money(ajuste.aumento), data: ajuste.createdAt.toISOString(),
-        motivo: "Contribuição automática da reserva", estornada: false,
-        saldoAnterior: money(ajuste.valorAnterior), saldoNovo: money(ajuste.valorNovo),
-      })),
-      ...usos.flatMap(uso => [
-        {
-          id: `uso-${uso.id}`, usoId: uso.id, tipo: uso.tipo,
-          valor: money(uso.valorCentavos), data: uso.createdAt.toISOString(),
-          motivo: uso.motivo, categoria: uso.categoria, descricao: uso.descricao,
-          caixaId: uso.caixaId, formaPagamento: uso.formaPagamento,
-          estornada: uso.estornadaAt !== null,
-          saldoAnterior: money(uso.saldoAnteriorCentavos), saldoNovo: money(uso.saldoNovoCentavos),
-        },
-        ...(uso.estornadaAt ? [{
-          id: `estorno-${uso.id}`, tipo: "estorno" as const,
-          valor: money(uso.valorCentavos), data: uso.estornadaAt.toISOString(),
-          motivo: uso.motivoEstorno ?? `Estorno de ${uso.motivo}`, estornada: false,
-          saldoAnterior: money(uso.saldoAnteriorEstornoCentavos ?? uso.saldoNovoCentavos),
-          saldoNovo: money(uso.saldoNovoEstornoCentavos ?? uso.saldoAnteriorCentavos),
-        }] : []),
-      ]),
-    ].sort((a, b) => Date.parse(b.data) - Date.parse(a.data)),
+    historico: usos.map(uso => ({
+      id: `uso-${uso.id}`,
+      usoId: uso.id,
+      tipo: uso.tipo,
+      valor: money(uso.valorCentavos),
+      data: uso.createdAt.toISOString(),
+      motivo: uso.motivo,
+      estornada: uso.estornadaAt !== null,
+    })).sort((a, b) => Date.parse(b.data) - Date.parse(a.data)),
   });
 });
 

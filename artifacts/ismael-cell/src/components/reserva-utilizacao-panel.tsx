@@ -14,8 +14,8 @@ const localDateTimeFromIso = (value: string) => {
   return date.toISOString().slice(0, 16);
 };
 type CashOut = { id: number; valor: string; motivo: string; categoria: string | null; createdAt: string; formaPagamento: string | null };
-type HistoryRow = { id: string; usoId?: number; tipo: string; valor: number; data: string; motivo: string; categoria?: string; descricao?: string | null; caixaId?: number | null; formaPagamento?: string | null; estornada: boolean; saldoNovo?: number };
-type ReserveData = { saldo: number; saldoInicial: number; totalContribuido: number; totalUtilizado: number; saidasDisponiveis: CashOut[]; historico: HistoryRow[] };
+type HistoryRow = { id: string; usoId: number; tipo: string; valor: number; data: string; motivo: string; estornada: boolean };
+type ReserveData = { saldo: number; saidasDisponiveis: CashOut[]; historico: HistoryRow[] };
 
 async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE}/api${path}`, {
@@ -103,14 +103,8 @@ export function ReservaUtilizacaoPanel({ saldo }: { saldo: number }) {
   const history = reserve?.historico ?? [];
   return (
     <section className="mt-3 rounded-xl border border-blue-200 bg-white p-3" aria-label="Utilização do saldo protegido">
-      <div className="grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
-        <div><p>Saldo inicial registrado</p><strong>{fmt(reserve?.saldoInicial ?? saldo)}</strong></div>
-        <div><p>Contribuições</p><strong>{fmt(reserve?.totalContribuido ?? 0)}</strong></div>
-        <div><p>Total utilizado</p><strong>{fmt(reserve?.totalUtilizado ?? 0)}</strong></div>
-        <div><p>Saldo protegido atual</p><strong>{fmt(saldo)}</strong></div>
-      </div>
       <Button type="button" className="mt-3 h-8" onClick={() => setOpen(value => !value)}>
-        {open ? "Cancelar" : "Registrar utilização"}
+        {open ? "Cancelar" : "Registrar saída de emergência"}
       </Button>
       {open && (
         <div className="mt-3 grid gap-2 rounded-lg border bg-slate-50 p-3 text-sm">
@@ -164,25 +158,24 @@ export function ReservaUtilizacaoPanel({ saldo }: { saldo: number }) {
           )}
           {tipo === "transferencia" && <p className="text-xs text-slate-600">Transferência interna: será registrada no histórico da reserva, sem criar uma despesa no Caixa.</p>}
           {error && <p role="alert" className="text-xs text-red-700">{error}</p>}
-          <Button type="button" disabled={busy} onClick={() => void submit()}>{busy ? "Salvando..." : "Confirmar utilização"}</Button>
+          <Button type="button" disabled={busy} onClick={() => void submit()}>{busy ? "Salvando..." : "Confirmar saída"}</Button>
         </div>
       )}
       <div className="mt-3 space-y-2">
-        <h4 className="text-sm font-semibold">Histórico da reserva</h4>
+        <h4 className="text-sm font-semibold">Histórico de saídas de emergência</h4>
+        {history.length === 0 && <p className="border-t pt-2 text-xs text-slate-500">Nenhuma saída de emergência registrada.</p>}
         {history.slice(0, showAll ? history.length : 5).map(row => (
           <div key={row.id} className="flex items-start justify-between gap-2 border-t pt-2 text-xs">
             <div>
-              <p className="font-semibold">{row.tipo === "contribuicao" ? "Contribuição" : row.tipo === "estorno" ? "Estorno" : row.tipo === "transferencia" ? "Utilização · transferência interna" : "Utilização · saída"} · {fmt(row.valor)}</p>
-              <p>{row.motivo}{row.descricao ? ` · ${row.descricao}` : ""}</p>
-              <p className="text-slate-500">{new Date(row.data).toLocaleString("pt-BR")} · saldo {fmt(row.saldoNovo ?? saldo)}</p>
-              {row.formaPagamento && <p className="text-slate-500">Origem/pagamento: {row.formaPagamento}</p>}
-              {row.caixaId && <p className="text-slate-500">Saída no Caixa #{row.caixaId}</p>}
+              <p className="font-semibold">Saída de emergência · {fmt(row.valor)}</p>
+              <p>{row.motivo}</p>
+              <p className="text-slate-500">{new Date(row.data).toLocaleString("pt-BR")}</p>
               {row.estornada && <p className="font-semibold text-amber-700">Estornada</p>}
             </div>
             {row.usoId && !row.estornada && <Button type="button" variant="outline" className="h-7 shrink-0 px-2" onClick={() => void estornar(row.usoId!)}>Estornar</Button>}
           </div>
         ))}
-        {history.length > 5 && <Button type="button" variant="ghost" className="h-7 px-2" onClick={() => setShowAll(value => !value)}>{showAll ? "Mostrar menos" : "Ver todas as movimentações"}</Button>}
+        {history.length > 5 && <Button type="button" variant="ghost" className="h-7 px-2" onClick={() => setShowAll(value => !value)}>{showAll ? "Mostrar menos" : "Ver todas as saídas"}</Button>}
       </div>
     </section>
   );
