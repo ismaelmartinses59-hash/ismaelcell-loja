@@ -158,15 +158,43 @@ test("pedido de segunda reduz a sobra anterior e não entra no rateio da semana 
     { dia: 21, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 100000 },
   ], 20, 26);
   assert.deepEqual(semana, {
-    entradas: 500000, saidas: 100000, saidasSegunda: 180000, saidasOperacionais: 280000,
+    entradas: 500000, saidas: 100000, saidasSegunda: 180000,
+    saidasPedidosEstoque: 0, saidasCicloAnterior: 180000, saidasOperacionais: 100000,
   });
   const alocacao = calcularAlocacaoSemanal(semana.entradas, semana.saidas, null, 0, true);
   assert.equal(alocacao.operacaoCentavos, 240000);
-  assert.equal(calcularSaldoOperacionalAcumulado(200000, alocacao.operacaoCentavos, semana.saidasOperacionais), 160000);
+  const saldoAposDebitarCicloAnterior = calcularSaldoOperacionalAcumulado(
+    200000, 0, semana.saidasCicloAnterior,
+  );
+  assert.equal(calcularSaldoOperacionalAcumulado(
+    saldoAposDebitarCicloAnterior, alocacao.operacaoCentavos, semana.saidasOperacionais,
+  ), 160000);
 });
 test("a sobra operacional acumula ao fechar cada semana sem recontar o pedido de segunda", () => {
   const saldoFechado = calcularSaldoOperacionalAcumulado(200000, 300000, 180000);
   assert.equal(saldoFechado, 320000);
+});
+test("pedido de estoque de segunda ou terça debita o ciclo anterior, não o rateio atual", () => {
+  const semana = separarSaidasDeSegundaDoFluxoOperacional([
+    { dia: 20, tipo: "entrada", formaPagamento: "pix", valorCentavos: 500000 },
+    { dia: 21, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 155000, categoria: "pecas" },
+    { dia: 21, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 100000, categoria: "aluguel" },
+  ], 20, 26);
+  assert.deepEqual(semana, {
+    entradas: 500000,
+    saidas: 100000,
+    saidasSegunda: 0,
+    saidasPedidosEstoque: 155000,
+    saidasCicloAnterior: 155000,
+    saidasOperacionais: 100000,
+  });
+  const saldoCicloAnterior = calcularSaldoOperacionalAcumulado(131932, 0, semana.saidasCicloAnterior);
+  assert.equal(saldoCicloAnterior, -23068);
+  const alocacaoAtual = calcularAlocacaoSemanal(semana.entradas, semana.saidas, null, 0, true);
+  assert.equal(alocacaoAtual.operacaoCentavos, 240000);
+  assert.equal(calcularSaldoOperacionalAcumulado(
+    saldoCicloAnterior, alocacaoAtual.operacaoCentavos, semana.saidasOperacionais,
+  ), 116932);
 });
 test("saídas operacionais podem gerar déficit e futuras alocações o reduzem", () => {
   const deficit = calcularSaldoOperacionalAcumulado(131932, 23820, 341300);

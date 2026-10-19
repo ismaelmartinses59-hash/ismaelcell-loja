@@ -36,25 +36,39 @@ export function separarSaidasDeSegundaDoFluxoOperacional(
     tipo: string;
     formaPagamento: string | null;
     valorCentavos: number;
+    categoria?: string | null;
   }[],
   segunda: number,
   fim: number,
 ) {
-  const saidasSegunda = movimentos.reduce((total, movimento) => {
-    if (
-      movimento.dia === segunda &&
-      movimento.tipo === "saida" &&
-      (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix")
-    ) return total + Math.max(0, Math.trunc(movimento.valorCentavos));
-    return total;
-  }, 0);
-  const movimentosDaSemana = movimentos.filter(movimento =>
-    !(movimento.dia === segunda && movimento.tipo === "saida"),
+  const elegivel = (movimento: typeof movimentos[number]) =>
+    movimento.dia >= segunda &&
+    movimento.dia <= fim &&
+    (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix");
+  const saidaElegivel = (movimento: typeof movimentos[number]) =>
+    elegivel(movimento) && movimento.tipo === "saida";
+  const debitarCicloAnterior = (movimento: typeof movimentos[number]) =>
+    saidaElegivel(movimento) &&
+    (movimento.dia === segunda || movimento.categoria === "pecas");
+  const somarSaidas = (predicado: (movimento: typeof movimentos[number]) => boolean) =>
+    movimentos.reduce((total, movimento) => predicado(movimento)
+      ? total + Math.max(0, Math.trunc(movimento.valorCentavos))
+      : total, 0);
+  const saidasOperacionaisTotais = somarSaidas(saidaElegivel);
+  const saidasCicloAnterior = somarSaidas(debitarCicloAnterior);
+  const saidasSegunda = somarSaidas(movimento =>
+    elegivel(movimento) && movimento.dia === segunda && movimento.tipo === "saida");
+  const saidasPedidosEstoque = somarSaidas(movimento =>
+    elegivel(movimento) && movimento.tipo === "saida" && movimento.categoria === "pecas");
+  const movimentosDoCiclo = movimentos.filter(movimento =>
+    !debitarCicloAnterior(movimento),
   );
   return {
-    ...somarMovimentosElegiveisDoPeriodo(movimentosDaSemana, segunda, fim),
+    ...somarMovimentosElegiveisDoPeriodo(movimentosDoCiclo, segunda, fim),
     saidasSegunda,
-    saidasOperacionais: somarMovimentosElegiveisDoPeriodo(movimentos, segunda, fim).saidas,
+    saidasPedidosEstoque,
+    saidasCicloAnterior,
+    saidasOperacionais: saidasOperacionaisTotais - saidasCicloAnterior,
   };
 }
 
