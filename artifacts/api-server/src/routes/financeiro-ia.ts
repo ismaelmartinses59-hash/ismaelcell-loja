@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { and, desc, eq, gt, gte, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, gte, isNotNull, isNull, lt, sql } from "drizzle-orm";
 import { db, appConfigTable, caixaTable, caixaSessoesTable, pecasTable, reservaAjustesTable, reservaUtilizacoesTable } from "@workspace/db";
 import { requireFinanceSession } from "./auth";
 import { ai } from "@workspace/integrations-gemini-ai";
@@ -195,12 +195,22 @@ async function carregarSaldoOperacionalBase(
         }
       }
     }
-    const pedidoOutubroPresente = movimentosAtuais.some(movimento =>
-      movimento.dia === CORRECAO_PEDIDO_OUTUBRO.dia &&
-      movimento.tipo === "saida" &&
-      (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix") &&
-      movimento.valorCentavos === CORRECAO_PEDIDO_OUTUBRO.valor,
-    );
+    // O rateio filtra gastos pagos pela reserva; a correção histórica valida o Caixa bruto.
+      const pedidoOutubro = await tx.select({
+        tipo: caixaTable.tipo,
+        valor: caixaTable.valor,
+        formaPagamento: caixaTable.formaPagamento,
+        createdAt: caixaTable.createdAt,
+      }).from(caixaTable).where(and(
+        gte(caixaTable.createdAt, new Date((CORRECAO_PEDIDO_OUTUBRO.dia - 1) * 86400000)),
+        lt(caixaTable.createdAt, new Date((CORRECAO_PEDIDO_OUTUBRO.dia + 2) * 86400000)),
+      ));
+      const pedidoOutubroPresente = pedidoOutubro.some(movimento =>
+        dayIndex(movimento.createdAt) === CORRECAO_PEDIDO_OUTUBRO.dia &&
+        movimento.tipo === "saida" &&
+        (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix") &&
+        cents(movimento.valor) === CORRECAO_PEDIDO_OUTUBRO.valor,
+      );
     if (pedidoOutubroPresente && config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada") {
       saldoBase = CORRECAO_PEDIDO_OUTUBRO.saldoOperacaoInicial;
       const reservaNova = cents(config.get(keys.reserva) ?? "0") + CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
