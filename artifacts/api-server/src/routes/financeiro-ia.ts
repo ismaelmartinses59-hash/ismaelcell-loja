@@ -34,9 +34,16 @@ const keys = {
   operacaoSemana: "ia_fin_operacao_semana_inicio",
   operacaoSaldoBase: "ia_fin_operacao_saldo_base_centavos",
   operacaoModelo: "ia_fin_operacao_modelo",
+  operacaoCorrecaoPedidoOutubro: "ia_fin_operacao_correcao_pedido_outubro_2026",
 };
 const MODELO_ACUMULACAO_RESERVA = "alocacao-semanal-40-v1";
 const MODELO_ACUMULACAO_OPERACAO = "pedidos-no-ciclo-anterior-v2";
+const CORRECAO_PEDIDO_OUTUBRO = {
+  dia: Math.floor(Date.parse("2026-10-13T12:00:00.000Z") / 86400000),
+  valor: 155000,
+  reservaAdicional: 52773,
+  saldoOperacaoInicial: 102979,
+};
 const categorias = [
   "pecas", "frete", "aluguel", "energia", "internet", "agua",
   "combustivel", "ferramentas", "alimentacao", "retirada pessoal",
@@ -187,6 +194,23 @@ async function carregarSaldoOperacionalBase(
           saldoBase = calcularSaldoOperacionalAcumulado(saldoBase, alocacao, fluxo.saidasOperacionais);
         }
       }
+    }
+    const pedidoOutubroPresente = movimentosAtuais.some(movimento =>
+      movimento.dia === CORRECAO_PEDIDO_OUTUBRO.dia &&
+      movimento.tipo === "saida" &&
+      (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix") &&
+      movimento.valorCentavos === CORRECAO_PEDIDO_OUTUBRO.valor,
+    );
+    if (pedidoOutubroPresente && config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada") {
+      saldoBase = CORRECAO_PEDIDO_OUTUBRO.saldoOperacaoInicial;
+      const reservaNova = cents(config.get(keys.reserva) ?? "0") + CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
+      const reservaSemanaNova = cents(config.get(keys.reservaSemana) ?? "0") + CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
+      for (const [key, value] of [
+        [keys.reserva, (reservaNova / 100).toFixed(2)],
+        [keys.reservaSemana, (reservaSemanaNova / 100).toFixed(2)],
+        [keys.operacaoCorrecaoPedidoOutubro, "aplicada"],
+      ]) await tx.insert(appConfigTable).values({ key, value })
+        .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
     }
     const semanaValor = String(semanaAtual);
     const saldoValor = String(saldoBase);
