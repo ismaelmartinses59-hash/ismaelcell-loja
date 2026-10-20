@@ -5,6 +5,7 @@ import { requireFinanceSession } from "./auth";
 import { ai } from "@workspace/integrations-gemini-ai";
 import {
   calcularAlocacaoSemanal,
+  calcularAjusteSaldoOperacionalAteAlvoCentavos,
   calcularAjusteReservaAteAlvoCentavos,
   calcularAumentoReservaSemanal,
   calcularDisponibilidade,
@@ -280,18 +281,31 @@ async function carregarSaldoOperacionalBase(
     let deltaOperacaoPendente = Number(config.get(keys.operacaoCorrecaoPedidoOutubroDelta) ?? "0");
     if (orderPresent) {
       const correcaoOperacaoAplicada =
-        config.get(keys.operacaoCorrecaoPedidoOutubro) === "aplicada";
+        config.get(keys.operacaoCorrecaoPedidoOutubro) === "aplicada-v2";
       const corrigirOperacao = !correcaoOperacaoAplicada ||
         config.get(keys.operacaoCorrecaoPedidoOutubroDelta) === undefined;
       if (corrigirOperacao) {
-        // O saldo corrigido fica como base; a abertura real continua pendente.
-        // Guardamos o delta separadamente para que leituras seguintes o reapliquem
-        // sem marcar a semana como consolidada nem perder os débitos do período.
-        deltaOperacaoPendente = CORRECAO_PEDIDO_OUTUBRO.saldoOperacaoInicial - saldoBase;
+        // Corrige o valor final que o cartão mostra, preservando os débitos já
+        // lançados e mantendo a operação semanal pendente até a abertura real.
+        const ultimoDiaAtual = Math.max(
+          semanaAtual,
+          ...movimentosAtuais.map(movimento => movimento.dia).filter(dia => dia >= semanaAtual),
+        );
+        const saidasJaRegistradas = separarSaidasDeSegundaDoFluxoOperacional(
+          movimentosAtuais, semanaAtual, ultimoDiaAtual,
+        );
+        deltaOperacaoPendente = calcularAjusteSaldoOperacionalAteAlvoCentavos(
+          saldoBase,
+          saidasJaRegistradas.saidasCicloAnterior + saidasJaRegistradas.saidasOperacionais,
+          CORRECAO_PEDIDO_OUTUBRO.saldoOperacaoInicial,
+        );
         const configuracoes: [string, string][] = [
           [keys.operacaoCorrecaoPedidoOutubroDelta, String(deltaOperacaoPendente)],
         ];
-        if (!correcaoOperacaoAplicada) {
+        if (
+          config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada" &&
+          config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada-v2"
+        ) {
           // R$ 1.319,32 reclassificados: R$ 791,59 operação + R$ 527,73 proteção.
           const reservaNova = cents(config.get(keys.reserva) ?? "0") +
             CORRECAO_PEDIDO_OUTUBRO.reservaAdicional;
@@ -300,15 +314,15 @@ async function carregarSaldoOperacionalBase(
           configuracoes.push(
             [keys.reserva, (reservaNova / 100).toFixed(2)],
             [keys.reservaSemana, (reservaSemanaNova / 100).toFixed(2)],
-            [keys.operacaoCorrecaoPedidoOutubro, "aplicada"],
           );
         }
+        configuracoes.push([keys.operacaoCorrecaoPedidoOutubro, "aplicada-v2"]);
         for (const [key, value] of configuracoes) {
           await tx.insert(appConfigTable).values({ key, value })
             .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
         }
       }
-      if (config.get(keys.reservaCorrecaoSaldoOutubro) !== "aplicada") {
+      if (config.get(keys.reservaCorrecaoSaldoOutubro) !== "aplicada-v2") {
         const reservaAtual = cents(config.get(keys.reserva) ?? "0");
         const aumento = calcularAjusteReservaAteAlvoCentavos(
           reservaAtual, CORRECAO_PEDIDO_OUTUBRO.saldoReservaAlvo,
@@ -316,7 +330,7 @@ async function carregarSaldoOperacionalBase(
         const reservaNova = reservaAtual + aumento;
         for (const [key, value] of [
           [keys.reserva, (reservaNova / 100).toFixed(2)],
-          [keys.reservaCorrecaoSaldoOutubro, "aplicada"],
+          [keys.reservaCorrecaoSaldoOutubro, "aplicada-v2"],
         ]) await tx.insert(appConfigTable).values({ key, value })
           .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
       }

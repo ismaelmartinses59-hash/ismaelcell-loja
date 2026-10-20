@@ -83,6 +83,16 @@ export function calcularSaldoOperacionalAcumulado(
   return saldoAnterior + alocacaoAtual - saidasOperacionais;
 }
 
+export function calcularAjusteSaldoOperacionalAteAlvoCentavos(
+  saldoBaseCentavos: number,
+  saidasJaRegistradasCentavos: number,
+  saldoFinalAlvoCentavos: number,
+): number {
+  return Math.trunc(saldoFinalAlvoCentavos) +
+    Math.max(0, Math.trunc(saidasJaRegistradasCentavos)) -
+    Math.trunc(saldoBaseCentavos);
+}
+
 export function calcularAjusteReservaAteAlvoCentavos(
   saldoAtualCentavos: number,
   saldoAlvoCentavos: number,
