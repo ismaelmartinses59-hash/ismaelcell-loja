@@ -93,6 +93,15 @@ export function calcularAjusteSaldoOperacionalAteAlvoCentavos(
     Math.trunc(saldoBaseCentavos);
 }
 
+export function deveRepararSaldoOperacionalLegado(
+  saldoBaseCentavos: number,
+  marcadorCorrecao: string | undefined,
+  saldoBaseLegadoIncorretoCentavos: number,
+): boolean {
+  return saldoBaseCentavos === saldoBaseLegadoIncorretoCentavos &&
+    marcadorCorrecao !== "aplicada-v2";
+}
+
 export function calcularAjusteReservaAteAlvoCentavos(
   saldoAtualCentavos: number,
   saldoAlvoCentavos: number,

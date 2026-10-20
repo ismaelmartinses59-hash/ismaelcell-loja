@@ -13,6 +13,7 @@ import {
   diaFinanceiroLocal,
   calcularSaldoOperacionalAcumulado,
   calcularVariacaoOperacionalSemana,
+  deveRepararSaldoOperacionalLegado,
   deveConsolidarOperacaoNaAbertura,
   separarSaidasDeSegundaDoFluxoOperacional,
   somarMovimentosElegiveisDoPeriodo,
@@ -279,7 +280,13 @@ async function carregarSaldoOperacionalBase(
       cents(movimento.valor) === CORRECAO_PEDIDO_OUTUBRO.valor,
     );
     let deltaOperacaoPendente = Number(config.get(keys.operacaoCorrecaoPedidoOutubroDelta) ?? "0");
-    if (orderPresent) {
+    const saldoReservaAtual = cents(config.get(keys.reserva) ?? "0");
+    const estadoOperacionalLegadoIncorreto = deveRepararSaldoOperacionalLegado(
+      saldoBase,
+      config.get(keys.operacaoCorrecaoPedidoOutubro),
+      -144688,
+    );
+    if (orderPresent || estadoOperacionalLegadoIncorreto) {
       const correcaoOperacaoAplicada =
         config.get(keys.operacaoCorrecaoPedidoOutubro) === "aplicada-v2";
       const corrigirOperacao = !correcaoOperacaoAplicada ||
@@ -302,7 +309,7 @@ async function carregarSaldoOperacionalBase(
         const configuracoes: [string, string][] = [
           [keys.operacaoCorrecaoPedidoOutubroDelta, String(deltaOperacaoPendente)],
         ];
-        if (
+        if (orderPresent &&
           config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada" &&
           config.get(keys.operacaoCorrecaoPedidoOutubro) !== "aplicada-v2"
         ) {
@@ -322,8 +329,8 @@ async function carregarSaldoOperacionalBase(
             .onConflictDoUpdate({ target: appConfigTable.key, set: { value, updatedAt: new Date() } });
         }
       }
-      if (config.get(keys.reservaCorrecaoSaldoOutubro) !== "aplicada-v2") {
-        const reservaAtual = cents(config.get(keys.reserva) ?? "0");
+      if (saldoReservaAtual < CORRECAO_PEDIDO_OUTUBRO.saldoReservaAlvo) {
+        const reservaAtual = saldoReservaAtual;
         const aumento = calcularAjusteReservaAteAlvoCentavos(
           reservaAtual, CORRECAO_PEDIDO_OUTUBRO.saldoReservaAlvo,
         );

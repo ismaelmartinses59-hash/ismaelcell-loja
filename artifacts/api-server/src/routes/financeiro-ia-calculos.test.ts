@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calcularAjusteReservaAteAlvoCentavos, calcularAjusteSaldoOperacionalAteAlvoCentavos, calcularSaldoOperacionalAcumulado, calcularVariacaoOperacionalSemana, deveConsolidarOperacaoNaAbertura, somarProtecaoPendenteSemanal } from "./financeiro-ia-calculos.js";
+import { calcularAjusteReservaAteAlvoCentavos, calcularAjusteSaldoOperacionalAteAlvoCentavos, calcularSaldoOperacionalAcumulado, calcularVariacaoOperacionalSemana, deveRepararSaldoOperacionalLegado, deveConsolidarOperacaoNaAbertura, somarProtecaoPendenteSemanal } from "./financeiro-ia-calculos.js";
 
 test("consolida somente após uma abertura real e uma vez por período", () => {
   const monday = 20_000;
@@ -27,6 +27,12 @@ test("a correção de outubro mostra o saldo operacional alvo após debitar os R
   const saidasJaRegistradas = 15000;
   const ajuste = calcularAjusteSaldoOperacionalAteAlvoCentavos(saldoBaseAnterior, saidasJaRegistradas, 102979);
   assert.equal(calcularSaldoOperacionalAcumulado(saldoBaseAnterior, ajuste, saidasJaRegistradas), 102979);
+});
+
+test("repara o estado legado exato sem depender de reencontrar o lançamento de origem", () => {
+  assert.equal(deveRepararSaldoOperacionalLegado(-144688, "aplicada", -144688), true);
+  assert.equal(deveRepararSaldoOperacionalLegado(-144688, "aplicada-v2", -144688), false);
+  assert.equal(deveRepararSaldoOperacionalLegado(-144687, "aplicada", -144688), false);
 });
 
 test("ajuste contábil da reserva alcança o alvo sem reduzir ou duplicar valores", () => {
