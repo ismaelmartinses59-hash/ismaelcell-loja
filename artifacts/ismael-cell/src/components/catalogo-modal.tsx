@@ -3555,9 +3555,16 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                         </div>
                                       </div>
                                     ) : isDel ? (
-                                      <div className="flex gap-0.5">
-                                        <Button size="icon" variant="ghost" className="h-6 w-6 text-xs" onClick={() => setDeletingItemId(null)}><X className="w-3 h-3" /></Button>
-                                        <Button size="icon" variant="destructive" className="h-6 w-6" disabled={apagarItemMutation.isPending} onClick={() => apagarItemMutation.mutate(item.id)}><Check className="w-3 h-3" /></Button>
+                                      <div className="w-full flex items-center justify-between gap-2 border-t border-red-200 pt-1.5">
+                                        <span className="text-[10px] text-red-800">
+                                          {item.devolvidaAt
+                                            ? "Remover do histórico? Estoque e Caixa não serão alterados."
+                                            : "Apagar este item e os lançamentos vinculados?"}
+                                        </span>
+                                        <div className="flex gap-0.5 shrink-0">
+                                          <Button size="icon" variant="ghost" className="h-7 w-7" aria-label="Cancelar remoção" onClick={() => setDeletingItemId(null)}><X className="w-3 h-3" /></Button>
+                                          <Button size="icon" variant="destructive" className="h-7 w-7" aria-label="Confirmar remoção" disabled={apagarItemMutation.isPending} onClick={() => apagarItemMutation.mutate(item.id)}><Check className="w-3 h-3" /></Button>
+                                        </div>
                                       </div>
                                     ) : (
                                       <div className="flex items-center gap-1">
@@ -3566,7 +3573,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                                             <Undo2 className="w-3 h-3 mr-1" /> Devolver
                                           </Button>
                                         )}
-                                        {!item.vendaId && (
+                                        {(!item.vendaId || item.devolvidaAt) && (
                                           <button type="button" onClick={() => setDeletingItemId(item.id)} className="text-red-400 hover:text-red-600 p-0.5" aria-label="Remover item da conta">
                                             <Trash2 className="w-3 h-3" />
                                           </button>

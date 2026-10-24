@@ -543,7 +543,12 @@ router.delete("/contas-receber/itens/:id", async (req, res): Promise<void> => {
       .where(eq(contasReceberItensTable.id, id))
       .for("update");
     if (!item) return false;
-    if (item.devolvidaAt != null) return false;
+    if (item.devolvidaAt != null) {
+      // A devolução já recompôs o estoque e removeu a venda. Apagar só limpa
+      // o histórico da conta; não deve repetir estorno nem tocar no Caixa.
+      await tx.delete(contasReceberItensTable).where(eq(contasReceberItensTable.id, id));
+      return true;
+    }
     const [conta] = await tx
       .select()
       .from(contasReceberTable)
