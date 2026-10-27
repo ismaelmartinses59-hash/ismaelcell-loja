@@ -49,6 +49,7 @@ type FinanceSnapshot = {
     saldoOperacionalDisponivel: number;
     resultadoOperacionalSemana: number;
     aberturaRealNoPeriodo: boolean;
+    consolidadoNaAbertura: { abertura: string; entradas: number; saidas: number; liquido: number; operacao: number; protecao: number } | null;
     necessidadeOperacional: number;
     saldoOperacional: number;
     entradasSemForma: number;
@@ -357,10 +358,23 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 </div>
                 <p className="mb-2 text-[11px] text-slate-500">O selo resume alertas financeiros; não é o fluxo semanal nem, sozinho, uma decisão sobre pedidos. Compare o valor do pedido com a margem conservadora abaixo.</p>
                 <div className="rounded-2xl bg-emerald-600 p-4 text-white">
-                  <p className="text-sm font-medium text-emerald-50">Entradas brutas elegíveis nesta semana · dinheiro + PIX</p>
+                  <p className="text-sm font-medium text-emerald-50">Entradas elegíveis no período contado · dinheiro + PIX</p>
                   <p data-testid="text-entradas-elegiveis-semana" className="mt-1 text-3xl font-extrabold">{fmt(data.movimentoSemana.entradas)}</p>
-                  {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">De segunda-feira ({data.movimentoSemana.inicio}) até hoje ({data.movimentoSemana.fim}); não inclui cartão nem abertura da gaveta.</p>}
+                  {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">De {data.movimentoSemana.inicio} até hoje ({data.movimentoSemana.fim}); conta o período após a abertura real quando ela já ocorreu. Não inclui cartão nem o valor de abertura da gaveta.</p>}
                 </div>
+                {data.movimentoSemana.consolidadoNaAbertura && (
+                  <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3" data-testid="card-rateio-consolidado-abertura">
+                    <p className="font-semibold text-indigo-950">Rateio incorporado na abertura de {data.movimentoSemana.consolidadoNaAbertura.abertura}</p>
+                    <p className="mt-1 text-[11px] text-indigo-800">Esses lançamentos já foram considerados no saldo operacional{summary.protecaoAtiva ? " e na reserva protegida" : ""}; não some novamente aos valores abaixo.</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-indigo-950">
+                      <p>Entradas elegíveis: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.entradas)}</strong></p>
+                      <p>Saídas do rateio: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.saidas)}</strong></p>
+                      <p>Líquido: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.liquido)}</strong></p>
+                      <p>Operação · {summary.protecaoAtiva ? "60%" : "100%"}: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.operacao)}</strong></p>
+                      {summary.protecaoAtiva && <p>Proteção · 40%: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.protecao)}</strong></p>}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção calculada · {data.movimentoSemana.percentualProtecao}% do saldo líquido positivo</p>

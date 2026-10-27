@@ -1,6 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { calcularAjusteReservaAteAlvoCentavos, calcularAjusteSaldoOperacionalAteAlvoCentavos, calcularSaldoOperacionalAcumulado, calcularVariacaoOperacionalSemana, deveRepararSaldoOperacionalLegado, deveConsolidarOperacaoNaAbertura, somarProtecaoPendenteSemanal } from "./financeiro-ia-calculos.js";
+import { calcularRateioConsolidadoNaAbertura, calcularAjusteReservaAteAlvoCentavos, calcularAjusteSaldoOperacionalAteAlvoCentavos, calcularSaldoOperacionalAcumulado, calcularVariacaoOperacionalSemana, deveRepararSaldoOperacionalLegado, deveConsolidarOperacaoNaAbertura, somarProtecaoPendenteSemanal } from "./financeiro-ia-calculos.js";
+
+test("rateio consolidado na abertura mostra 60/40 sem contar pedidos de segunda", () => {
+  const abertura = calcularRateioConsolidadoNaAbertura([
+    { dia: 20, tipo: "entrada", formaPagamento: "pix", valorCentavos: 40000 },
+    { dia: 20, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 5000, categoria: "aluguel" },
+    { dia: 21, tipo: "entrada", formaPagamento: "dinheiro", valorCentavos: 200000 },
+    { dia: 21, tipo: "saida", formaPagamento: "pix", valorCentavos: 30000, categoria: "frete" },
+    { dia: 21, tipo: "saida", formaPagamento: "dinheiro", valorCentavos: 60000, categoria: "pecas" },
+    { dia: 22, tipo: "entrada", formaPagamento: "pix", valorCentavos: 90000 },
+  ], 20, 21, true);
+  assert.deepEqual(abertura, {
+    entradasCentavos: 240000, saidasCentavos: 30000, liquidoCentavos: 210000,
+    operacaoCentavos: 126000, protecaoCentavos: 84000,
+  });
+});
 
 test("consolida somente após uma abertura real e uma vez por período", () => {
   const monday = 20_000;

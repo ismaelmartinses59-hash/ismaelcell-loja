@@ -242,6 +242,28 @@ export function calcularAlocacaoSemanal(
   };
 }
 
+export function calcularRateioConsolidadoNaAbertura(
+  movimentos: {
+    dia: number;
+    tipo: string;
+    formaPagamento: string | null;
+    valorCentavos: number;
+    categoria?: string | null;
+  }[],
+  inicioSemana: number,
+  diaAbertura: number,
+  protecaoAtiva: boolean,
+) {
+  const fluxo = separarSaidasDeSegundaDoFluxoOperacional(movimentos, inicioSemana, diaAbertura);
+  const rateio = calcularAlocacaoSemanal(fluxo.entradas, fluxo.saidas, null, 0, protecaoAtiva);
+  return {
+    entradasCentavos: fluxo.entradas,
+    saidasCentavos: fluxo.saidas,
+    liquidoCentavos: rateio.fluxoLiquidoCentavos,
+    operacaoCentavos: rateio.operacaoCentavos,
+    protecaoCentavos: rateio.protecaoCentavos,
+  };
+}
 export function calcularAumentoReservaSemanal(
   totalCaixaPixCentavos: number | null,
   reservaSemanaCentavos: number,

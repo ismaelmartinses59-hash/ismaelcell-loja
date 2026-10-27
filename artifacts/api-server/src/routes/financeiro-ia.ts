@@ -8,6 +8,7 @@ import {
   calcularAjusteSaldoOperacionalAteAlvoCentavos,
   calcularAjusteReservaAteAlvoCentavos,
   calcularAumentoReservaSemanal,
+  calcularRateioConsolidadoNaAbertura,
   calcularDisponibilidade,
   dataFinanceiraLocal,
   diaFinanceiroLocal,
@@ -838,6 +839,23 @@ async function snapshot() {
     entradas: fluxoOperacionalSemana.entradas,
     saidas: fluxoOperacionalSemana.saidas,
   };
+  const consolidadoNaAbertura = aberturaNoPeriodoAtual
+    ? (() => {
+        const aberturaAt = estadoOperacional.aberturaPeriodoAt!;
+        const movimentosAntesDaAbertura = movimentosRecentes.filter(row => row.createdAt <= aberturaAt);
+        const rateio = calcularRateioConsolidadoNaAbertura(
+          movimentosAntesDaAbertura, weekStart, dayIndex(aberturaAt), config.proteger,
+        );
+        return {
+          abertura: daySP(aberturaAt),
+          entradas: money(rateio.entradasCentavos),
+          saidas: money(rateio.saidasCentavos),
+          liquido: money(rateio.liquidoCentavos),
+          operacao: money(rateio.operacaoCentavos),
+          protecao: money(rateio.protecaoCentavos),
+        };
+      })()
+    : null;
   const periodosAnteriores = [1, 2, 3, 4].map(i => {
     const min = weekStart - i * 7, max = min + 6;
     const registros = movimentosRecentes.filter(row =>
@@ -991,6 +1009,7 @@ async function snapshot() {
       saldoOperacionalDisponivel: money(saldoOperacionalDisponivel),
       resultadoOperacionalSemana: money(resultadoOperacionalSemana),
       aberturaRealNoPeriodo: aberturaNoPeriodoAtual,
+      consolidadoNaAbertura,
       necessidadeOperacional: money(alocacaoSemana.necessidadeOperacionalCentavos),
       saldoOperacional: money(alocacaoSemana.fluxoLiquidoCentavos),
       entradasSemForma: money(semFormaEntradas),
