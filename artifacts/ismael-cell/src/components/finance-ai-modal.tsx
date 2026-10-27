@@ -311,6 +311,10 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   }
 
   const summary = data?.saldos;
+  const rateioAbertura = data?.movimentoSemana.consolidadoNaAbertura ?? null;
+  const protecaoRateadaSemana = (data?.movimentoSemana.protecao ?? 0) +
+    (rateioAbertura?.protecao ?? 0);
+  const percentualProtecaoExibido = summary?.protecaoAtiva && protecaoRateadaSemana > 0 ? 40 : 0;
   const severities = {
     risco: "bg-red-50 border-red-200 text-red-900",
     atencao: "bg-amber-50 border-amber-200 text-amber-900",
@@ -358,7 +362,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 </div>
                 <p className="mb-2 text-[11px] text-slate-500">O selo resume alertas financeiros; não é o fluxo semanal nem, sozinho, uma decisão sobre pedidos. Compare o valor do pedido com a margem conservadora abaixo.</p>
                 <div className="rounded-2xl bg-emerald-600 p-4 text-white">
-                  <p className="text-sm font-medium text-emerald-50">Entradas elegíveis no período contado · dinheiro + PIX</p>
+                  <p className="text-sm font-medium text-emerald-50">{data.movimentoSemana.aberturaRealNoPeriodo ? "Entradas elegíveis após a abertura · dinheiro + PIX" : "Entradas elegíveis no período contado · dinheiro + PIX"}</p>
                   <p data-testid="text-entradas-elegiveis-semana" className="mt-1 text-3xl font-extrabold">{fmt(data.movimentoSemana.entradas)}</p>
                   {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">De {data.movimentoSemana.inicio} até hoje ({data.movimentoSemana.fim}); conta o período após a abertura real quando ela já ocorreu. Não inclui cartão nem o valor de abertura da gaveta.</p>}
                 </div>
@@ -375,34 +379,50 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     </div>
                   </div>
                 )}
+                {data.movimentoSemana.aberturaRealNoPeriodo && (
+                  <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3" data-testid="card-saldos-atuais-pos-abertura">
+                    <p className="mb-2 font-semibold text-emerald-950">Saldos atuais após a abertura</p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-emerald-800">Saldo disponível da operação</p>
+                        <p data-testid="text-alocacao-operacao-semana" className="text-lg font-extrabold text-emerald-950">{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-blue-800">Reserva protegida acumulada</p>
+                        <p data-testid="text-reserva-protegida" className="text-lg font-extrabold text-blue-950">{fmt(summary.reserva)}</p>
+                      </div>
+                    </div>
+                    {!financialNotesHidden && <p className="mt-2 text-[11px] text-emerald-800">Estes são os saldos atuais. A operação pendente até a próxima abertura é {fmt(data.movimentoSemana.operacaoPendente)} e não aumenta o limite para pedidos. Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAntesPedidos)} − débitos do ciclo anterior {fmt(data.movimentoSemana.saidasCicloAnterior)} = {fmt(data.movimentoSemana.saldoOperacionalAnterior)}; pedidos de estoque: {fmt(data.movimentoSemana.saidasPedidosEstoque)}. Para a próxima abertura: + operação após esta abertura {fmt(data.movimentoSemana.alocacaoOperacao)} − outras saídas {fmt(data.movimentoSemana.saidasOperacionais)}. A atividade abaixo mostra somente o que aconteceu depois da abertura e não substitui nem zera estes saldos.</p>}
+                  </div>
+                )}
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção calculada · {data.movimentoSemana.percentualProtecao}% do saldo líquido positivo</p>
-                    <p data-testid="text-protecao-calculada-semana" className="mt-1 font-bold text-violet-900">{fmt(data.movimentoSemana.protecao)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">{summary.protecaoAtiva ? `Pendente até a próxima abertura real do Caixa: ${fmt(data.reservaAutomatica.protecaoPendente)}. A reserva total não aumenta antes da abertura.` : "Proteção desativada; nenhum valor é destinado à reserva."}</p>}
+                    <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção rateada nesta semana · {rateioAbertura ? percentualProtecaoExibido : data.movimentoSemana.percentualProtecao}%</p>
+                    <p data-testid="text-protecao-calculada-semana" className="mt-1 font-bold text-violet-900">{fmt(protecaoRateadaSemana)}</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">{!summary.protecaoAtiva ? "Proteção desativada; nenhum valor é destinado à reserva." : rateioAbertura ? `${fmt(rateioAbertura.protecao)} já foram incorporados na abertura; ${fmt(data.movimentoSemana.protecao)} correspondem à atividade depois dela.` : `Pendente até a próxima abertura real do Caixa: ${fmt(data.reservaAutomatica.protecaoPendente)}.`}</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Líquido usado no rateio</p>
+                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.aberturaRealNoPeriodo ? "Líquido após abertura usado no rateio" : "Líquido usado no rateio"}</p>
                     <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacional)}</p>
                     {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas do período ({fmt(data.movimentoSemana.saidas)}). Pedidos de estoque e saídas de segunda ficam fora do rateio semanal e são debitados do ciclo operacional anterior.</p>}
                   </div>
                   <div className={`rounded-xl border p-3 ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "border-rose-100 bg-rose-50" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "border-emerald-100 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
-                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-700" : "text-slate-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.resultadoOperacionalSemana < 0 ? "Déficit operacional da semana" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "Operação desta semana" : "Operação da semana"}</p>
+                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-700" : "text-slate-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.resultadoOperacionalSemana < 0 ? "Déficit operacional após abertura" : data.movimentoSemana.aberturaRealNoPeriodo ? "Operação após abertura" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "Operação desta semana" : "Operação da semana"}</p>
                     <p data-testid="text-resultado-operacional-semana" className={`mt-1 font-bold ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-900" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-900" : "text-slate-900"}`}>{fmt(data.movimentoSemana.resultadoOperacionalSemana)}</p>
-                    {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-700" : "text-slate-700"}`}>Resultado operacional só desta semana, separado do saldo anterior. Será unido ao saldo carregado na próxima abertura real do Caixa; antes disso não aumenta o limite para pedidos.</p>}
+                    {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-700" : "text-slate-700"}`}>{data.movimentoSemana.aberturaRealNoPeriodo ? "Mostra somente o resultado depois da abertura. O saldo total disponível da operação está destacado acima." : "Resultado operacional só desta semana, separado do saldo anterior. Será unido ao saldo carregado na próxima abertura real do Caixa; antes disso não aumenta o limite para pedidos."}</p>}
                   </div>
-                  <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
-                    <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
-                    <p className="text-[11px] text-blue-700">
-                      {!financialNotesHidden && "Acumulado das semanas anteriores e da atual · sem teto máximo."}
-                    </p>
-                  </div>
-                  <div className={`rounded-xl border p-3 ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
-                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.saldoOperacionalDisponivel < 0 ? (data.movimentoSemana.aberturaRealNoPeriodo ? "Déficit após abertura" : "Déficit carregado") : (data.movimentoSemana.aberturaRealNoPeriodo ? "Saldo consolidado após abertura" : "Saldo restante do ciclo anterior")}</p>
-                    <p data-testid="text-alocacao-operacao-semana" className={`mt-1 font-bold ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-900" : "text-emerald-900"}`}>{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
-                    {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}>Operação pendente até a próxima abertura real: {fmt(data.movimentoSemana.operacaoPendente)} (não aumenta o limite para pedidos). Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAntesPedidos)} − pedidos/saídas atribuídos ao ciclo anterior {fmt(data.movimentoSemana.saidasCicloAnterior)} (pedidos de estoque: {fmt(data.movimentoSemana.saidasPedidosEstoque)}) = {fmt(data.movimentoSemana.saldoOperacionalAnterior)}. Depois: + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)} − outras saídas {fmt(data.movimentoSemana.saidasOperacionais)}. Déficits são cobertos pelas próximas alocações.</p>}
-                  </div>
+                  {!data.movimentoSemana.aberturaRealNoPeriodo && <>
+                    <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+                      <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
+                      <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
+                      <p className="text-[11px] text-blue-700">{!financialNotesHidden && "Acumulado das semanas anteriores e da atual · sem teto máximo."}</p>
+                    </div>
+                    <div className={`rounded-xl border p-3 ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
+                      <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "Déficit carregado" : "Saldo restante do ciclo anterior"}</p>
+                      <p data-testid="text-alocacao-operacao-semana" className={`mt-1 font-bold ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-900" : "text-emerald-900"}`}>{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
+                      {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}>Operação pendente até a próxima abertura real: {fmt(data.movimentoSemana.operacaoPendente)} (não aumenta o limite para pedidos). Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAntesPedidos)} − pedidos/saídas atribuídos ao ciclo anterior {fmt(data.movimentoSemana.saidasCicloAnterior)} (pedidos de estoque: {fmt(data.movimentoSemana.saidasPedidosEstoque)}) = {fmt(data.movimentoSemana.saldoOperacionalAnterior)}. Depois: + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)} − outras saídas {fmt(data.movimentoSemana.saidasOperacionais)}. Déficits são cobertos pelas próximas alocações.</p>}
+                    </div>
+                  </>}
                 </div>
                 <ReservaUtilizacaoPanel saldo={summary.reserva} />
                 <p data-testid="text-lancamentos-sem-forma-semana" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
