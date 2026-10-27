@@ -765,6 +765,31 @@ async function snapshot() {
   const dia = totalPeriod(today, today);
   const previousWeek = totalPeriod(weekStart - 7, weekStart - 1);
   const month = totalPeriod(today - 29, today);
+  const historicoSemanal = Array.from({ length: 12 }, (_, index) => {
+    const inicio = weekStart - (index + 1) * 7;
+    const fim = inicio + 6;
+    const rows = cashRecent.filter(row => {
+      const day = dayIndex(row.createdAt);
+      return day >= inicio && day <= fim;
+    });
+    let entradas = 0, saidas = 0, saidasPagasPelaReserva = 0;
+    const saidasPorCategoria: Record<string, number> = {};
+    for (const row of rows) {
+      const amount = cents(row.valor);
+      if (row.tipo === "entrada") { entradas += amount; continue; }
+      saidas += amount;
+      const category = classificar(row.categoria, row.motivo) ?? "não categorizada";
+      saidasPorCategoria[category] = (saidasPorCategoria[category] ?? 0) + amount;
+      if (caixasPagosPelaReserva.has(row.id)) saidasPagasPelaReserva += amount;
+    }
+    return {
+      inicio: daySP(new Date(inicio * 86400000 + 43200000)), fim: daySP(new Date(fim * 86400000 + 43200000)),
+      entradas: money(entradas), saidas: money(saidas), liquido: money(entradas - saidas),
+      saidasPorCategoria: Object.fromEntries(Object.entries(saidasPorCategoria).map(([category, amount]) => [category, money(amount)])),
+      saidasPagasPelaReserva: money(saidasPagasPelaReserva),
+      registros: rows.map(row => ({ id: row.id, data: row.createdAt.toISOString(), tipo: row.tipo, valor: money(cents(row.valor)), formaPagamento: row.formaPagamento, categoria: row.tipo === "saida" ? classificar(row.categoria, row.motivo) ?? "não categorizada" : null, motivo: row.motivo, observacao: row.observacao, pagaPelaReserva: caixasPagosPelaReserva.has(row.id) })),
+    };
+  });
   const previousMonth = totalPeriod(today - 59, today - 30);
   const purchaseRows = recent.filter(row => row.tipo === "saida" &&
     (row.formaPagamento === "dinheiro" || row.formaPagamento === "pix") &&
@@ -1023,6 +1048,7 @@ async function snapshot() {
       custo: money(week.custo), lucro: week.lucro === null ? null : money(week.lucro),
       registros: week.registros, custoAusente: week.custoAusente,
     },
+    historicoSemanal,
     mes: { entradas: money(month.entradas), saidas: money(month.saidas), lucro: month.lucro === null ? null : money(month.lucro) },
     comparacao: { semanaAnterior: { entradas: money(previousWeek.entradas), saidas: money(previousWeek.saidas) }, periodoAnterior: { entradas: money(previousMonth.entradas), saidas: money(previousMonth.saidas) } },
     analiseGastos,
