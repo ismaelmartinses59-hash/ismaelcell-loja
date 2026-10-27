@@ -57,6 +57,7 @@ type FinanceSnapshot = {
   };
   faltamMeta: number | null;
   semana: { entradas: number; saidas: number; retiradas: number; compras: number; lucro: number | null; custoAusente: boolean };
+  historicoSemanal: { inicio: string; fim: string; entradas: number; saidas: number; liquido: number; saidasPorCategoria: Record<string, number>; saidasPagasPelaReserva: number; registros: { id: number; data: string; tipo: string; valor: number; formaPagamento: string | null; categoria: string | null; motivo: string; observacao: string | null; pagaPelaReserva: boolean }[] }[];
   mes: { entradas: number; saidas: number; lucro: number | null };
   compras: { totalSemana: number; mediaSemanal: number | null; menor: number | null; maior: number | null; tendencia: number | null; diaHabitual: number | null; semanasRegistradas: number };
   categorias: Record<string, number>;
@@ -99,6 +100,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     return Number.isFinite(saved) && saved > 0 ? saved : null;
   });
   const [messages, setMessages] = useState<{ pergunta: string; resposta: string }[]>([]);
+  const [selectedFinanceWeek, setSelectedFinanceWeek] = useState<"current" | "previous">("current");
   const [thinking, setThinking] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -311,6 +313,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   }
 
   const summary = data?.saldos;
+  const semanaAnterior = data?.historicoSemanal[0] ?? null;
   const rateioAbertura = data?.movimentoSemana.consolidadoNaAbertura ?? null;
   const protecaoRateadaSemana = (data?.movimentoSemana.protecao ?? 0) +
     (rateioAbertura?.protecao ?? 0);
@@ -355,11 +358,65 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
               <div className={financialNotesHidden ? "sticky top-16 z-10 -mx-4 bg-white px-4 pb-2 pt-2 shadow-sm" : ""}>
               <section aria-label="Movimentação financeira desta semana">
                 <div className="mb-2 flex items-center justify-between">
-                  <h3 className="font-bold text-slate-800">Resumo financeiro da semana</h3>
+                  <h3 className="font-bold text-slate-800">{selectedFinanceWeek === "current" ? "Resumo financeiro da semana atual" : "Resumo financeiro da semana passada"}</h3>
+{selectedFinanceWeek === "current" && (
                   <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${data.situacao === "risco" ? "bg-red-100 text-red-700" : data.situacao === "atencao" ? "bg-amber-100 text-amber-700" : data.situacao === "sem_dados" ? "bg-slate-100 text-slate-700" : "bg-emerald-100 text-emerald-700"}`}>
                     {data.situacao === "risco" ? "Risco" : data.situacao === "atencao" ? "Atenção" : data.situacao === "sem_dados" ? "Dados insuficientes" : data.situacao === "sem_alertas" ? "Sem alertas" : "Sem alerta de risco"}
                   </span>
+                  )}
                 </div>
+                <div className="mb-3 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" aria-label="Período do resumo financeiro">
+                  <button type="button" role="tab" data-testid="button-semana-atual" aria-selected={selectedFinanceWeek === "current"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${selectedFinanceWeek === "current" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`} onClick={() => setSelectedFinanceWeek("current")}>Semana atual</button>
+                  <button type="button" role="tab" data-testid="button-semana-passada" aria-selected={selectedFinanceWeek === "previous"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${selectedFinanceWeek === "previous" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`} onClick={() => setSelectedFinanceWeek("previous")}>Semana passada</button>
+                </div>
+                {selectedFinanceWeek === "previous" ? (
+                  <div className="mt-3 space-y-3" data-testid="resumo-semana-passada">
+                    {semanaAnterior ? (
+                      <>
+                        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                          <p className="font-semibold text-indigo-950">Período: {semanaAnterior.inicio.split("-").reverse().join("/")} a {semanaAnterior.fim.split("-").reverse().join("/")}</p>
+                          <div className="mt-2 grid grid-cols-2 gap-2 text-sm">
+                            <div className="rounded-lg bg-white/80 p-2"><p className="text-xs text-slate-600">Entradas registradas</p><p className="font-bold text-emerald-800">{fmt(semanaAnterior.entradas)}</p></div>
+                            <div className="rounded-lg bg-white/80 p-2"><p className="text-xs text-slate-600">Saídas registradas</p><p className="font-bold text-rose-800">{fmt(semanaAnterior.saidas)}</p></div>
+                            <div className="col-span-2 rounded-lg bg-white/80 p-2"><p className="text-xs text-slate-600">Líquido registrado (entradas − saídas)</p><p className={`font-bold ${semanaAnterior.liquido < 0 ? "text-rose-800" : "text-slate-900"}`}>{fmt(semanaAnterior.liquido)}</p></div>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border bg-white p-3">
+                          <p className="text-sm font-bold text-slate-800">Para onde foram as saídas</p>
+                          {Object.keys(semanaAnterior.saidasPorCategoria).length > 0 ? (
+                            <ul className="mt-2 space-y-1 text-sm">
+                              {Object.entries(semanaAnterior.saidasPorCategoria).map(([categoria, valor]) => (
+                                <li key={categoria} className="flex justify-between gap-2"><span>{categoria === "pecas" ? "Peças" : categoria}</span><strong>{fmt(valor)}</strong></li>
+                              ))}
+                            </ul>
+                          ) : <p className="mt-1 text-xs text-slate-500">Nenhuma saída registrada nessa semana.</p>}
+                          {semanaAnterior.saidasPagasPelaReserva > 0 && <p className="mt-2 text-xs text-blue-800">{fmt(semanaAnterior.saidasPagasPelaReserva)} das saídas foram pagas pela reserva e não são debitadas novamente da operação.</p>}
+                        </div>
+                        <div className="space-y-2">
+                          <p className="text-sm font-bold text-slate-800">Lançamentos da semana</p>
+                          {semanaAnterior.registros.length === 0 ? <p className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-500">Nenhum lançamento registrado nessa semana.</p> :
+                            [...semanaAnterior.registros].sort((a, b) => b.data.localeCompare(a.data) || b.id - a.id).map(registro => (
+                              <article key={registro.id} className="rounded-lg border bg-white p-2 text-xs">
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <p className="font-semibold text-slate-800">{registro.data.slice(0, 10).split("-").reverse().join("/")} · {registro.tipo === "entrada" ? "Entrada" : "Saída"}{registro.pagaPelaReserva ? " · paga pela reserva" : ""}</p>
+                                    <p className="mt-0.5 break-words text-slate-600">{registro.motivo || "Sem descrição"}{registro.categoria ? ` · ${registro.categoria === "pecas" ? "Peças" : registro.categoria}` : ""}</p>
+                                    {registro.observacao && <p className="mt-0.5 break-words text-slate-500">{registro.observacao}</p>}
+                                  </div>
+                                  <div className="shrink-0 text-right">
+                                    <p className={`font-bold ${registro.tipo === "entrada" ? "text-emerald-700" : "text-rose-700"}`}>{registro.tipo === "entrada" ? "+" : "−"}{fmt(registro.valor)}</p>
+                                    <p className="text-slate-500">{registro.formaPagamento === "pix" ? "PIX" : registro.formaPagamento === "dinheiro" ? "Dinheiro" : registro.formaPagamento?.replaceAll("_", " ") ?? "Pagamento não informado"}</p>
+                                  </div>
+                                </div>
+                              </article>
+                            ))}
+                        </div>
+                        <p className="text-[11px] text-slate-500">Este resumo usa os lançamentos registrados no Caixa. Ele não mostra o saldo físico de fechamento daquela semana.</p>
+                      </>
+                    ) : <p className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">O histórico da semana passada ainda não está disponível.</p>}
+                  </div>
+                ) : (
+                  <>
                 <p className="mb-2 text-[11px] text-slate-500">O selo resume alertas financeiros; não é o fluxo semanal nem, sozinho, uma decisão sobre pedidos. Compare o valor do pedido com a margem conservadora abaixo.</p>
                 <div className="rounded-2xl bg-emerald-600 p-4 text-white">
                   <p className="text-sm font-medium text-emerald-50">{data.movimentoSemana.aberturaRealNoPeriodo ? "Entradas elegíveis após a abertura · dinheiro + PIX" : "Entradas elegíveis no período contado · dinheiro + PIX"}</p>
@@ -446,10 +503,12 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   {!financialNotesHidden && <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{data.saldos.base}</p>}
                 </div>
                 {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">Primeiro, o app subtrai as saídas elegíveis das entradas; se o saldo líquido for positivo e a proteção estiver ativa, divide em 60% para operação e 40% para proteção. Os valores arredondados em centavos somam exatamente o líquido. Se não for positivo, não há parcelas a dividir. {summary.protecaoAtiva ? "O valor integral calculado para proteção é somado à reserva acumulada após novos lançamentos elegíveis; essa classificação não movimenta dinheiro. O saldo físico e a margem para gastos continuam separados." : "Com a proteção desativada, o saldo líquido positivo fica todo na operação."} O cálculo não movimenta dinheiro.</p>}
+                  </>
+                )}
               </section>
 
               </div>
-              {!financialNotesHidden && <>
+              {!financialNotesHidden && selectedFinanceWeek === "current" && <>
               <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-sm" aria-label="Reserva gradual">
                 <h3 className="flex items-center gap-2 font-bold text-blue-900"><LockKeyhole className="h-4 w-4" /> Reserva sem teto</h3>
                 <p className="mt-1 text-slate-700">
