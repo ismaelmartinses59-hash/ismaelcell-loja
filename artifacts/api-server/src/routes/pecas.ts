@@ -4,40 +4,11 @@ import { db, pecasTable, vendasTable, contasReceberItensTable, contasReceberPaga
 import { findOrCreateConta } from "./contas-receber";
 import { LABELS, normalizeForma, taxaFor, type FormaPagamento } from "../lib/formas-pagamento.js";
 import { ai } from "@workspace/integrations-gemini-ai";
+import { chaveEstoqueCompartilhado, mesmaPecaCompartilhada } from "./estoque-compartilhado.js";
 
 const router: IRouter = Router();
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
-// Só removemos conectores da escrita. Mantemos "TELA", "BATERIA",
-// "PLACA" etc. para nunca cruzar estoques de tipos diferentes.
-const PALAVRAS_CONECTORES_ESTOQUE = new Set([
-  "DO", "DA", "DE", "DOS", "DAS", "E", "PARA",
-]);
-
-function chaveModeloCompartilhado(modelo: string): string {
-  return modelo
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .split(/[^A-Z0-9]+/)
-    .filter((parte) => parte && !PALAVRAS_CONECTORES_ESTOQUE.has(parte))
-    .sort()
-    .join("|");
-}
-
-function chaveQualidadeCompartilhada(qualidade: string): string {
-  return qualidade
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "");
-}
-
-function mesmaPecaCompartilhada(a: { modelo: string; qualidade: string }, b: { modelo: string; qualidade: string }): boolean {
-  return chaveModeloCompartilhado(a.modelo) === chaveModeloCompartilhado(b.modelo)
-    && chaveQualidadeCompartilhada(a.qualidade) === chaveQualidadeCompartilhada(b.qualidade);
-}
-
 // Cliente e Lojista têm preços separados, mas representam o mesmo estoque físico.
 async function sincronizarQuantidadesCompartilhadas(): Promise<void> {
   await db.transaction(async (tx) => {
@@ -45,7 +16,7 @@ async function sincronizarQuantidadesCompartilhadas(): Promise<void> {
     const grupos = new Map<string, Array<(typeof rows)[number]>>();
 
     for (const row of rows) {
-      const chave = chaveModeloCompartilhado(row.modelo) + "::" + chaveQualidadeCompartilhada(row.qualidade);
+      const chave = chaveEstoqueCompartilhado(row.modelo, row.qualidade);
       const grupo = grupos.get(chave) ?? [];
       grupo.push(row);
       grupos.set(chave, grupo);
