@@ -428,18 +428,22 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
       .slice(0, 5)
     : [];
 
+  const quantidadeNumerica = quantidade.trim() === "" ? null : Number(quantidade);
+  const quantidadeInvalida = quantidadeNumerica === null ||
+    !Number.isSafeInteger(quantidadeNumerica) ||
+    quantidadeNumerica < (isEdicao ? 0 : 1);
+
     const submit = () => {
       if (duplicada) return;
       if (!modelo.trim() || !qualidade || !valor.trim()) return;
-      const qtd = parseInt(quantidade) || 0;
-    if (qtd < 1) return;
+      if (quantidadeInvalida || quantidadeNumerica === null) return;
     if (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim())) return;
     onSave({
       modelo: modelo.trim(),
       qualidade,
       valor: valor.trim(),
       valorCusto: custo.trim(),
-      quantidade: qtd,
+      quantidade: quantidadeNumerica,
       ...(pedirInvestimento ? { formaInvestimento: formaInvest, destino, fornecedor: fornecedor.trim(), valorLojista: valorLojista.trim() } : {}),
     });
   };
@@ -609,7 +613,8 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade em Estoque</label>
-          <Input type="number" min={1} placeholder="1" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+          <Input type="number" min={isEdicao ? 0 : 1} step={1} placeholder={isEdicao ? "0" : "1"} value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+          {isEdicao && <p className="mt-1 text-[11px] text-muted-foreground">Peças esgotadas podem continuar com quantidade zero.</p>}
         </div>
         <div className="col-span-2 bg-white border border-dashed border-primary/30 rounded-lg p-3 space-y-2">
           <p className="text-xs font-semibold text-primary uppercase tracking-wide">Calculadora de Preço</p>
@@ -662,7 +667,7 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
       </div>
       <div className="flex gap-2 justify-end">
         <Button size="sm" variant="ghost" onClick={onCancel} disabled={loading}><X className="w-4 h-4 mr-1" /> Cancelar</Button>
-        <Button size="sm" onClick={submit} disabled={loading || !!duplicada || !modelo.trim() || !qualidade || !valor.trim() || parseInt(quantidade) < 1 || (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim()))}>
+        <Button size="sm" onClick={submit} disabled={loading || !!duplicada || !modelo.trim() || !qualidade || !valor.trim() || quantidadeInvalida || (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim()))}>
           <Check className="w-4 h-4 mr-1" /> {loading ? "Salvando..." : "Salvar"}
         </Button>
       </div>
