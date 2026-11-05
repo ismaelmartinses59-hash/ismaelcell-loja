@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, ArrowDownRight, Bot, LockKeyhole, MessageCircle, Mic, Package, Send, Square, Volume2, VolumeX, Wallet, X } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, Bot, Download, LockKeyhole, MessageCircle, Mic, Package, Send, Square, Volume2, VolumeX, Wallet, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -29,7 +29,7 @@ type FinanceSnapshot = {
   reservaAutomatica: {
     reservaSemana: number; aporte: number; entradaNova: number; percentual: number;
     entradasSemana: number; protecaoPendente: number; compraProtegida: number; contasProtegidas: number;
-    estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_aumento" | "acumulando";
+    estado: "pausada" | "sem_saldo" | "iniciando" | "sem_entradas" | "sem_aumento" | "acumulando" | "fechamento";
   };
   movimentoSemana: {
     inicio: string;
@@ -38,10 +38,11 @@ type FinanceSnapshot = {
     saidas: number;
     percentualProtecao: number;
     protecao: number;
+    projecaoOperacaoSemana: number;
     alocacaoOperacao: number;
     operacaoPendente: number;
     saldoOperacionalAntesPedidos: number;
-    saldoOperacionalAnterior: number;
+    saldoOperacionalAnterior: number; saldoCarryInSemana: number;
     saidasSegunda: number;
     saidasPedidosEstoque: number;
     saidasCicloAnterior: number;
@@ -57,7 +58,26 @@ type FinanceSnapshot = {
   };
   faltamMeta: number | null;
   semana: { entradas: number; saidas: number; retiradas: number; compras: number; lucro: number | null; custoAusente: boolean };
-  historicoSemanal: { inicio: string; fim: string; entradas: number; saidas: number; liquido: number; saidasPorCategoria: Record<string, number>; saidasPagasPelaReserva: number; registros: { id: number; data: string; tipo: string; valor: number; formaPagamento: string | null; categoria: string | null; motivo: string; observacao: string | null; pagaPelaReserva: boolean }[] }[];
+  historicoSemanal: {
+    inicio: string;
+    fim: string;
+    entradas: number;
+    saidas: number;
+    liquido: number;
+    saidasPorCategoria: Record<string, number>;
+    saidasPagasPelaReserva: number;
+    registros: {
+      id: number;
+      data: string;
+      tipo: string;
+      valor: number;
+      formaPagamento: string | null;
+      categoria: string | null;
+      motivo: string;
+      observacao: string | null;
+      pagaPelaReserva: boolean;
+    }[];
+  }[];
   mes: { entradas: number; saidas: number; lucro: number | null };
   compras: { totalSemana: number; mediaSemanal: number | null; menor: number | null; maior: number | null; tendencia: number | null; diaHabitual: number | null; semanasRegistradas: number };
   categorias: Record<string, number>;
@@ -101,6 +121,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   });
   const [messages, setMessages] = useState<{ pergunta: string; resposta: string }[]>([]);
   const [selectedFinanceWeek, setSelectedFinanceWeek] = useState<"current" | "previous">("current");
+  const [exportingWeeklyReport, setExportingWeeklyReport] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
@@ -126,6 +147,39 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const lastClosedAt = data?.ultimoFechamentoCaixa ? Date.parse(data.ultimoFechamentoCaixa) : NaN;
   const financialNotesHidden = financialNotesHiddenAt !== null &&
     (!Number.isFinite(lastClosedAt) || lastClosedAt <= financialNotesHiddenAt);
+  const weeklyReportStart = selectedFinanceWeek === "previous"
+    ? data?.historicoSemanal[0]?.inicio
+    : data?.movimentoSemana.inicio;
+
+  async function exportWeeklyReconciliation() {
+    if (!weeklyReportStart || exportingWeeklyReport) return;
+    setExportingWeeklyReport(true);
+    try {
+      const report = await api<unknown>(
+        `/financeiro-ia/relatorio-semanal?inicio=${encodeURIComponent(weeklyReportStart)}`,
+      );
+      const blob = new Blob([JSON.stringify(report, null, 2)], {
+        type: "application/json;charset=utf-8",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `conciliacao-financeira-${weeklyReportStart}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast({ title: "Relatório exportado", description: "O arquivo semanal foi baixado para o seu dispositivo." });
+    } catch (error) {
+      toast({
+        title: "Não foi possível exportar",
+        description: String(error instanceof Error ? error.message : error),
+        variant: "destructive",
+      });
+    } finally {
+      setExportingWeeklyReport(false);
+    }
+  }
 
   useEffect(() => {
     if (!open || messages.length === 0) return;
@@ -315,9 +369,15 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
   const summary = data?.saldos;
   const semanaAnterior = data?.historicoSemanal[0] ?? null;
   const rateioAbertura = data?.movimentoSemana.consolidadoNaAbertura ?? null;
-  const protecaoRateadaSemana = (data?.movimentoSemana.protecao ?? 0) +
-    (rateioAbertura?.protecao ?? 0);
-  const percentualProtecaoExibido = summary?.protecaoAtiva && protecaoRateadaSemana > 0 ? 40 : 0;
+  const entradasRateadasSemana = data?.movimentoSemana.entradas ?? 0;
+  const saidasRateadasSemana = data?.movimentoSemana.saidas ?? 0;
+  const liquidoRateadoSemana = data?.movimentoSemana.saldoOperacional ?? 0;
+  const operacaoRateadaSemana = data?.movimentoSemana.projecaoOperacaoSemana ?? 0;
+  const protecaoRateadaSemana = data?.movimentoSemana.protecao ?? 0;
+  const percentualProtecaoExibido = data?.movimentoSemana.percentualProtecao ?? 0;
+  const percentualOperacaoExibido = liquidoRateadoSemana > 0
+    ? summary?.protecaoAtiva ? 100 - percentualProtecaoExibido : 100
+    : 0;
   const severities = {
     risco: "bg-red-50 border-red-200 text-red-900",
     atencao: "bg-amber-50 border-amber-200 text-amber-900",
@@ -359,16 +419,63 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
               <section aria-label="Movimentação financeira desta semana">
                 <div className="mb-2 flex items-center justify-between">
                   <h3 className="font-bold text-slate-800">{selectedFinanceWeek === "current" ? "Resumo financeiro da semana atual" : "Resumo financeiro da semana passada"}</h3>
-{selectedFinanceWeek === "current" && (
-                  <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${data.situacao === "risco" ? "bg-red-100 text-red-700" : data.situacao === "atencao" ? "bg-amber-100 text-amber-700" : data.situacao === "sem_dados" ? "bg-slate-100 text-slate-700" : "bg-emerald-100 text-emerald-700"}`}>
+                  {selectedFinanceWeek === "current" && <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${data.situacao === "risco" ? "bg-red-100 text-red-700" : data.situacao === "atencao" ? "bg-amber-100 text-amber-700" : data.situacao === "sem_dados" ? "bg-slate-100 text-slate-700" : "bg-emerald-100 text-emerald-700"}`}>
                     {data.situacao === "risco" ? "Risco" : data.situacao === "atencao" ? "Atenção" : data.situacao === "sem_dados" ? "Dados insuficientes" : data.situacao === "sem_alertas" ? "Sem alertas" : "Sem alerta de risco"}
-                  </span>
-                  )}
+                  </span>}
                 </div>
                 <div className="mb-3 grid grid-cols-2 rounded-xl border border-slate-200 bg-slate-100 p-1" role="tablist" aria-label="Período do resumo financeiro">
-                  <button type="button" role="tab" data-testid="button-semana-atual" aria-selected={selectedFinanceWeek === "current"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${selectedFinanceWeek === "current" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`} onClick={() => setSelectedFinanceWeek("current")}>Semana atual</button>
-                  <button type="button" role="tab" data-testid="button-semana-passada" aria-selected={selectedFinanceWeek === "previous"} className={`rounded-lg px-3 py-2 text-sm font-semibold ${selectedFinanceWeek === "previous" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`} onClick={() => setSelectedFinanceWeek("previous")}>Semana passada</button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedFinanceWeek === "current"}
+                    data-testid="button-semana-atual"
+                    className={`rounded-lg px-3 py-2 text-sm font-semibold ${selectedFinanceWeek === "current" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}
+                    onClick={() => setSelectedFinanceWeek("current")}
+                  >Semana atual</button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={selectedFinanceWeek === "previous"}
+                    data-testid="button-semana-passada"
+                    className={`rounded-lg px-3 py-2 text-sm font-semibold ${selectedFinanceWeek === "previous" ? "bg-white text-emerald-800 shadow-sm" : "text-slate-600"}`}
+                    onClick={() => setSelectedFinanceWeek("previous")}
+                  >Semana passada</button>
                 </div>
+                <div className="mb-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    data-testid="button-exportar-conciliacao-semanal"
+                    disabled={!weeklyReportStart || exportingWeeklyReport}
+                    onClick={() => void exportWeeklyReconciliation()}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    {exportingWeeklyReport ? "Preparando relatório..." : "Exportar conciliação da semana"}
+                  </Button>
+                </div>
+                <p className="mb-2 text-[11px] text-slate-500">Baixa um arquivo JSON com lançamentos, ajustes e utilizações da reserva. Revise-o antes de compartilhar.</p>
+                {selectedFinanceWeek === "current" && <p className="mb-2 text-[11px] text-slate-500">O selo resume alertas financeiros; não é o fluxo semanal nem, sozinho, uma decisão sobre pedidos. Compare o valor do pedido com a margem conservadora abaixo.</p>}
+                {selectedFinanceWeek === "current" && <>
+                <div className="rounded-2xl bg-emerald-600 p-4 text-white">
+                  <p className="text-sm font-medium text-emerald-50">Entradas elegíveis nesta semana · dinheiro + PIX</p>
+                  <p data-testid="text-entradas-elegiveis-semana" className="mt-1 text-3xl font-extrabold">{fmt(entradasRateadasSemana)}</p>
+                  {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">De {data.movimentoSemana.inicio} até hoje ({data.movimentoSemana.fim}); inclui o período inteiro, também os lançamentos consolidados na abertura. Não inclui cartão nem o valor de abertura da gaveta.</p>}
+                </div>
+                {data.movimentoSemana.consolidadoNaAbertura && (
+                  <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3" data-testid="card-rateio-consolidado-abertura">
+                    <p className="font-semibold text-indigo-950">Rateio incorporado na abertura de {data.movimentoSemana.consolidadoNaAbertura.abertura}</p>
+                    <p className="mt-1 text-[11px] text-indigo-800">Esses lançamentos já foram considerados no acompanhamento operacional. A parte de proteção é provisória e só entra na reserva se a semana fechar positiva; não some novamente aos valores abaixo.</p>
+                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-indigo-950">
+                      <p>Entradas elegíveis: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.entradas)}</strong></p>
+                      <p>Saídas do rateio: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.saidas)}</strong></p>
+                      <p>Líquido: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.liquido)}</strong></p>
+                      <p>Operação · {summary.protecaoAtiva ? "60%" : "100%"}: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.operacao)}</strong></p>
+                      {summary.protecaoAtiva && <p>Proteção · 40%: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.protecao)}</strong></p>}
+                    </div>
+                  </div>
+                )}
+                </>}
                 {selectedFinanceWeek === "previous" ? (
                   <div className="mt-3 space-y-3" data-testid="resumo-semana-passada">
                     {semanaAnterior ? (
@@ -411,31 +518,12 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                               </article>
                             ))}
                         </div>
-                        <p className="text-[11px] text-slate-500">Este resumo usa os lançamentos registrados no Caixa. Ele não mostra o saldo físico de fechamento daquela semana.</p>
+                          <p className="text-[11px] text-slate-500">Este resumo mostra o líquido de todos os lançamentos do Caixa, não o saldo físico de fechamento. Para o 40% da reserva, entram todas as saídas registradas em dinheiro/PIX, inclusive Peças e saídas de segunda; o saldo operacional segue seu ciclo próprio.</p>
                       </>
                     ) : <p className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">O histórico da semana passada ainda não está disponível.</p>}
                   </div>
                 ) : (
-                  <>
-                <p className="mb-2 text-[11px] text-slate-500">O selo resume alertas financeiros; não é o fluxo semanal nem, sozinho, uma decisão sobre pedidos. Compare o valor do pedido com a margem conservadora abaixo.</p>
-                <div className="rounded-2xl bg-emerald-600 p-4 text-white">
-                  <p className="text-sm font-medium text-emerald-50">{data.movimentoSemana.aberturaRealNoPeriodo ? "Entradas elegíveis após a abertura · dinheiro + PIX" : "Entradas elegíveis no período contado · dinheiro + PIX"}</p>
-                  <p data-testid="text-entradas-elegiveis-semana" className="mt-1 text-3xl font-extrabold">{fmt(data.movimentoSemana.entradas)}</p>
-                  {!financialNotesHidden && <p className="mt-1 text-xs text-emerald-50">De {data.movimentoSemana.inicio} até hoje ({data.movimentoSemana.fim}); conta o período após a abertura real quando ela já ocorreu. Não inclui cartão nem o valor de abertura da gaveta.</p>}
-                </div>
-                {data.movimentoSemana.consolidadoNaAbertura && (
-                  <div className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3" data-testid="card-rateio-consolidado-abertura">
-                    <p className="font-semibold text-indigo-950">Rateio incorporado na abertura de {data.movimentoSemana.consolidadoNaAbertura.abertura}</p>
-                    <p className="mt-1 text-[11px] text-indigo-800">Esses lançamentos já foram considerados no saldo operacional{summary.protecaoAtiva ? " e na reserva protegida" : ""}; não some novamente aos valores abaixo.</p>
-                    <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-indigo-950">
-                      <p>Entradas elegíveis: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.entradas)}</strong></p>
-                      <p>Saídas do rateio: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.saidas)}</strong></p>
-                      <p>Líquido: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.liquido)}</strong></p>
-                      <p>Operação · {summary.protecaoAtiva ? "60%" : "100%"}: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.operacao)}</strong></p>
-                      {summary.protecaoAtiva && <p>Proteção · 40%: <strong>{fmt(data.movimentoSemana.consolidadoNaAbertura.protecao)}</strong></p>}
-                    </div>
-                  </div>
-                )}
+                <>
                 {data.movimentoSemana.aberturaRealNoPeriodo && (
                   <div className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3" data-testid="card-saldos-atuais-pos-abertura">
                     <p className="mb-2 font-semibold text-emerald-950">Saldos atuais após a abertura</p>
@@ -454,25 +542,30 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 )}
                 <div className="mt-2 grid grid-cols-2 gap-2">
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Proteção rateada nesta semana · {rateioAbertura ? percentualProtecaoExibido : data.movimentoSemana.percentualProtecao}%</p>
+                    <p className="flex items-center gap-1 text-xs text-violet-700"><LockKeyhole className="h-3.5 w-3.5" /> Projeção de proteção da semana · {percentualProtecaoExibido}%</p>
                     <p data-testid="text-protecao-calculada-semana" className="mt-1 font-bold text-violet-900">{fmt(protecaoRateadaSemana)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">{!summary.protecaoAtiva ? "Proteção desativada; nenhum valor é destinado à reserva." : rateioAbertura ? `${fmt(rateioAbertura.protecao)} já foram incorporados na abertura; ${fmt(data.movimentoSemana.protecao)} correspondem à atividade depois dela.` : `Pendente até a próxima abertura real do Caixa: ${fmt(data.reservaAutomatica.protecaoPendente)}.`}</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-violet-700">{!summary.protecaoAtiva ? "Proteção desativada; nenhum valor é destinado à reserva." : "Recalculada a cada lançamento: todas as entradas e saídas em dinheiro/PIX, inclusive Peças e segunda, primeiro compensam o déficit anterior. O 60/40 é apenas uma projeção e só entra na reserva se a semana fechar positiva."}</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.aberturaRealNoPeriodo ? "Líquido após abertura usado no rateio" : "Líquido usado no rateio"}</p>
-                    <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(data.movimentoSemana.saldoOperacional)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas menos saídas do período ({fmt(data.movimentoSemana.saidas)}). Pedidos de estoque e saídas de segunda ficam fora do rateio semanal e são debitados do ciclo operacional anterior.</p>}
+                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Líquido após compensar o déficit anterior</p>
+                    <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(liquidoRateadoSemana)}</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas em dinheiro/PIX {fmt(entradasRateadasSemana)} − todas as saídas {fmt(saidasRateadasSemana)} − déficit anterior. A semana é recalculada em tempo real; se o resultado fechar em zero ou negativo, não há rateio.</p>}
                   </div>
-                  <div className={`rounded-xl border p-3 ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "border-rose-100 bg-rose-50" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "border-emerald-100 bg-emerald-50" : "border-slate-200 bg-slate-50"}`}>
-                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-700" : "text-slate-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.resultadoOperacionalSemana < 0 ? "Déficit operacional após abertura" : data.movimentoSemana.aberturaRealNoPeriodo ? "Operação após abertura" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "Operação desta semana" : "Operação da semana"}</p>
-                    <p data-testid="text-resultado-operacional-semana" className={`mt-1 font-bold ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-900" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-900" : "text-slate-900"}`}>{fmt(data.movimentoSemana.resultadoOperacionalSemana)}</p>
-                    {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : data.movimentoSemana.resultadoOperacionalSemana > 0 ? "text-emerald-700" : "text-slate-700"}`}>{data.movimentoSemana.aberturaRealNoPeriodo ? "Mostra somente o resultado depois da abertura. O saldo total disponível da operação está destacado acima." : "Resultado operacional só desta semana, separado do saldo anterior. Será unido ao saldo carregado na próxima abertura real do Caixa; antes disso não aumenta o limite para pedidos."}</p>}
+                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
+                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Operação rateada nesta semana · {percentualOperacaoExibido}%</p>
+                    <p data-testid="text-operacao-rateada-semana" className="mt-1 font-bold text-emerald-900">{fmt(operacaoRateadaSemana)}</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Projeção da parcela operacional pelo resultado elegível acumulado na semana. O saldo disponível acima continua separado e considera a abertura real, os débitos do ciclo anterior e as saídas já registradas.</p>}
+                  </div>
+                  <div className={`rounded-xl border p-3 ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "border-rose-100 bg-rose-50" : "border-slate-200 bg-slate-50"}`}>
+                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : "text-slate-700"}`}><Wallet className="h-3.5 w-3.5" /> Resultado após compensar o déficit</p>
+                    <p data-testid="text-resultado-operacional-semana" className={`mt-1 font-bold ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-900" : "text-slate-900"}`}>{fmt(data.movimentoSemana.resultadoOperacionalSemana)}</p>
+                    {!financialNotesHidden && <p className="text-[11px] text-slate-700">Resultado elegível da semana após descontar o déficit anterior. Atualiza junto com as entradas e saídas; o saldo disponível para pedidos continua separado e não inclui a projeção desta semana.</p>}
                   </div>
                   {!data.movimentoSemana.aberturaRealNoPeriodo && <>
                     <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
                       <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
                       <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
-                      <p className="text-[11px] text-blue-700">{!financialNotesHidden && "Acumulado das semanas anteriores e da atual · sem teto máximo."}</p>
+                       <p className="text-[11px] text-blue-700">{!financialNotesHidden && "Acumulado das semanas fechadas · sem teto máximo. A semana atual ainda é provisória."}</p>
                     </div>
                     <div className={`rounded-xl border p-3 ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
                       <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "Déficit carregado" : "Saldo restante do ciclo anterior"}</p>
@@ -502,34 +595,36 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   </p>
                   {!financialNotesHidden && <p className="mt-1 text-[10px] leading-relaxed text-slate-500">{data.saldos.base}</p>}
                 </div>
-                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">Primeiro, o app subtrai as saídas elegíveis das entradas; se o saldo líquido for positivo e a proteção estiver ativa, divide em 60% para operação e 40% para proteção. Os valores arredondados em centavos somam exatamente o líquido. Se não for positivo, não há parcelas a dividir. {summary.protecaoAtiva ? "O valor integral calculado para proteção é somado à reserva acumulada após novos lançamentos elegíveis; essa classificação não movimenta dinheiro. O saldo físico e a margem para gastos continuam separados." : "Com a proteção desativada, o saldo líquido positivo fica todo na operação."} O cálculo não movimenta dinheiro.</p>}
-                  </>
+                {!financialNotesHidden && <p className="mt-2 text-[11px] leading-relaxed text-slate-500">Em tempo real, o app compensa primeiro qualquer déficit operacional anterior e depois desconta as saídas elegíveis das entradas. Se o resultado ajustado for positivo e a proteção estiver ativa, a projeção é 60% para operação e 40% para proteção. A parcela protegida só entra na reserva depois do fechamento semanal. Se o resultado ficar em zero ou negativo, a projeção de 40% diminui até zerar e o déficit continua carregado. A proteção é uma classificação contábil, não uma transferência.</p>}
+                </>
                 )}
               </section>
 
               </div>
-              {!financialNotesHidden && selectedFinanceWeek === "current" && <>
+              {!financialNotesHidden && <>
               <section className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-sm" aria-label="Reserva gradual">
                 <h3 className="flex items-center gap-2 font-bold text-blue-900"><LockKeyhole className="h-4 w-4" /> Reserva sem teto</h3>
                 <p className="mt-1 text-slate-700">
                   O saldo protegido total é acumulado sem meta máxima. Ele pode continuar crescendo depois de R$ 50 mil, R$ 100 mil ou qualquer outro valor.
                 </p>
-                <p className="mt-1 text-xs text-slate-600">A reserva da semana mostra apenas o que foi protegido neste ciclo. O que ficou protegido na semana passada permanece na reserva total. O ciclo reinicia na primeira entrada elegível de segunda-feira; se não houver, na terça. A abertura da gaveta não conta como entrada nova, e o valor semanal não é descontado uma segunda vez do saldo.</p>
+                <p className="mt-1 text-xs text-slate-600">A parcela da semana atual é provisória: os 40% só entram na reserva acumulada depois do fechamento, se o resultado elegível terminar positivo. Semana fechada em zero ou negativo não recebe reserva; seu déficit reduz o saldo operacional carregado. A reserva das semanas fechadas permanece acumulada sem teto.</p>
                 {data.reservaAutomatica.entradaNova > 0 && (
-                  <p className="mt-1 text-slate-700">Nova entrada no Caixa: <strong>{fmt(data.reservaAutomatica.entradaNova)}</strong>. Só depois de ela compor o saldo a reserva é recalculada.</p>
+                  <p className="mt-1 text-slate-700">Nova entrada registrada no Caixa: <strong>{fmt(data.reservaAutomatica.entradaNova)}</strong>. Ela altera a projeção da semana, mas não aumenta a reserva antes do fechamento.</p>
                 )}
-                {data.reservaAutomatica.aporte > 0 && (
+                {data.reservaAutomatica.aporte !== 0 && (
                   <p data-testid="text-aporte-reserva" className="mt-1 font-semibold text-emerald-700">
-                    A reserva aumentou {fmt(data.reservaAutomatica.aporte)} nesta atualização.
+                    {data.reservaAutomatica.aporte > 0
+                      ? `No fechamento semanal, a reserva recebeu ${fmt(data.reservaAutomatica.aporte)}.`
+                      : `No fechamento semanal, o saldo protegido foi reduzido em ${fmt(-data.reservaAutomatica.aporte)} para refletir o resultado final.`}
                   </p>
                 )}
                 {data.reservaAutomatica.estado === "pausada" && <p className="mt-1 text-amber-700">Aumento automático pausado: ative a proteção da reserva abaixo.</p>}
                 {data.reservaAutomatica.estado === "sem_saldo" && <p className="mt-1 text-amber-700">Sem sessão da gaveta, não é seguro aumentar a reserva.</p>}
-                {data.reservaAutomatica.estado === "iniciando" && <p className="mt-1 text-slate-600">Acompanhamento iniciado agora. As entradas anteriores já estão no saldo; só as próximas entradas poderão gerar novos aumentos.</p>}
-                {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma entrada nova desde o último cálculo automático. O resumo acima continua somando todas as entradas elegíveis desta semana; o saldo antigo sozinho não gera outro aumento.</p>}
-                {data.reservaAutomatica.estado === "sem_aumento" && <p className="mt-1 text-slate-600">Nenhum valor novo foi acrescido à reserva nesta atualização; o total já protegido permanece acumulado.</p>}
+                {data.reservaAutomatica.estado === "iniciando" && <p className="mt-1 text-slate-600">Acompanhamento iniciado. A reserva da semana será definida somente após o fechamento do período.</p>}
+                {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma entrada nova desde a última leitura; a projeção continua baseada no resultado elegível acumulado da semana.</p>}
+                {data.reservaAutomatica.estado === "sem_aumento" && <p className="mt-1 text-slate-600">Nenhuma reserva é acrescentada durante a semana aberta. A projeção só será aplicada no fechamento, se o resultado for positivo.</p>}
                 <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                  O rateio é feito depois de subtrair as saídas elegíveis das entradas desta semana: {fmt(data.movimentoSemana.entradas)} − {fmt(data.movimentoSemana.saidas)} = {fmt(data.movimentoSemana.saldoOperacional)}. {summary.protecaoAtiva ? `Se o líquido for positivo, ${fmt(data.movimentoSemana.alocacaoOperacao)} vão para operação (60%) e ${fmt(data.movimentoSemana.protecao)} para proteção (40%).` : "Com a proteção desativada, todo o líquido positivo fica na operação."} Os valores arredondados em centavos somam exatamente o saldo líquido positivo; se o líquido for zero ou negativo, as duas parcelas calculadas são zero. A proteção calculada é somada ao total conforme entram novos lançamentos elegíveis; é uma classificação contábil, não uma transferência, e não tem teto máximo.
+                  O cálculo em tempo real considera {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas − {fmt(Math.abs(Math.min(0, data.movimentoSemana.saldoCarryInSemana ?? 0)))} de déficit anterior = {fmt(liquidoRateadoSemana)}. {summary.protecaoAtiva && liquidoRateadoSemana > 0 ? `Se a semana fechar agora, a projeção é ${fmt(operacaoRateadaSemana)} para operação (60%) e ${fmt(protecaoRateadaSemana)} para proteção (40%).` : liquidoRateadoSemana > 0 ? "Com a proteção desativada, o líquido positivo fica na operação." : "Como o líquido não é positivo, a reserva projetada é zero e o déficit segue no saldo operacional."} A projeção de proteção só será adicionada à reserva depois do fechamento semanal; a reserva acumulada não tem teto máximo.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">É uma proteção no cálculo do app, não uma transferência ou saída do Caixa. Gastos e transferências não registrados podem alterar o saldo real.</p>
               </section>
@@ -582,6 +677,71 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 {data.estoqueBaixo.length > 0 && <p className="text-xs text-amber-700">Estoque baixo: {data.estoqueBaixo.map(p => `${p.modelo} (${p.quantidade})`).join(", ")}</p>}
               </section>
               </>}
+
+              <section className="space-y-2" aria-label="Histórico financeiro semanal">
+                <div>
+                  <h3 className="font-bold text-slate-800">Histórico financeiro semanal</h3>
+                  <p className="text-xs text-slate-500">As últimas 12 semanas encerradas, reconstruídas pelos lançamentos originais do Caixa. Abra uma semana para conferir cada entrada e saída.</p>
+                </div>
+                {data.historicoSemanal.length === 0 ? (
+                  <p className="rounded-xl border bg-slate-50 p-3 text-sm text-slate-600">Ainda não há lançamentos no período do histórico.</p>
+                ) : data.historicoSemanal.slice(selectedFinanceWeek === "previous" ? 1 : 0).map((semana, index) => (
+                  <details key={semana.inicio} open={index === 0} className="rounded-xl border border-slate-200 bg-white">
+                    <summary className="cursor-pointer list-none p-3 [&::-webkit-details-marker]:hidden">
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                        <strong>{semana.inicio} a {semana.fim}</strong>
+                        <span className="text-slate-600">Entrou {fmt(semana.entradas)} · saiu {fmt(semana.saidas)}</span>
+                      </div>
+                      <p className={`mt-1 text-xs font-semibold ${semana.liquido < 0 ? "text-rose-700" : "text-emerald-700"}`}>
+                        Líquido registrado: {fmt(semana.liquido)} · {semana.registros.length} lançamentos
+                      </p>
+                    </summary>
+                    <div className="space-y-3 border-t px-3 pb-3 pt-2">
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">Saídas por categoria</p>
+                        {Object.keys(semana.saidasPorCategoria).length > 0 ? (
+                          <ul className="mt-1 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-600">
+                            {Object.entries(semana.saidasPorCategoria).map(([categoria, valor]) => (
+                              <li key={categoria} className="flex justify-between gap-2">
+                                <span>{categoria === "pecas" ? "Peças" : categoria}</span><strong>{fmt(valor)}</strong>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : <p className="mt-1 text-xs text-slate-500">Nenhuma saída registrada.</p>}
+                        {semana.saidasPagasPelaReserva > 0 && (
+                          <p className="mt-2 text-[11px] text-blue-800">Dentro das saídas acima, {fmt(semana.saidasPagasPelaReserva)} foram pagas pela reserva; aparecem no histórico do Caixa, mas não são debitadas novamente da operação.</p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-xs font-bold text-slate-700">Lançamentos detalhados</p>
+                        {[...semana.registros].sort((a, b) => b.data.localeCompare(a.data) || b.id - a.id).map(registro => (
+                          <article key={registro.id} className="rounded-lg bg-slate-50 p-2 text-xs">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-semibold text-slate-800">
+                                  {registro.data.slice(0, 10).split("-").reverse().join("/")} · {registro.tipo === "entrada" ? "Entrada" : "Saída"}
+                                  {registro.pagaPelaReserva ? " · paga pela reserva" : ""}
+                                </p>
+                                <p className="mt-0.5 break-words text-slate-600">
+                                  {registro.motivo || "Sem descrição"}{registro.categoria ? ` · ${registro.categoria === "pecas" ? "Peças" : registro.categoria}` : ""}
+                                </p>
+                                {registro.observacao && <p className="mt-0.5 break-words text-slate-500">{registro.observacao}</p>}
+                              </div>
+                              <div className="shrink-0 text-right">
+                                <p className={`font-bold ${registro.tipo === "entrada" ? "text-emerald-700" : "text-rose-700"}`}>{registro.tipo === "entrada" ? "+" : "−"}{fmt(registro.valor)}</p>
+                                <p className="text-slate-500">{registro.formaPagamento
+                                  ? registro.formaPagamento === "pix" ? "PIX" : registro.formaPagamento === "dinheiro" ? "Dinheiro" : registro.formaPagamento.replaceAll("_", " ")
+                                  : "Pagamento não informado"}</p>
+                              </div>
+                            </div>
+                          </article>
+                        ))}
+                      </div>
+                      <p className="text-[11px] text-slate-500">O rateio 60/40 é uma classificação contábil, não uma saída de dinheiro. Este histórico mostra somente os lançamentos efetivamente registrados; gastos fora do Caixa não aparecem.</p>
+                    </div>
+                  </details>
+                ))}
+              </section>
 
               <section id="conversa-financeira" className="scroll-mt-20 space-y-3" aria-label="Conversa com assistente financeiro">
                 <h3 className="flex items-center gap-2 font-bold text-slate-800"><MessageCircle className="h-4 w-4" /> Pergunte sobre suas finanças</h3>

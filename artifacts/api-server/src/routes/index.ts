@@ -17,12 +17,15 @@ import encomendasRouter from "./encomendas";
 import esperaRouter from "./espera";
 import devolucoesRouter from "./devolucoes";
 import pedidosRouter from "./pedidos";
+import shareShortcutRouter from "./share-shortcut";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
 router.use(authRouter);
 router.use(publicStatusRouter);
+// Shortcut upload is bearer-token-only; authenticated status/draft routes guard themselves.
+router.use(shareShortcutRouter);
 // Every business route, including reads and inventory-changing operations,
 // requires the same server-issued session as the finance assistant.
 router.use(requireFinanceSession);

@@ -72,6 +72,46 @@ export function separarSaidasDeSegundaDoFluxoOperacional(
   };
 }
 
+export function separarSaidasDoFluxoOperacionalV2(
+  movimentos: {
+    dia: number;
+    tipo: string;
+    formaPagamento: string | null;
+    valorCentavos: number;
+    categoria?: string | null;
+  }[],
+  segunda: number,
+  fim: number,
+) {
+  const elegivel = (movimento: typeof movimentos[number]) =>
+    movimento.dia >= segunda &&
+    movimento.dia <= fim &&
+    (movimento.formaPagamento === "dinheiro" || movimento.formaPagamento === "pix");
+  const saidaElegivel = (movimento: typeof movimentos[number]) =>
+    elegivel(movimento) && movimento.tipo === "saida";
+  const debitarCicloAnterior = (movimento: typeof movimentos[number]) =>
+    saidaElegivel(movimento) &&
+    (movimento.dia === segunda || movimento.categoria === "pecas");
+  const somarSaidas = (predicado: (movimento: typeof movimentos[number]) => boolean) =>
+    movimentos.reduce((total, movimento) => predicado(movimento)
+      ? total + Math.max(0, Math.trunc(movimento.valorCentavos))
+      : total, 0);
+  const saidasOperacionaisTotais = somarSaidas(saidaElegivel);
+  const saidasCicloAnterior = somarSaidas(debitarCicloAnterior);
+  const saidasSegunda = somarSaidas(movimento =>
+    elegivel(movimento) && movimento.dia === segunda && movimento.tipo === "saida");
+  const saidasPedidosEstoque = somarSaidas(movimento =>
+    elegivel(movimento) && movimento.tipo === "saida" && movimento.categoria === "pecas");
+  const movimentosDoCiclo = movimentos.filter(movimento => !debitarCicloAnterior(movimento));
+  return {
+    ...somarMovimentosElegiveisDoPeriodo(movimentosDoCiclo, segunda, fim),
+    saidasSegunda,
+    saidasPedidosEstoque,
+    saidasCicloAnterior,
+    saidasOperacionais: saidasOperacionaisTotais - saidasCicloAnterior,
+  };
+}
+
 export function calcularSaldoOperacionalAcumulado(
   saldoAnteriorCentavos: number,
   alocacaoAtualCentavos: number,
@@ -147,7 +187,7 @@ export function somarProtecaoPendenteSemanal(
   if (!protecaoAtiva || fimDia < inicioDia) return 0;
   let total = 0;
   for (let inicio = inicioDia; inicio <= fimDia; inicio += 7) {
-    const fluxo = separarSaidasDeSegundaDoFluxoOperacional(
+    const fluxo = somarMovimentosElegiveisDoPeriodo(
       movimentos, inicio, Math.min(inicio + 6, fimDia),
     );
     total += calcularAlocacaoSemanal(
@@ -242,6 +282,36 @@ export function calcularAlocacaoSemanal(
   };
 }
 
+export function calcularAlocacaoComSaldoAnterior(
+  saldoOperacionalAnteriorCentavos: number,
+  entradasCentavos: number,
+  saidasCentavos: number,
+  protecaoAtiva: boolean,
+) {
+  const saldoAnterior = Math.trunc(saldoOperacionalAnteriorCentavos);
+  const fluxoSemanaCentavos = Math.max(0, Math.trunc(entradasCentavos)) -
+    Math.max(0, Math.trunc(saidasCentavos));
+  const fluxoAposDeficitCentavos = saldoAnterior < 0
+    ? saldoAnterior + fluxoSemanaCentavos
+    : fluxoSemanaCentavos;
+  const rateio = calcularAlocacaoSemanal(
+    Math.max(0, fluxoAposDeficitCentavos), 0, null, 0, protecaoAtiva,
+  );
+  const saldoOperacionalFinalCentavos = fluxoAposDeficitCentavos <= 0
+    ? saldoAnterior + fluxoSemanaCentavos
+    : (saldoAnterior < 0 ? 0 : saldoAnterior) + rateio.operacaoCentavos;
+
+  return {
+    fluxoSemanaCentavos,
+    fluxoLiquidoCentavos: fluxoAposDeficitCentavos,
+    operacaoCentavos: rateio.operacaoCentavos,
+    protecaoCentavos: rateio.protecaoCentavos,
+    percentualProtecao: rateio.percentualProtecao,
+    saldoOperacionalFinalCentavos,
+    variacaoOperacionalCentavos: saldoOperacionalFinalCentavos - saldoAnterior,
+  };
+}
+
 export function calcularRateioConsolidadoNaAbertura(
   movimentos: {
     dia: number;
@@ -254,8 +324,18 @@ export function calcularRateioConsolidadoNaAbertura(
   diaAbertura: number,
   protecaoAtiva: boolean,
 ) {
-  const fluxo = separarSaidasDeSegundaDoFluxoOperacional(movimentos, inicioSemana, diaAbertura);
-  const rateio = calcularAlocacaoSemanal(fluxo.entradas, fluxo.saidas, null, 0, protecaoAtiva);
+  const fluxo = separarSaidasDeSegundaDoFluxoOperacional(
+    movimentos,
+    inicioSemana,
+    diaAbertura,
+  );
+  const rateio = calcularAlocacaoSemanal(
+    fluxo.entradas,
+    fluxo.saidas,
+    null,
+    0,
+    protecaoAtiva,
+  );
   return {
     entradasCentavos: fluxo.entradas,
     saidasCentavos: fluxo.saidas,
@@ -264,26 +344,14 @@ export function calcularRateioConsolidadoNaAbertura(
     protecaoCentavos: rateio.protecaoCentavos,
   };
 }
-export function calcularAumentoReservaSemanal(
-  totalCaixaPixCentavos: number | null,
-  reservaSemanaCentavos: number,
-  protecaoAlocadaSemanaCentavos: number,
-  entradaNovaElegivelCentavos: number,
-  protecaoAtiva: boolean,
-  reconciliarSemana = false,
+
+export function calcularAjusteReservaSemanaFechada(
+  protecaoFinalCentavos: number,
+  reservaJaAportadaCentavos: number,
 ): number {
-  if (totalCaixaPixCentavos === null || !protecaoAtiva) return 0;
-  const faltaProteger = Math.max(
-    0,
-    Math.trunc(protecaoAlocadaSemanaCentavos) -
-      Math.max(0, Math.trunc(reservaSemanaCentavos)),
-  );
-  if (reconciliarSemana) return faltaProteger;
-  if (entradaNovaElegivelCentavos <= 0) return 0;
-  return Math.min(
-    faltaProteger,
-    Math.max(0, Math.trunc(entradaNovaElegivelCentavos)),
-  );
+  const alvo = Math.max(0, Math.trunc(protecaoFinalCentavos));
+  const jaAportado = Math.max(0, Math.trunc(reservaJaAportadaCentavos));
+  return alvo - jaAportado;
 }
 
 export interface CicloReservaSemanal {

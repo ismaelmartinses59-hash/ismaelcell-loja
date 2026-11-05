@@ -103,6 +103,29 @@ export interface OrderStats {
   comGarantia: number;
 }
 
+export interface IosShortcutTokenStatus {
+  configured: boolean;
+}
+
+export interface IosShortcutToken {
+  token: string;
+}
+
+export interface IosShortcutDraftInput {
+  draftId: string;
+}
+
+export interface IosShortcutDraftItem {
+  modelo: string;
+  quantidade: number;
+  custo: string;
+  qualidade: string;
+}
+
+export interface IosShortcutDraftResponse {
+  itens: IosShortcutDraftItem[];
+}
+
 export interface ListOrdersParams {
   search?: string;
   status?: string;

@@ -65,7 +65,13 @@ export default function Login() {
       }
       localStorage.removeItem("isLoggedIn");
       localStorage.removeItem("userEmail");
-      setLocation("/ordens");
+      const pendingDraft = sessionStorage.getItem("pending-share-import");
+      if (pendingDraft && /^[A-Za-z0-9_-]{32,80}$/.test(pendingDraft)) {
+        setLocation(`/ordens?shareImport=${encodeURIComponent(pendingDraft)}`);
+      } else {
+        sessionStorage.removeItem("pending-share-import");
+        setLocation("/ordens");
+      }
     } catch {
       toast({
         title: "Erro ao fazer login",

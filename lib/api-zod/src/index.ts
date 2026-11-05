@@ -1,2 +1,12 @@
 export * from "./generated/api";
-export * from "./generated/types";
+export type { CreateOrderBody as CreateOrderBodyType } from "./generated/types/createOrderBody";
+export type { UpdateOrderStatusBody as UpdateOrderStatusBodyType } from "./generated/types/updateOrderStatusBody";
+export * from "./generated/types/createOrderBodyLinha";
+export * from "./generated/types/healthStatus";
+export * from "./generated/types/listOrdersParams";
+export * from "./generated/types/listOrdersStatus";
+export * from "./generated/types/order";
+export * from "./generated/types/orderLinha";
+export * from "./generated/types/orderStats";
+export * from "./generated/types/orderStatus";
+export * from "./generated/types/updateOrderStatusBodyStatus";

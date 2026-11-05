@@ -103,12 +103,12 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
 
   const { data: ordersRegistrar = [], isLoading: loadingRegistrar } = useListOrders(
     { search: buscaAtiva },
-    { query: { enabled: !!buscaAtiva && tab === "registrar" } }
+    { query: { queryKey: getListOrdersQueryKey({ search: buscaAtiva }), enabled: !!buscaAtiva && tab === "registrar" } }
   );
 
   const { data: todasOrders = [], isLoading: loadingConsultar } = useListOrders(
     {},
-    { query: { enabled: open && tab === "consultar" } }
+    { query: { queryKey: getListOrdersQueryKey({}), enabled: open && tab === "consultar" } }
   );
 
   const orderRegistrar = buscaAtiva

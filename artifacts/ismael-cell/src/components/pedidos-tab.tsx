@@ -362,7 +362,7 @@ export function PedidosTab({ open }: { open: boolean }) {
   });
 
   const saveBatchMutation = useMutation({
-    mutationFn: (items: AudioItem[]) =>
+    mutationFn: (items: AudioParsedItem[]) =>
       apiFetch("/api/pedidos/batch", {
         method: "POST",
         body: JSON.stringify({

@@ -32,19 +32,24 @@ const STATUS_LABELS: Record<string, string> = {
 export default function Status() {
   const params = useParams();
   const codigo = params.codigo;
+  const chave = new URLSearchParams(window.location.search).get("chave");
 
-  const { data: order, isLoading } = useQuery<{
+  const { data: order, isLoading, error } = useQuery<{
     codigo: string; status: string; modelo: string; servico: string;
     tempo: string; createdAt: string;
   } | null>({
-    queryKey: ["public-status", codigo],
+    queryKey: ["public-status", codigo, chave],
     enabled: !!codigo,
     queryFn: async () => {
-      const response = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/status/${encodeURIComponent(codigo!)}`, {
-        credentials: "same-origin",
+      const query = chave ? `?chave=${encodeURIComponent(chave)}` : "";
+      const response = await fetch(`${import.meta.env.BASE_URL.replace(/\/$/, "")}/api/status/${encodeURIComponent(codigo!)}${query}`, {
+        credentials: "omit",
         cache: "no-store",
+        referrerPolicy: "no-referrer",
       });
       if (response.status === 404) return null;
+      if (response.status === 403) throw new Error("Este link antigo precisa ser atualizado. Peça um novo link à loja.");
+      if (response.status === 429) throw new Error("Muitas consultas. Aguarde um minuto e tente novamente.");
       if (!response.ok) throw new Error("Não foi possível consultar o reparo.");
       return response.json();
     },
@@ -61,13 +66,15 @@ export default function Status() {
     );
   }
 
-  if (!order) {
+  if (error || !order) {
     return (
       <div className="min-h-screen bg-muted/30 flex items-center justify-center p-4">
         <Card className="w-full max-w-md text-center">
           <CardHeader>
-            <CardTitle>Ordem não encontrada</CardTitle>
-            <CardDescription>O código {codigo} não corresponde a nenhuma ordem de serviço ativa.</CardDescription>
+            <CardTitle>{error ? "Não foi possível consultar" : "Ordem não encontrada"}</CardTitle>
+            <CardDescription>
+              {error instanceof Error ? error.message : "Não encontramos uma ordem com esse link. Confira o endereço ou peça um novo link à loja."}
+            </CardDescription>
           </CardHeader>
         </Card>
       </div>

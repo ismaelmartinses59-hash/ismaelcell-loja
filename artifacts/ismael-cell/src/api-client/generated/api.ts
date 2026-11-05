@@ -19,6 +19,10 @@ import type {
 import type {
   CreateOrderBody,
   HealthStatus,
+  IosShortcutDraftInput,
+  IosShortcutDraftResponse,
+  IosShortcutToken,
+  IosShortcutTokenStatus,
   ListOrdersParams,
   Order,
   OrderLinha,
@@ -110,6 +114,273 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Check whether the iPhone Share Sheet shortcut is configured
+ */
+export const getGetIosShortcutStatusUrl = () =>
+  `/api/share-shortcut/ios/status`;
+
+export const getIosShortcutStatus = async (
+  options?: RequestInit,
+): Promise<IosShortcutTokenStatus> => {
+  return customFetch<IosShortcutTokenStatus>(getGetIosShortcutStatusUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetIosShortcutStatusQueryKey = () =>
+  [getGetIosShortcutStatusUrl()] as const;
+
+export const getGetIosShortcutStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getIosShortcutStatus>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIosShortcutStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetIosShortcutStatusQueryKey();
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getIosShortcutStatus>>
+  > = ({ signal }) => getIosShortcutStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getIosShortcutStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export function useGetIosShortcutStatus<
+  TData = Awaited<ReturnType<typeof getIosShortcutStatus>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getIosShortcutStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetIosShortcutStatusQueryOptions(options);
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create or rotate the iPhone Share Sheet upload token
+ */
+export const getCreateIosShortcutTokenUrl = () =>
+  `/api/share-shortcut/ios/token`;
+
+export const createIosShortcutToken = async (
+  options?: RequestInit,
+): Promise<IosShortcutToken> => {
+  return customFetch<IosShortcutToken>(getCreateIosShortcutTokenUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCreateIosShortcutTokenMutationKey = () =>
+  ["createIosShortcutToken"] as const;
+
+export const getCreateIosShortcutTokenMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createIosShortcutToken>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createIosShortcutToken>>,
+  TError,
+  void,
+  TContext
+> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationKey =
+    mutationOptions?.mutationKey ?? getCreateIosShortcutTokenMutationKey();
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createIosShortcutToken>>,
+    void
+  > = () => createIosShortcutToken(requestOptions);
+
+  return { mutationFn, ...mutationOptions, mutationKey };
+};
+
+export const useCreateIosShortcutToken = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createIosShortcutToken>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createIosShortcutToken>>,
+  TError,
+  void,
+  TContext
+> => useMutation(getCreateIosShortcutTokenMutationOptions(options));
+
+/**
+ * @summary Revoke the iPhone Share Sheet upload token
+ */
+export const getRevokeIosShortcutTokenUrl = () =>
+  `/api/share-shortcut/ios/token`;
+
+export const revokeIosShortcutToken = async (
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getRevokeIosShortcutTokenUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getRevokeIosShortcutTokenMutationKey = () =>
+  ["revokeIosShortcutToken"] as const;
+
+export const getRevokeIosShortcutTokenMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokeIosShortcutToken>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof revokeIosShortcutToken>>,
+  TError,
+  void,
+  TContext
+> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationKey =
+    mutationOptions?.mutationKey ?? getRevokeIosShortcutTokenMutationKey();
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof revokeIosShortcutToken>>,
+    void
+  > = () => revokeIosShortcutToken(requestOptions);
+
+  return { mutationFn, ...mutationOptions, mutationKey };
+};
+
+export const useRevokeIosShortcutToken = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof revokeIosShortcutToken>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof revokeIosShortcutToken>>,
+  TError,
+  void,
+  TContext
+> => useMutation(getRevokeIosShortcutTokenMutationOptions(options));
+
+/**
+ * @summary Consume a temporary shortcut draft for authenticated review
+ */
+export const getConsumeIosShortcutDraftUrl = () =>
+  `/api/share-shortcut/ios/draft`;
+
+export const consumeIosShortcutDraft = async (
+  data: IosShortcutDraftInput,
+  options?: RequestInit,
+): Promise<IosShortcutDraftResponse> => {
+  return customFetch<IosShortcutDraftResponse>(
+    getConsumeIosShortcutDraftUrl(),
+    {
+      ...options,
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+};
+
+export const getConsumeIosShortcutDraftMutationKey = () =>
+  ["consumeIosShortcutDraft"] as const;
+
+export type ConsumeIosShortcutDraftMutationResult = NonNullable<
+  Awaited<ReturnType<typeof consumeIosShortcutDraft>>
+>;
+export type ConsumeIosShortcutDraftMutationBody = BodyType<IosShortcutDraftInput>;
+export type ConsumeIosShortcutDraftMutationError = ErrorType<void>;
+export type ConsumeIosShortcutDraftMutationVariables = {
+  data: BodyType<IosShortcutDraftInput>;
+};
+
+export const getConsumeIosShortcutDraftMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof consumeIosShortcutDraft>>,
+    TError,
+    ConsumeIosShortcutDraftMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof consumeIosShortcutDraft>>,
+  TError,
+  ConsumeIosShortcutDraftMutationVariables,
+  TContext
+> => {
+  const { mutation: mutationOptions, request: requestOptions } = options ?? {};
+  const mutationKey =
+    mutationOptions?.mutationKey ?? getConsumeIosShortcutDraftMutationKey();
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof consumeIosShortcutDraft>>,
+    ConsumeIosShortcutDraftMutationVariables
+  > = ({ data }) => consumeIosShortcutDraft(data, requestOptions);
+
+  return { mutationFn, ...mutationOptions, mutationKey };
+};
+
+export const useConsumeIosShortcutDraft = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof consumeIosShortcutDraft>>,
+    TError,
+    ConsumeIosShortcutDraftMutationVariables,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof consumeIosShortcutDraft>>,
+  TError,
+  ConsumeIosShortcutDraftMutationVariables,
+  TContext
+> => useMutation(getConsumeIosShortcutDraftMutationOptions(options));
 
 /**
  * @summary List service orders

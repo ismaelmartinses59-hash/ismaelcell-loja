@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import {
   useGetOrderStats, useListOrders, getListOrdersQueryKey, getGetOrderStatsQueryKey,
@@ -45,6 +45,22 @@ export default function Orders() {
   const [bottomTab, setBottomTab] = useState<"inicio" | "ordens" | "caixa">("inicio");
   const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
+  const [sharedImportId, setSharedImportId] = useState<string | null>(null);
+
+  const clearSharedImport = useCallback(() => {
+    sessionStorage.removeItem("pending-share-import");
+    setSharedImportId(null);
+  }, []);
+
+  useEffect(() => {
+    const draftId = new URLSearchParams(window.location.search).get("shareImport");
+    if (!draftId || !/^[A-Za-z0-9_-]{32,80}$/.test(draftId)) return;
+    sessionStorage.setItem("pending-share-import", draftId);
+    setSharedImportId(draftId);
+    setCatalogoTab("pecas");
+    setShowCatalogo(true);
+    window.history.replaceState(null, "", `${BASE_URL}/ordens`);
+  }, [BASE_URL]);
 
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
   const { data: contasReceber = [] } = useQuery<ContaResumo[]>({
@@ -153,7 +169,15 @@ export default function Orders() {
       <CaixaSessaoGuard />
       <FaturamentoModal open={showFaturamento} onClose={() => setShowFaturamento(false)} tipo={tipo} />
       <GarantiaModal open={showGarantia} initialCodigo={garantiaCodigo} onClose={() => { setShowGarantia(false); setGarantiaCodigo(undefined); }} />
-      <CatalogoModal open={showCatalogo} onClose={() => { setShowCatalogo(false); setCatalogoTab("pecas"); }} setor={isCliente ? "cliente" : "lojista"} initialTab={catalogoTab} soloTab={catalogoTab === "receber" || catalogoTab === "espera" || catalogoTab === "garantias" || catalogoTab === "devolucoes"} />
+      <CatalogoModal
+        open={showCatalogo}
+        onClose={() => { setShowCatalogo(false); setCatalogoTab("pecas"); clearSharedImport(); }}
+        setor={isCliente ? "cliente" : "lojista"}
+        initialTab={catalogoTab}
+        soloTab={catalogoTab === "receber" || catalogoTab === "espera" || catalogoTab === "garantias" || catalogoTab === "devolucoes"}
+        sharedImportId={sharedImportId}
+        onSharedImportConsumed={clearSharedImport}
+      />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />
       <ConfiguracoesModal open={showConfig} onClose={() => setShowConfig(false)} />
 

@@ -27,6 +27,109 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
 
+  /share-shortcut/ios/status:
+    get:
+      operationId: getIosShortcutStatus
+      tags: [health]
+      summary: Check whether the iPhone Share Sheet shortcut is configured
+      security:
+        - financeSession: []
+      responses:
+        "200":
+          description: Shortcut token configuration status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IosShortcutTokenStatus"
+        "401":
+          description: Authentication required
+
+  /share-shortcut/ios/token:
+    post:
+      operationId: createIosShortcutToken
+      tags: [health]
+      summary: Create or rotate the iPhone Share Sheet upload token
+      security:
+        - financeSession: []
+      responses:
+        "201":
+          description: Newly created token, returned only once
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IosShortcutToken"
+        "401":
+          description: Authentication required
+    delete:
+      operationId: revokeIosShortcutToken
+      tags: [health]
+      summary: Revoke the iPhone Share Sheet upload token
+      security:
+        - financeSession: []
+      responses:
+        "204":
+          description: Token revoked
+        "401":
+          description: Authentication required
+
+  /share-shortcut/ios/import:
+    post:
+      operationId: importIosShortcutNote
+      tags: [health]
+      summary: Read a shared invoice and return a temporary review link
+      security:
+        - iosShortcutBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IosShortcutImportInput"
+      responses:
+        "200":
+          description: Temporary app link for reviewing extracted items
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IosShortcutImportResponse"
+        "400":
+          description: Invalid upload
+        "401":
+          description: Invalid or missing shortcut token
+        "413":
+          description: File too large
+        "502":
+          description: The invoice could not be interpreted
+        "503":
+          description: Invoice reader unavailable
+
+  /share-shortcut/ios/draft:
+    post:
+      operationId: consumeIosShortcutDraft
+      tags: [health]
+      summary: Consume a temporary shortcut draft for authenticated review
+      security:
+        - financeSession: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IosShortcutDraftInput"
+      responses:
+        "200":
+          description: Extracted invoice items, ready for review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IosShortcutDraftResponse"
+        "400":
+          description: Invalid or expired draft token
+        "401":
+          description: Authentication required
+        "409":
+          description: Draft has already been opened
+
   /orders:
     get:
       operationId: listOrders
@@ -44,6 +147,12 @@ paths:
             type: string
             enum: [aguardando, "em andamento", concluido, problema, encerrado]
           description: Filter by status
+        - name: tipo
+          in: query
+          schema:
+            type: string
+            enum: [cliente, lojista]
+          description: Filter by order type
       responses:
         "200":
           description: List of orders
@@ -144,6 +253,14 @@ paths:
                 $ref: "#/components/schemas/OrderStats"
 
 components:
+  securitySchemes:
+    financeSession:
+      type: apiKey
+      in: cookie
+      name: finance_session
+    iosShortcutBearer:
+      type: http
+      scheme: bearer
   schemas:
     HealthStatus:
       type: object
@@ -171,6 +288,21 @@ components:
           type: string
         tempo:
           type: string
+        tipo:
+          type: string
+          enum: [cliente, lojista]
+        nomeCliente:
+          type: string
+          nullable: true
+        senhaDispo:
+          type: string
+          nullable: true
+        garantia:
+          type: string
+          nullable: true
+        dataServico:
+          type: string
+          nullable: true
         status:
           type: string
           enum: [aguardando, "em andamento", concluido, problema, encerrado]
@@ -202,6 +334,21 @@ components:
           type: string
         tempo:
           type: string
+        tipo:
+          type: string
+          enum: [cliente, lojista]
+        nomeCliente:
+          type: string
+          nullable: true
+        senhaDispo:
+          type: string
+          nullable: true
+        garantia:
+          type: string
+          nullable: true
+        dataServico:
+          type: string
+          nullable: true
       required:
         - modelo
         - linha
@@ -243,3 +390,74 @@ components:
         - problema
         - encerrado
         - comGarantia
+
+    IosShortcutTokenStatus:
+      type: object
+      properties:
+        configured:
+          type: boolean
+      required: [configured]
+
+    IosShortcutToken:
+      type: object
+      properties:
+        token:
+          type: string
+      required: [token]
+
+    IosShortcutImportInput:
+      type: object
+      properties:
+        fileBase64:
+          type: string
+          minLength: 1
+          maxLength: 10485760
+        mimeType:
+          type: string
+          enum: [application/pdf]
+      required: [fileBase64, mimeType]
+
+    IosShortcutImportResponse:
+      type: object
+      properties:
+        openUrl:
+          type: string
+          format: uri
+        itemCount:
+          type: integer
+          minimum: 0
+        expiresInMinutes:
+          type: integer
+      required: [openUrl, itemCount, expiresInMinutes]
+
+    IosShortcutDraftInput:
+      type: object
+      properties:
+        draftId:
+          type: string
+          minLength: 32
+          maxLength: 80
+      required: [draftId]
+
+    IosShortcutDraftItem:
+      type: object
+      properties:
+        modelo:
+          type: string
+        quantidade:
+          type: integer
+          minimum: 1
+        custo:
+          type: string
+        qualidade:
+          type: string
+      required: [modelo, quantidade, custo, qualidade]
+
+    IosShortcutDraftResponse:
+      type: object
+      properties:
+        itens:
+          type: array
+          items:
+            $ref: "#/components/schemas/IosShortcutDraftItem"
+      required: [itens]

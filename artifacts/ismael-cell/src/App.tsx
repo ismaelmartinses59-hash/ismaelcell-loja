@@ -67,6 +67,10 @@ function AuthenticatedOrders() {
 
   useEffect(() => {
     if (session.data?.authenticated === false) {
+      const draftId = new URLSearchParams(window.location.search).get("shareImport");
+      if (draftId && /^[A-Za-z0-9_-]{32,80}$/.test(draftId)) {
+        sessionStorage.setItem("pending-share-import", draftId);
+      }
       client.clear();
       localStorage.removeItem("isLoggedIn");
       localStorage.removeItem("userEmail");

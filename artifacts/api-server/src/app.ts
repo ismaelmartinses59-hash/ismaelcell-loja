@@ -6,6 +6,8 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 
 const app: Express = express();
+// The shared proxy is the only trusted hop; do not use arbitrary client X-Forwarded-For values.
+app.set("trust proxy", 1);
 
 app.use(
   pinoHttp({
@@ -15,7 +17,9 @@ app.use(
         return {
           id: req.id,
           method: req.method,
-          url: req.url?.split("?")[0],
+           url: /^\/(?:api\/)?status\//.test(req.url ?? "")
+             ? "/status/[redacted]"
+             : req.url?.split("?")[0],
         };
       },
       res(res) {

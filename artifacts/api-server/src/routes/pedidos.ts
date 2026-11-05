@@ -469,7 +469,7 @@ router.post("/pedidos/convert-encomenda", async (req, res): Promise<void> => {
   const fornecedor = String(req.body?.fornecedor ?? "").trim();
   const formaInvestimento =
     String(req.body?.formaInvestimento ?? "").toLowerCase() === "pix" ? "pix" : "dinheiro";
-  const rawItems = Array.isArray(req.body?.itens) ? req.body.itens : [];
+  const rawItems: unknown[] = Array.isArray(req.body?.itens) ? req.body.itens : [];
   const ids = rawItems.map((item: unknown) => parseInt(String((item as Record<string, unknown>)?.id ?? "0"), 10)).filter((id: number) => id > 0);
   if (!fornecedor) {
     res.status(400).json({ error: "Fornecedor é obrigatório." });
@@ -490,7 +490,7 @@ router.post("/pedidos/convert-encomenda", async (req, res): Promise<void> => {
       if (pedidos.length !== ids.length) {
         throw httpError(409, "Algum item não está mais pendente.");
       }
-      const byId = new Map(pedidos.map((item) => [item.id, item]));
+      const byId = new Map(pedidos.map((item: (typeof pedidos)[number]) => [item.id, item]));
       const itens = rawItems.map((raw: unknown) => {
         const body = (raw ?? {}) as Record<string, unknown>;
         const pedido = byId.get(Number(body.id));

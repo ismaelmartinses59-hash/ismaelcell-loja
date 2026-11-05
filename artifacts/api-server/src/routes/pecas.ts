@@ -3,12 +3,12 @@ import { and, eq, ilike, or, sql } from "drizzle-orm";
 import { db, pecasTable, vendasTable, contasReceberItensTable, contasReceberPagamentosTable, caixaTable, devolucoesTable } from "@workspace/db";
 import { findOrCreateConta } from "./contas-receber";
 import { LABELS, normalizeForma, taxaFor, type FormaPagamento } from "../lib/formas-pagamento.js";
+import { interpretarNota, NotaReaderError } from "../lib/nota-reader.js";
 import { ai } from "@workspace/integrations-gemini-ai";
 import { chaveEstoqueCompartilhado, mesmaPecaCompartilhada } from "./estoque-compartilhado.js";
 
 const router: IRouter = Router();
 
-const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
 // Cliente e Lojista têm preços separados, mas representam o mesmo estoque físico.
 async function sincronizarQuantidadesCompartilhadas(): Promise<void> {
   await db.transaction(async (tx) => {
@@ -83,84 +83,18 @@ router.post("/pecas/importar-nota", async (req, res): Promise<void> => {
     res.status(413).json({ error: "Arquivo muito grande. Tire uma foto menor ou compacte o PDF (máx ~7MB)." });
     return;
   }
-  const prompt = [
-    "Você recebe a NOTA/PEDIDO de um fornecedor de peças de celular (telas/displays, baterias etc).",
-    "Extraia CADA item da nota. Para cada item devolva:",
-    '- "modelo": o nome COMPLETO da peça como está escrito. Preserve todos os aparelhos compatíveis e os separadores (ex: "TELA REALME C63/C61/NARZO N63/NOTE 60/NOTE 60X"). Não reduza uma lista de compatibilidade a um único modelo.',
-    '- "quantidade": número inteiro de unidades daquele item (se não achar, use 1).',
-    '- "custo": o valor UNITÁRIO em reais que aparece na nota, só números com ponto decimal (ex: "85.00"). Se não houver, use "".',
-    `- "qualidade": SE a nota indicar a qualidade da tela, escolha a mais próxima desta lista: ${QUALIDADES_TELA.join(", ")}. Se não indicar, use "".`,
-    'Responda APENAS um JSON no formato: { "itens": [ { "modelo": "", "quantidade": 1, "custo": "", "qualidade": "" } ] }.',
-    "Não invente itens que não estão na nota. Não adicione comentários.",
-  ].join("\n");
   try {
-    let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
-    let ultimoErro: unknown;
-    for (let tentativa = 1; tentativa <= 3; tentativa++) {
-      try {
-        response = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { inlineData: { mimeType: mt, data: fileBase64 } },
-                { text: prompt },
-              ],
-            },
-          ],
-          config: { responseMimeType: "application/json", maxOutputTokens: 8192 },
-        });
-        break;
-      } catch (err) {
-        ultimoErro = err;
-        if (tentativa < 3) {
-          await new Promise((resolve) => setTimeout(resolve, tentativa * 700));
-        }
-      }
-    }
-    if (!response) throw ultimoErro;
-    const raw = response.text ?? "";
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
+    const itens = await interpretarNota(fileBase64, mt, (raw) => {
       req.log.error({ raw }, "importar-nota: JSON inválido da IA");
-      res.status(502).json({ error: "Não consegui ler a nota. Tente uma foto mais nítida." });
-      return;
-    }
-    const itensRaw = Array.isArray(parsed)
-      ? parsed
-      : (parsed as { itens?: unknown })?.itens;
-    if (!Array.isArray(itensRaw)) {
-      res.status(502).json({ error: "Não encontrei itens na nota." });
-      return;
-    }
-    const itens = itensRaw
-      .map((it) => {
-        const o = (it ?? {}) as Record<string, unknown>;
-        const modelo = String(o.modelo ?? "").trim();
-        if (!modelo) return null;
-        const qtdNum = parseInt(String(o.quantidade ?? "1"), 10);
-        const custoStr = String(o.custo ?? "").replace(",", ".").replace(/[^0-9.]/g, "");
-        const qualRaw = String(o.qualidade ?? "").trim();
-        const qualidade = QUALIDADES_TELA.find((q) => q.toLowerCase() === qualRaw.toLowerCase()) ?? "";
-        return {
-          modelo,
-          quantidade: Number.isFinite(qtdNum) && qtdNum > 0 ? qtdNum : 1,
-          custo: custoStr,
-          qualidade,
-        };
-      })
-      .filter((x): x is { modelo: string; quantidade: number; custo: string; qualidade: string } => x !== null);
+    });
     res.json({ itens });
   } catch (err) {
-    req.log.error({ err }, "importar-nota falhou");
-    const mensagem = err instanceof Error ? err.message : "";
-    if (mensagem.includes("AI_INTEGRATIONS_GEMINI_API_KEY")) {
-      res.status(503).json({ error: "A leitura automática de notas não está configurada neste servidor." });
+    if (err instanceof NotaReaderError) {
+      if (err.statusCode === 503) req.log.error({ err }, "importar-nota indisponível");
+      res.status(err.statusCode).json({ error: err.message });
       return;
     }
+    req.log.error({ err }, "importar-nota falhou");
     res.status(503).json({ error: "O leitor de notas ficou indisponível por alguns instantes. Tente novamente." });
   }
 });

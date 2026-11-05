@@ -21,6 +21,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ShareCard } from "@/components/share-card";
 import { ShareCardCliente } from "@/components/share-card-cliente";
 import { shareOrderAsImage } from "@/lib/share";
+import { trackingLink } from "@/lib/tracking-link";
 import { SERVICES_BY_LINE, SERVICES_BY_LINE_CLIENTE, ESTIMATED_TIMES } from "@/lib/constants";
 
 const GARANTIA_OPTIONS = ["Sem garantia", "7 dias", "30 dias", "90 dias", "6 meses", "1 ano"];
@@ -66,8 +67,7 @@ export function OrderCard({ order, onRegistrarGarantia }: { order: Order; onRegi
   const [editSenhaDispo, setEditSenhaDispo] = useState(order.senhaDispo ?? "");
   const [editGarantia, setEditGarantia] = useState(order.garantia ?? "");
 
-  const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-  const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
+  const statusUrl = trackingLink(order as Order & { trackingKey?: string });
   const isEncerrado = order.status === "encerrado";
 
   const invalidate = () => {
@@ -405,7 +405,7 @@ export function OrderCard({ order, onRegistrarGarantia }: { order: Order; onRegi
                       {
                         onSuccess: (updated) => {
                           invalidate();
-                          const novoLink = `${window.location.origin}${base}/status/${updated.codigo}`;
+                          const novoLink = trackingLink(updated);
                           navigator.clipboard.writeText(novoLink).catch(() => {});
                           toast({ title: `Nova OS: ${updated.codigo}`, description: "Novo link copiado!" });
                         },

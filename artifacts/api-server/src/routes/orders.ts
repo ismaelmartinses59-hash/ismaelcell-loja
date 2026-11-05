@@ -1,6 +1,7 @@
 import { Router, type IRouter, type Response } from "express";
 import { eq, ilike, or, sql, and, isNotNull, ne } from "drizzle-orm";
 import { db, ordersTable } from "@workspace/db";
+import { createOrderCode, withTrackingKey } from "../lib/order-tracking";
 import {
   ListOrdersQueryParams,
   ListOrdersResponse,
@@ -15,6 +16,12 @@ import {
 
 const router: IRouter = Router();
 const BLOQUEIO_GARANTIA_MS = 60 * 60 * 1000;
+
+// Staff responses can include a signed legacy link; do not cache them.
+router.use("/orders", (_req, res, next) => {
+  res.setHeader("Cache-Control", "no-store");
+  next();
+});
 
 /** Reduz variações como "Redmi A5", "redmi a5" e "Redmi a 5" à mesma chave. */
 function chaveModeloGarantia(modelo: string): string {
@@ -163,7 +170,7 @@ router.get("/orders", async (req, res): Promise<void> => {
   }
 
   const orders = await dbQuery.orderBy(sql`${ordersTable.createdAt} desc`);
-  res.json(ListOrdersResponse.parse(orders));
+  res.json(orders.map((order) => withTrackingKey(ListOrdersResponse.element.parse(order))));
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
@@ -181,7 +188,7 @@ router.post("/orders", async (req, res): Promise<void> => {
     }
   }
 
-  const codigo = "OS-" + Date.now();
+  const codigo = createOrderCode();
 
   const [order] = await db
     .insert(ordersTable)
@@ -197,7 +204,7 @@ router.post("/orders", async (req, res): Promise<void> => {
     })
     .returning();
 
-  res.status(201).json(GetOrderResponse.parse(order));
+  res.status(201).json(withTrackingKey(GetOrderResponse.parse(order)));
 });
 
 router.get("/orders/:id", async (req, res): Promise<void> => {
@@ -220,7 +227,7 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(GetOrderResponse.parse(order));
+  res.json(withTrackingKey(GetOrderResponse.parse(order)));
 });
 
 router.patch("/orders/:id", async (req, res): Promise<void> => {
@@ -256,7 +263,7 @@ router.patch("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(UpdateOrderStatusResponse.parse(order));
+  res.json(withTrackingKey(UpdateOrderStatusResponse.parse(order)));
 });
 
 router.put("/orders/:id", async (req, res): Promise<void> => {
@@ -317,7 +324,7 @@ router.put("/orders/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(GetOrderResponse.parse(order));
+  res.json(withTrackingKey(GetOrderResponse.parse(order)));
 });
 
 router.post("/orders/:id/reactivate", async (req, res): Promise<void> => {
@@ -329,7 +336,7 @@ router.post("/orders/:id/reactivate", async (req, res): Promise<void> => {
     return;
   }
 
-  const novoCodigo = "OS-" + Date.now();
+  const novoCodigo = createOrderCode();
 
   const [order] = await db
     .update(ordersTable)
@@ -342,7 +349,7 @@ router.post("/orders/:id/reactivate", async (req, res): Promise<void> => {
     return;
   }
 
-  res.json(order);
+  res.json(withTrackingKey(order));
 });
 
 router.delete("/orders/:id", async (req, res): Promise<void> => {

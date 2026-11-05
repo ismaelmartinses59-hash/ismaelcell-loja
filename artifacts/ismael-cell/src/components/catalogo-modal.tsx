@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useConsumeIosShortcutDraft } from "@workspace/api-client-react";
 import { Search, Plus, Pencil, Trash2, Check, X, Share2, Package, AlertTriangle, ShieldAlert, Clock, RefreshCw, XCircle, ShoppingBag, HandCoins, DollarSign, User, Store, Wallet, Undo2, CreditCard, Truck, Shuffle, Timer, BookOpen, Wand2, Sparkles, ShoppingCart, ChevronDown } from "lucide-react";
 import { type FormaCartao, type FormaPagamento, TAXAS_CARTAO, LABELS_FORMA, liquidoCartao, isCartaoForma } from "../lib/formas-pagamento";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -12,6 +13,7 @@ import { generateExtratoBlob } from "@/lib/extrato-image";
 import { fetchWithSession as fetch } from "@/lib/api-fetch";
 import { EncomendasTab, FORNECEDORES } from "@/components/encomendas-tab";
 import { PedidosTab } from "@/components/pedidos-tab";
+import { IosShortcutSetupDialog } from "@/components/ios-shortcut-setup-dialog";
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -19,14 +21,14 @@ const QUALIDADES = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"]
 const QUALIDADES_BATERIA = ["Skaiky", "Foxcomm", "Original China"];
 const QUALIDADE_OUTRA = "__qualidade_outra__";
 const QUALIDADES_PERSONALIZADAS_STORAGE = "ismael-cell-qualidades-personalizadas";
+const SUGESTOES_QUALIDADE: Array<{ palavra: string; opcoes: string[] }> = [
+  { palavra: "bateria", opcoes: QUALIDADES_BATERIA },
+];
 
 type QualidadesPersonalizadas = {
   geral: string[];
   bateria: string[];
 };
-const SUGESTOES_QUALIDADE: Array<{ palavra: string; opcoes: string[] }> = [
-  { palavra: "bateria", opcoes: QUALIDADES_BATERIA },
-];
 
 function normalizarNomeQualidade(qualidade: string): string {
   return qualidade
@@ -75,7 +77,8 @@ function mesclarQualidadesPersonalizadas(
   };
   for (const item of novas) {
     const categoria = modeloEhBateria(item.modelo) ? "bateria" : "geral";
-    const nome = normalizarNomeQualidade(item.qualidade);
+    const qualidade = item.qualidade;
+    const nome = normalizarNomeQualidade(qualidade);
     const chave = chaveQualidade(nome);
     const conhecidas = new Set([
       ...QUALIDADES,
@@ -613,7 +616,14 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade em Estoque</label>
-          <Input type="number" min={isEdicao ? 0 : 1} step={1} placeholder={isEdicao ? "0" : "1"} value={quantidade} onChange={(e) => setQuantidade(e.target.value)} />
+          <Input
+            type="number"
+            min={isEdicao ? 0 : 1}
+            step={1}
+            placeholder={isEdicao ? "0" : "1"}
+            value={quantidade}
+            onChange={(e) => setQuantidade(e.target.value)}
+          />
           {isEdicao && <p className="mt-1 text-[11px] text-muted-foreground">Peças esgotadas podem continuar com quantidade zero.</p>}
         </div>
         <div className="col-span-2 bg-white border border-dashed border-primary/30 rounded-lg p-3 space-y-2">
@@ -1569,9 +1579,11 @@ interface CatalogoModalProps {
   setor: "cliente" | "lojista";
   initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos";
   soloTab?: boolean;
+  sharedImportId?: string | null;
+  onSharedImportConsumed?: () => void;
 }
 
-export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: CatalogoModalProps) {
+export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, sharedImportId, onSharedImportConsumed }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos">(initialTab ?? "pecas");
@@ -1822,6 +1834,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
   const [importFornecedor, setImportFornecedor] = useState("");
   const [importSaving, setImportSaving] = useState(false);
   const [qualidadesPersonalizadas, setQualidadesPersonalizadas] = useState<QualidadesPersonalizadas>(lerQualidadesPersonalizadas);
+  const [shortcutSetupOpen, setShortcutSetupOpen] = useState(false);
+  const sharedImportRequestRef = useRef<string | null>(null);
+  const consumeShortcutDraft = useConsumeIosShortcutDraft();
 
   useEffect(() => {
     try {
@@ -1831,11 +1846,37 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
     }
   }, [qualidadesPersonalizadas]);
 
+  useEffect(() => {
+    if (!open) setShortcutSetupOpen(false);
+  }, [open]);
+
   const limparRascunhoImportacao = () => {
     setImportRows([]);
     setImportFormaInvest("dinheiro");
     setImportDestino("estoque");
     setImportFornecedor("");
+  };
+
+  const prepararLinhasImportadas = (itens: Array<{ modelo: string; quantidade: number; custo: string; qualidade: string }>) => {
+    const rows: ImportRow[] = itens.map((it) => {
+      const custo = (it.custo ?? "").replace(".", ",");
+      const modelo = it.modelo ?? "";
+      const qualidade = it.qualidade ?? "";
+      const pe = precosExistentes[`${modelo.toLowerCase().trim()}|${qualidade}`];
+      return {
+        modelo,
+        qualidade,
+        quantidade: String(it.quantidade ?? 1),
+        valorCusto: custo,
+        valorCliente: pe?.cliente || sugestaoPrecoCliente(custo),
+        valorLojista: pe?.lojista || sugestaoPrecoLojista(custo),
+      };
+    });
+    setImportRows(rows);
+    setImportFormaInvest("dinheiro");
+    setImportDestino("estoque");
+    setImportFornecedor("");
+    setImportOpen(true);
   };
 
   const handleNotaFile = async (file: File) => {
@@ -1857,26 +1898,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
         toast({ title: "Nenhuma peça encontrada", description: "Tente uma foto mais nítida da nota.", variant: "destructive" });
         return;
       }
-      const rows: ImportRow[] = itens.map((it) => {
-        const custo = (it.custo ?? "").replace(".", ",");
-        const modelo = it.modelo ?? "";
-        const qualidade = it.qualidade ?? "";
-        // Se a peça já existe no sistema, usa o último preço cadastrado; senão, sugere pelo custo.
-        const pe = precosExistentes[`${modelo.toLowerCase().trim()}|${qualidade}`];
-        return {
-          modelo,
-          qualidade,
-          quantidade: String(it.quantidade ?? 1),
-          valorCusto: custo,
-          valorCliente: pe?.cliente || sugestaoPrecoCliente(custo),
-          valorLojista: pe?.lojista || sugestaoPrecoLojista(custo),
-        };
-      });
-      setImportRows(rows);
-      setImportFormaInvest("dinheiro");
-      setImportDestino("estoque");
-      setImportFornecedor("");
-      setImportOpen(true);
+      prepararLinhasImportadas(itens);
     } catch (error) {
       toast({
         title: "Não consegui ler a nota",
@@ -1887,6 +1909,31 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       setImportReading(false);
     }
   };
+
+  useEffect(() => {
+    if (!open || !sharedImportId || sharedImportRequestRef.current === sharedImportId) return;
+    sharedImportRequestRef.current = sharedImportId;
+    setImportReading(true);
+    void consumeShortcutDraft.mutateAsync({ data: { draftId: sharedImportId } })
+      .then((result) => {
+        if (!result.itens.length) throw new Error("Não encontrei peças neste PDF.");
+        prepararLinhasImportadas(result.itens);
+        onSharedImportConsumed?.();
+      })
+      .catch((error: unknown) => {
+        const status = error && typeof error === "object" && "status" in error
+          ? (error as { status?: unknown }).status
+          : undefined;
+        if (status === 401) return;
+        toast({
+          title: "Não consegui abrir a nota compartilhada",
+          description: error instanceof Error ? error.message : "Compartilhe o PDF novamente pelo Atalho.",
+          variant: "destructive",
+        });
+        onSharedImportConsumed?.();
+      })
+      .finally(() => setImportReading(false));
+  }, [open, sharedImportId, consumeShortcutDraft, onSharedImportConsumed, toast]);
 
   const confirmImport = async (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => {
       setImportSaving(true);
@@ -2277,11 +2324,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
       invalidateCaixa();
       qc.invalidateQueries({ queryKey: ["financeiro-ia"] });
       setReturningItemId(null);
-      toast({ title: "Peça devolvida ao estoque", description: "A peça voltou ao estoque e ficou marcada como devolvida no histórico." });
+       toast({ title: "Peça devolvida ao estoque", description: "A peça voltou ao estoque e ficou marcada como devolvida no histórico." });
     },
     onError: (error: Error) => toast({ title: "Não foi possível devolver a peça", description: error.message, variant: "destructive" }),
   });
-
   const apagarPagamentoMutation = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/contas-receber/pagamentos/${id}`, { method: "DELETE" }),
     onSuccess: () => { invalidateContas(); qc.invalidateQueries({ queryKey: ["/api/caixa"] }); qc.invalidateQueries({ queryKey: ["financeiro-ia"] }); setDeletingPagamentoId(null); toast({ title: "Pagamento removido" }); },
@@ -2602,6 +2648,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab }: Cat
                   e.target.value = "";
                 }}
               />
+              <div className="-mt-1 flex justify-end">
+                <Button type="button" variant="link" size="sm" className="h-7 px-1 text-xs" onClick={() => setShortcutSetupOpen(true)}>
+                  <Share2 className="mr-1.5 h-3.5 w-3.5" />
+                  Configurar Atalho no iPhone
+                </Button>
+              </div>
+              <IosShortcutSetupDialog open={shortcutSetupOpen} onOpenChange={setShortcutSetupOpen} />
               <PreviewLojistaDialog
                 open={previewData !== null}
                 data={previewData}

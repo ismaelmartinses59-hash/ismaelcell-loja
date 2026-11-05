@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SERVICES_BY_LINE, SERVICES_BY_LINE_CLIENTE, ESTIMATED_TIMES } from "@/lib/constants";
 import { useEffect } from "react";
 import { Loader2 } from "lucide-react";
+import { trackingLink } from "@/lib/tracking-link";
 
 const GARANTIA_OPTIONS = ["Sem garantia", "7 dias", "30 dias", "60 dias", "90 dias", "6 meses", "1 ano"];
 
@@ -121,8 +122,7 @@ export function OrderForm({ onSuccess, prefill, activeModels = [], tipo = OrderT
           queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
           queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
 
-          const base = import.meta.env.BASE_URL.replace(/\/$/, "");
-          const statusUrl = `${window.location.origin}${base}/status/${order.codigo}`;
+          const statusUrl = trackingLink(order);
           const shareUrl = `https://wa.me/?text=${encodeURIComponent(`🔗 Acompanhe sua ordem:\n${statusUrl}`)}`;
 
           toast({
