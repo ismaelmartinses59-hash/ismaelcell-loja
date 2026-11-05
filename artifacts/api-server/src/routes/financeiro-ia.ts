@@ -6,6 +6,7 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import {
   calcularAlocacaoSemanal,
   calcularAlocacaoComSaldoAnterior,
+  calcularDeficitOperacionalCarregado,
   calcularAjusteSaldoOperacionalAteAlvoCentavos,
   calcularAjusteReservaAteAlvoCentavos,
   calcularAjusteReservaSemanaFechada,
@@ -123,6 +124,21 @@ function lerCicloReservaSemanal(value: string | undefined): CicloReservaSemanal 
   } catch {
     throw new Error("Ciclo semanal da reserva inválido");
   }
+}
+
+function lerSaldoDeficitAuditoria(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  let auditoria: { saldoDeficitFinalCentavos?: unknown };
+  try {
+    auditoria = JSON.parse(value);
+  } catch {
+    throw new Error("Auditoria do fechamento anterior está inválida");
+  }
+  if (auditoria.saldoDeficitFinalCentavos === undefined) return null;
+  if (!Number.isSafeInteger(auditoria.saldoDeficitFinalCentavos)) {
+    throw new Error("Déficit operacional da auditoria anterior está inválido");
+  }
+  return auditoria.saldoDeficitFinalCentavos as number;
 }
 
 async function carregarSaldoOperacionalBase(
@@ -412,7 +428,7 @@ async function carregarSaldoOperacionalBase(
 async function fecharSemanasDeReservaPendentes(
   semanaAtual: number,
   baseFisicaDisponivel: boolean,
-  saldoOperacionalInicialSemana: number,
+  saldoCarryInicialSemana: number,
 ) {
   return db.transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
@@ -453,7 +469,7 @@ async function fecharSemanasDeReservaPendentes(
         formaPagamento: caixaTable.formaPagamento, categoria: caixaTable.categoria,
         createdAt: caixaTable.createdAt,
       }).from(caixaTable).where(gte(
-        caixaTable.createdAt, new Date((primeiraSemana - 1) * 86400000),
+        caixaTable.createdAt, new Date(((marcador ?? primeiraSemana) - 1) * 86400000),
       )),
       tx.select({
         aumento: reservaAjustesTable.aumento,
@@ -465,28 +481,36 @@ async function fecharSemanasDeReservaPendentes(
     const reservaSemanaSalva = cents(config.get(keys.reservaSemana) ?? "0");
     let reservaAtual = cents(config.get(keys.reserva) ?? "0");
     let ajusteTotal = 0;
-    let saldoOperacionalFechamento = Number(
-      config.get(keys.operacaoSaldoBase) ?? saldoOperacionalInicialSemana,
-    );
+    let saldoDeficitFechamento = Math.min(0, saldoCarryInicialSemana);
     const auditoriaAnterior = marcador === null
       ? undefined
       : config.get(`${keys.reservaFechamentoAuditoria}${marcador}`);
-    if (auditoriaAnterior) {
-      let dadosAuditoria: { saldoOperacionalFinalCentavos?: unknown };
-      try {
-        dadosAuditoria = JSON.parse(auditoriaAnterior);
-      } catch {
-        throw new Error("Auditoria do fechamento anterior está inválida");
-      }
-      if (dadosAuditoria.saldoOperacionalFinalCentavos !== undefined) {
-        if (!Number.isSafeInteger(dadosAuditoria.saldoOperacionalFinalCentavos)) {
-          throw new Error("Saldo operacional da auditoria anterior está inválido");
-        }
-        saldoOperacionalFechamento = dadosAuditoria.saldoOperacionalFinalCentavos as number;
-      }
+    const saldoAuditado = lerSaldoDeficitAuditoria(auditoriaAnterior);
+    if (saldoAuditado !== null) {
+      saldoDeficitFechamento = saldoAuditado;
+    } else if (marcador !== null) {
+      const inicioAnterior = marcador;
+      const fluxoAnterior = somarMovimentosElegiveisDoPeriodo(
+        rows.filter(row => {
+          const dia = dayIndex(row.createdAt);
+          return dia >= inicioAnterior && dia <= inicioAnterior + 6;
+        }).map(row => ({
+          dia: dayIndex(row.createdAt),
+          tipo: row.tipo,
+          formaPagamento: row.formaPagamento,
+          valorCentavos: cents(row.valor),
+        })),
+        inicioAnterior,
+        inicioAnterior + 6,
+      );
+      saldoDeficitFechamento = calcularDeficitOperacionalCarregado(
+        Number(config.get(keys.operacaoSaldoBase) ?? 0),
+        fluxoAnterior.entradas,
+        fluxoAnterior.saidas,
+      );
     }
-    if (!Number.isSafeInteger(saldoOperacionalFechamento)) {
-      throw new Error("Saldo operacional salvo inválido para fechar a reserva semanal");
+    if (!Number.isSafeInteger(saldoDeficitFechamento)) {
+      throw new Error("Déficit operacional salvo inválido para fechar a reserva semanal");
     }
     let ultimaProcessada: number | null = marcador ?? ultimaSemanaFechada - 7;
     const idsDeAjuste = new Set(ajustes.map(ajuste => ajuste.ultimoLancamentoId));
@@ -506,14 +530,14 @@ async function fecharSemanasDeReservaPendentes(
         categoria: row.categoria,
       }));
       const fluxo = somarMovimentosElegiveisDoPeriodo(movimentos, inicio, fim);
-      const saldoCarryInCentavos = saldoOperacionalFechamento;
+      const saldoCarryInCentavos = saldoDeficitFechamento;
       const rateio = calcularAlocacaoComSaldoAnterior(
         saldoCarryInCentavos,
         fluxo.entradas,
         fluxo.saidas,
         config.get(keys.proteger) !== "false",
       );
-      saldoOperacionalFechamento = rateio.saldoOperacionalFinalCentavos;
+      saldoDeficitFechamento = Math.min(0, rateio.fluxoLiquidoCentavos);
       const ajustesDaSemana = ajustes.filter(ajuste => {
         const diaAjuste = dayIndex(ajuste.createdAt);
         return idsDaSemana.has(ajuste.ultimoLancamentoId) ||
@@ -563,7 +587,8 @@ async function fecharSemanasDeReservaPendentes(
         inicio,
         fim,
         saldoCarryInCentavos,
-        saldoOperacionalFinalCentavos: saldoOperacionalFechamento,
+        saldoOperacionalFinalCentavos: rateio.saldoOperacionalFinalCentavos,
+        saldoDeficitFinalCentavos: saldoDeficitFechamento,
         fluxoLiquidoCentavos: rateio.fluxoLiquidoCentavos,
         protecaoAlvoCentavos: alvo,
         protecaoAnteriormenteAportadaCentavos: reservaAnteriormenteAportada,
@@ -1112,6 +1137,19 @@ async function snapshot() {
   const fluxoReservaSemana = somarMovimentosElegiveisDoPeriodo(
     movimentosRecentes, weekStart, today,
   );
+  const fluxoSemanaAnterior = somarMovimentosElegiveisDoPeriodo(
+    movimentosRecentes, weekStart - 7, weekStart - 1,
+  );
+  const auditoriaSemanaAnterior = config.rows.get(
+    `${keys.reservaFechamentoAuditoria}${weekStart - 7}`,
+  );
+  const saldoCarryAuditado = lerSaldoDeficitAuditoria(auditoriaSemanaAnterior);
+  const saldoCarryInSemana = calcularDeficitOperacionalCarregado(
+    estadoOperacional.saldoBase,
+    fluxoSemanaAnterior.entradas,
+    fluxoSemanaAnterior.saidas,
+    saldoCarryAuditado,
+  );
   const saldoOperacionalInicialSemana = aberturaNoPeriodoAtual && estadoOperacional.aberturaPeriodoAt
     ? (() => {
         const aberturaAt = estadoOperacional.aberturaPeriodoAt!;
@@ -1131,7 +1169,7 @@ async function snapshot() {
       })()
     : estadoOperacional.saldoBase;
   const alocacaoReservaSemana = calcularAlocacaoComSaldoAnterior(
-    saldoOperacionalInicialSemana,
+    saldoCarryInSemana,
     fluxoReservaSemana.entradas,
     fluxoReservaSemana.saidas,
     config.proteger,
@@ -1147,7 +1185,7 @@ async function snapshot() {
   const entradasSemana = fluxoReservaSemana.entradas;
   const taxaReserva = alocacaoReservaSemana.percentualProtecao;
   const fechamentoReserva = await fecharSemanasDeReservaPendentes(
-    weekStart, dinheiro !== null, saldoOperacionalInicialSemana,
+    weekStart, dinheiro !== null, saldoCarryInSemana,
   );
   const reservaAutomatica = await atualizarReservaGradual(
     dinheiro === null ? null : dinheiro + pix, config.reserva, config.reservaSemana,
@@ -1253,7 +1291,7 @@ async function snapshot() {
       fim: todayString,
       entradas: money(fluxoReservaSemana.entradas),
       saidas: money(fluxoReservaSemana.saidas),
-      saldoCarryInSemana: money(saldoOperacionalInicialSemana),
+      saldoCarryInSemana: money(saldoCarryInSemana),
       percentualProtecao: config.proteger ? taxaReserva : 0,
       protecao: money(alocacaoReservaSemana.protecaoCentavos),
       projecaoOperacaoSemana: money(alocacaoReservaSemana.operacaoCentavos),

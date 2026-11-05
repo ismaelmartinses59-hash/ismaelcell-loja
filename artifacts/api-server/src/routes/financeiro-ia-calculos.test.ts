@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   calcularAlocacaoSemanal,
   calcularAlocacaoComSaldoAnterior,
+  calcularDeficitOperacionalCarregado,
   calcularRateioConsolidadoNaAbertura,
   calcularAjusteReservaSemanaFechada,
   calcularAjusteReservaAteAlvoCentavos,
@@ -131,6 +132,19 @@ test("o déficit anterior é coberto antes do rateio e a projeção muda com as 
   assert.equal(depoisDaDespesa.protecaoCentavos, 0);
   assert.equal(depoisDaDespesa.percentualProtecao, 0);
   assert.equal(depoisDaDespesa.saldoOperacionalFinalCentavos, -5_000);
+});
+test("a semana atual compensa o déficit de R$ 1.355,80 antes de ratear", () => {
+  const saldoCarry = calcularDeficitOperacionalCarregado(84_585, 260_000, 395_580);
+  assert.equal(saldoCarry, -135_580);
+  const resultado = calcularAlocacaoComSaldoAnterior(saldoCarry, 126_000, 21_500, true);
+  assert.equal(resultado.fluxoLiquidoCentavos, -31_080);
+  assert.equal(resultado.operacaoCentavos, 0);
+  assert.equal(resultado.protecaoCentavos, 0);
+  assert.equal(resultado.percentualProtecao, 0);
+  assert.equal(resultado.saldoOperacionalFinalCentavos, -31_080);
+});
+test("saldo auditado prevalece sobre a base positiva separada para pedidos", () => {
+  assert.equal(calcularDeficitOperacionalCarregado(84_585, 260_000, 395_580, -135_580), -135_580);
 });
 test("o fechamento leva o saldo operacional assinado para a semana seguinte", () => {
   const primeiraSemana = calcularAlocacaoComSaldoAnterior(-50_000, 40_000, 45_000, true);

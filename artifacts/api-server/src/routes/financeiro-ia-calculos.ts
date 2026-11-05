@@ -312,6 +312,21 @@ export function calcularAlocacaoComSaldoAnterior(
   };
 }
 
+export function calcularDeficitOperacionalCarregado(
+  saldoOperacionalDisponivelCentavos: number,
+  entradasSemanaAnteriorCentavos: number,
+  saidasSemanaAnteriorCentavos: number,
+  saldoDeficitAuditadoCentavos?: number | null,
+) {
+  if (saldoDeficitAuditadoCentavos !== undefined && saldoDeficitAuditadoCentavos !== null) {
+    return Math.trunc(saldoDeficitAuditadoCentavos);
+  }
+  const saldoNegativoSalvo = Math.min(0, Math.trunc(saldoOperacionalDisponivelCentavos));
+  const fluxoSemanaAnterior = Math.max(0, Math.trunc(entradasSemanaAnteriorCentavos)) -
+    Math.max(0, Math.trunc(saidasSemanaAnteriorCentavos));
+  return Math.min(0, saldoNegativoSalvo + fluxoSemanaAnterior);
+}
+
 export function calcularRateioConsolidadoNaAbertura(
   movimentos: {
     dia: number;
