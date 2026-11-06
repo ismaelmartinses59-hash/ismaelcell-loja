@@ -1259,7 +1259,7 @@ export function CaixaSessaoGuard() {
                         className="h-11"
                       />
                       {vMotivoSugestoes.length > 0 && (
-                        <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
+                        <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] bg-white border rounded-lg shadow-lg">
                           {vMotivoSugestoes.map((p) => (
                             <button
                               key={p.id}
