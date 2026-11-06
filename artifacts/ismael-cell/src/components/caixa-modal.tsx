@@ -382,8 +382,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
         .filter((p) => {
           const m = norm(`${p.modelo} ${p.qualidade}`);
           return palavras.every((w) => m.includes(w));
-        })
-        .slice(0, 5);
+        });
     }, [motivo, pecaSel, pecas]);
 
   const [abrirValor, setAbrirValor] = useState("");
@@ -1225,7 +1224,7 @@ export function CaixaModal({ open, onClose }: CaixaModalProps) {
                   <div className="relative">
                     <Input placeholder="Ex: conta INSS ou G24" value={motivo} onChange={(e) => setMotivo(e.target.value)} className="h-10" />
                     {tipo === "entrada" && motivoSugestoes.length > 0 && (
-                      <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-xl shadow-lg overflow-hidden">
+                      <div className="absolute z-50 left-0 right-0 mt-1 max-h-56 overflow-x-hidden overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch] bg-white border rounded-xl shadow-lg">
                         {motivoSugestoes.map((p) => (
                           <button key={p.id} type="button" disabled={p.quantidade === 0}
                             onClick={() => { setVincularPeca(true); setPecaSel(p); setModeloBusca(`${p.modelo} — ${p.qualidade}`); setMotivo(`Troca de tela (${p.modelo})`); if (!valor) setValor(p.valor); }}
