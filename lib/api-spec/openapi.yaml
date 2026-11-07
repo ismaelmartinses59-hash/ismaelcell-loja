@@ -281,7 +281,7 @@ components:
           type: string
         linha:
           type: string
-          enum: [xiaomi, samsung, motorola, ios]
+          enum: [xiaomi, samsung, motorola, ios, realme]
         servico:
           type: string
         valor:
@@ -327,7 +327,7 @@ components:
           type: string
         linha:
           type: string
-          enum: [xiaomi, samsung, motorola, ios]
+          enum: [xiaomi, samsung, motorola, ios, realme]
         servico:
           type: string
         valor:

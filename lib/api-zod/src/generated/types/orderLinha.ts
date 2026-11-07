@@ -14,4 +14,5 @@ export const OrderLinha = {
   samsung: 'samsung',
   motorola: 'motorola',
   ios: 'ios',
+  realme: 'realme',
 } as const;

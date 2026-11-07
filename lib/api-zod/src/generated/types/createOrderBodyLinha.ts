@@ -14,4 +14,5 @@ export const CreateOrderBodyLinha = {
   samsung: 'samsung',
   motorola: 'motorola',
   ios: 'ios',
+  realme: 'realme',
 } as const;
