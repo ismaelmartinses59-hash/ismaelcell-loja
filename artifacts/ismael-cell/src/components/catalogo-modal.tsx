@@ -2538,7 +2538,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   const sharedImportElapsedLabel = `${Math.floor(sharedImportElapsedSeconds / 60)}:${String(sharedImportElapsedSeconds % 60).padStart(2, "0")}`;
   const sharedImportProgress = sharedImportComplete
     ? 100
-    : Math.min(90, Math.round(90 * (1 - Math.exp(-sharedImportElapsedSeconds / 40))));
+    : Math.min(90, Math.round(90 * sharedImportElapsedSeconds / 25));
+  const sharedImportSlow = sharedImportElapsedSeconds >= 30 && !sharedImportComplete;
   const sharedImportRingCircumference = 2 * Math.PI * 48;
   // Joga as peças ZERADAS (0 em estoque) para o final da lista, sem perder a
   // ordem original entre as demais — assim as que ainda têm estoque ficam no topo.
@@ -4859,12 +4860,18 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
             </div>
           </div>
           <p className="font-semibold tracking-tight">
-            {sharedImportComplete ? "Leitura concluída" : "Lendo sua nota"}
+            {sharedImportComplete
+              ? "Leitura concluída"
+              : sharedImportSlow
+                ? "A leitura está demorando"
+                : "Lendo sua nota"}
           </p>
           <p className="text-sm text-muted-foreground">
             {sharedImportComplete
               ? "Sua conferência vai abrir em instantes."
-              : "Depois da leitura, você confere as peças antes de adicioná-las. O estoque não muda sem sua confirmação."}
+              : sharedImportSlow
+                ? "Aguarde a resposta do Atalho. Se aparecer um erro, tente uma foto menor e compartilhe novamente."
+                : "Depois da leitura, você confere as peças antes de adicioná-las. O estoque não muda sem sua confirmação."}
           </p>
           <p className="font-mono text-xs text-muted-foreground">
             Tempo decorrido: {sharedImportElapsedLabel}

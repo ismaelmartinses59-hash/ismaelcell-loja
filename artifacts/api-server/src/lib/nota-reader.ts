@@ -1,6 +1,7 @@
 import { ai } from "@workspace/integrations-gemini-ai";
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
+const TEMPO_MAXIMO_LEITURA_MS = 25_000;
 
 export interface NotaImportItem {
   modelo: string;
@@ -35,30 +36,34 @@ export async function interpretarNota(
     "Não invente itens que não estão na nota. Não adicione comentários.",
   ].join("\n");
 
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>> | null = null;
-  let ultimoErro: unknown;
-  for (let tentativa = 1; tentativa <= 3; tentativa++) {
-    try {
-      response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{
-          role: "user",
-          parts: [
-            { inlineData: { mimeType, data: fileBase64 } },
-            { text: prompt },
-          ],
-        }],
-        config: { responseMimeType: "application/json", maxOutputTokens: 8192 },
-      });
-      break;
-    } catch (err) {
-      ultimoErro = err;
-      if (tentativa < 3) await new Promise((resolve) => setTimeout(resolve, tentativa * 700));
+  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  try {
+    response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{
+        role: "user",
+        parts: [
+          { inlineData: { mimeType, data: fileBase64 } },
+          { text: prompt },
+        ],
+      }],
+      config: {
+        responseMimeType: "application/json",
+        maxOutputTokens: 8192,
+        httpOptions: {
+          timeout: TEMPO_MAXIMO_LEITURA_MS,
+          retryOptions: { attempts: 1 },
+        },
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "";
+    if (/timeout|timed out|deadline|abort/i.test(message)) {
+      throw new NotaReaderError(
+        "A leitura passou de 25 segundos. Tente uma foto menor ou mais próxima da nota.",
+        503,
+      );
     }
-  }
-
-  if (!response) {
-    const message = ultimoErro instanceof Error ? ultimoErro.message : "";
     if (message.includes("AI_INTEGRATIONS_GEMINI_API_KEY")) {
       throw new NotaReaderError("A leitura automática de notas não está configurada neste servidor.", 503);
     }

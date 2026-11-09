@@ -162,6 +162,10 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
   }
 
   const leituraStartedAt = Date.now();
+  req.log.info({
+    mimeType,
+    fileBytes: fileBytes.length,
+  }, "Leitura da nota compartilhada iniciada");
   try {
     const itens = await interpretarNota(fileBase64, mimeType, (raw) => {
       req.log.error({ raw }, "Atalho do iPhone: JSON inválido da IA");

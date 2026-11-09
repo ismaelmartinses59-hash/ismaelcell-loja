@@ -137,7 +137,8 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
                 Primeiro adicione a ação <strong className="text-foreground">Abrir URLs</strong> com o endereço de importação abaixo. Ela precisa vir antes do envio.
               </li>
               <li>
-                Depois, adicione <strong className="text-foreground">Codificar em Base64</strong> para a Entrada do Atalho.
+                Para fotos, redimensione a imagem para cerca de 2000 px antes de converter. Para PDFs, pule esta etapa. Depois, adicione{" "}
+                <strong className="text-foreground">Codificar em Base64</strong> para a entrada do Atalho.
               </li>
               <li>
                 Adicione <strong className="text-foreground">Obter Conteúdo do URL</strong>: método POST e corpo JSON com{" "}
