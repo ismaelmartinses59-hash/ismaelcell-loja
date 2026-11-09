@@ -130,15 +130,15 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
             <ol className="list-decimal space-y-2 pl-5 text-muted-foreground">
               <li>
                 No app <strong className="text-foreground">Atalhos</strong>, crie um atalho e, nos detalhes, ative{" "}
-                <strong className="text-foreground">Mostrar na Folha de Compartilhamento</strong>. Aceite arquivos PDF.
+                <strong className="text-foreground">Mostrar na Folha de Compartilhamento</strong>. Aceite PDFs e imagens.
               </li>
               <li>
                 Adicione a ação <strong className="text-foreground">Codificar em Base64</strong> para a Entrada do Atalho.
               </li>
               <li>
-                Adicione <strong className="text-foreground">Obter Conteúdo do URL</strong>: método POST, corpo JSON com{" "}
-                <code>fileBase64</code> igual ao resultado Base64 e <code>mimeType</code> igual a{" "}
-                <code>application/pdf</code>. No cabeçalho <code>Authorization</code>, use{" "}
+                Adicione <strong className="text-foreground">Obter Conteúdo do URL</strong>: método POST e corpo JSON com{" "}
+                <code>fileBase64</code> igual ao resultado Base64. O servidor identifica se é PDF ou imagem; se já existir um campo{" "}
+                <code>mimeType</code>, ele pode permanecer. No cabeçalho <code>Authorization</code>, use{" "}
                 <code>Bearer [seu código]</code>.
               </li>
               <li>

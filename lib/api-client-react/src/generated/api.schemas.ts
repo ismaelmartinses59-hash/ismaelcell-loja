@@ -17,6 +17,15 @@ export const OrderLinha = {
   samsung: 'samsung',
   motorola: 'motorola',
   ios: 'ios',
+  realme: 'realme',
+} as const;
+
+export type OrderTipo = typeof OrderTipo[keyof typeof OrderTipo];
+
+
+export const OrderTipo = {
+  cliente: 'cliente',
+  lojista: 'lojista',
 } as const;
 
 export type OrderStatus = typeof OrderStatus[keyof typeof OrderStatus];
@@ -38,6 +47,11 @@ export interface Order {
   servico: string;
   valor: string;
   tempo: string;
+  tipo?: OrderTipo;
+  nomeCliente?: string | null;
+  senhaDispo?: string | null;
+  garantia?: string | null;
+  dataServico?: string | null;
   status: OrderStatus;
   createdAt: string;
 }
@@ -50,6 +64,15 @@ export const CreateOrderBodyLinha = {
   samsung: 'samsung',
   motorola: 'motorola',
   ios: 'ios',
+  realme: 'realme',
+} as const;
+
+export type CreateOrderBodyTipo = typeof CreateOrderBodyTipo[keyof typeof CreateOrderBodyTipo];
+
+
+export const CreateOrderBodyTipo = {
+  cliente: 'cliente',
+  lojista: 'lojista',
 } as const;
 
 export interface CreateOrderBody {
@@ -58,6 +81,11 @@ export interface CreateOrderBody {
   servico: string;
   valor: string;
   tempo: string;
+  tipo?: CreateOrderBodyTipo;
+  nomeCliente?: string | null;
+  senhaDispo?: string | null;
+  garantia?: string | null;
+  dataServico?: string | null;
 }
 
 export type UpdateOrderStatusBodyStatus = typeof UpdateOrderStatusBodyStatus[keyof typeof UpdateOrderStatusBodyStatus];
@@ -98,6 +126,13 @@ export type IosShortcutImportInputMimeType = typeof IosShortcutImportInputMimeTy
 
 export const IosShortcutImportInputMimeType = {
   'application/pdf': 'application/pdf',
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'image/gif': 'image/gif',
+  'image/heic': 'image/heic',
+  'image/heif': 'image/heif',
+  'image/avif': 'image/avif',
 } as const;
 
 export interface IosShortcutImportInput {
@@ -106,7 +141,7 @@ export interface IosShortcutImportInput {
      * @maxLength 10485760
      */
   fileBase64: string;
-  mimeType: IosShortcutImportInputMimeType;
+  mimeType?: IosShortcutImportInputMimeType;
 }
 
 export interface IosShortcutImportResponse {

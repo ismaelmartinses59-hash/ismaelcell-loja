@@ -10,6 +10,7 @@ import {
   ImportIosShortcutNoteResponse,
 } from "@workspace/api-zod";
 import { appConfigTable, db } from "@workspace/db";
+import { detectInvoiceMimeType } from "../lib/invoice-file-type.js";
 import { interpretarNota, NotaReaderError } from "../lib/nota-reader.js";
 import { requireFinanceSession } from "./auth.js";
 
@@ -133,18 +134,24 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
 
   const body = ImportIosShortcutNoteBody.safeParse(req.body);
   if (!body.success) {
-    res.status(400).json({ error: "Envie um arquivo PDF válido." });
+    res.status(400).json({ error: "Envie um PDF ou uma imagem de nota válida." });
     return;
   }
   const fileBase64 = body.data.fileBase64
-    .replace(/^data:application\/pdf;base64,/i, "")
+    .replace(/^data:[^;]+;base64,/i, "")
     .replace(/\s/g, "");
   if (!fileBase64 || fileBase64.length % 4 === 1 || !/^[A-Za-z0-9+/]*={0,2}$/.test(fileBase64)) {
-    res.status(400).json({ error: "O conteúdo do PDF não está em Base64 válido." });
+    res.status(400).json({ error: "O conteúdo do arquivo não está em Base64 válido." });
     return;
   }
-  if (Math.floor((fileBase64.length * 3) / 4) > 7.5 * 1024 * 1024) {
-    res.status(413).json({ error: "PDF muito grande. O limite para o Atalho é cerca de 7 MB." });
+  const fileBytes = Buffer.from(fileBase64, "base64");
+  if (fileBytes.length > 7.5 * 1024 * 1024) {
+    res.status(413).json({ error: "Arquivo muito grande. O limite para o Atalho é cerca de 7 MB." });
+    return;
+  }
+  const mimeType = detectInvoiceMimeType(fileBytes);
+  if (!mimeType) {
+    res.status(415).json({ error: "Formato não reconhecido. Envie um PDF ou uma foto JPEG, PNG, WebP, GIF ou HEIC." });
     return;
   }
 
@@ -155,7 +162,7 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
   }
 
   try {
-    const itens = await interpretarNota(fileBase64, body.data.mimeType, (raw) => {
+    const itens = await interpretarNota(fileBase64, mimeType, (raw) => {
       req.log.error({ raw }, "Atalho do iPhone: JSON inválido da IA");
     });
     if (itens.length === 0) {

@@ -11,4 +11,11 @@ export type IosShortcutImportInputMimeType = typeof IosShortcutImportInputMimeTy
 
 export const IosShortcutImportInputMimeType = {
   'application/pdf': 'application/pdf',
+  'image/jpeg': 'image/jpeg',
+  'image/png': 'image/png',
+  'image/webp': 'image/webp',
+  'image/gif': 'image/gif',
+  'image/heic': 'image/heic',
+  'image/heif': 'image/heif',
+  'image/avif': 'image/avif',
 } as const;

@@ -48,7 +48,7 @@ export const importIosShortcutNoteBodyFileBase64Max = 10485760;
 
 export const ImportIosShortcutNoteBody = zod.object({
   "fileBase64": zod.string().min(1).max(importIosShortcutNoteBodyFileBase64Max),
-  "mimeType": zod.enum(['application/pdf'])
+  "mimeType": zod.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif', 'image/avif']).optional()
 })
 
 export const importIosShortcutNoteResponseItemCountMin = 0;
@@ -104,6 +104,11 @@ export const ListOrdersResponseItem = zod.object({
   "servico": zod.string(),
   "valor": zod.string(),
   "tempo": zod.string(),
+  "tipo": zod.enum(['cliente', 'lojista']).optional(),
+  "nomeCliente": zod.string().nullish(),
+  "senhaDispo": zod.string().nullish(),
+  "garantia": zod.string().nullish(),
+  "dataServico": zod.string().nullish(),
   "status": zod.enum(['aguardando', 'em andamento', 'concluido', 'problema', 'encerrado']),
   "createdAt": zod.coerce.date()
 })
@@ -120,10 +125,10 @@ export const CreateOrderBody = zod.object({
   "valor": zod.string(),
   "tempo": zod.string(),
   "tipo": zod.enum(['cliente', 'lojista']).optional(),
-  "nomeCliente": zod.string().nullable().optional(),
-  "senhaDispo": zod.string().nullable().optional(),
-  "garantia": zod.string().nullable().optional(),
-  "dataServico": zod.string().nullable().optional()
+  "nomeCliente": zod.string().nullish(),
+  "senhaDispo": zod.string().nullish(),
+  "garantia": zod.string().nullish(),
+  "dataServico": zod.string().nullish()
 })
 
 export const CreateOrderResponse = zod.object({
@@ -134,6 +139,11 @@ export const CreateOrderResponse = zod.object({
   "servico": zod.string(),
   "valor": zod.string(),
   "tempo": zod.string(),
+  "tipo": zod.enum(['cliente', 'lojista']).optional(),
+  "nomeCliente": zod.string().nullish(),
+  "senhaDispo": zod.string().nullish(),
+  "garantia": zod.string().nullish(),
+  "dataServico": zod.string().nullish(),
   "status": zod.enum(['aguardando', 'em andamento', 'concluido', 'problema', 'encerrado']),
   "createdAt": zod.coerce.date()
 })
@@ -154,6 +164,11 @@ export const GetOrderResponse = zod.object({
   "servico": zod.string(),
   "valor": zod.string(),
   "tempo": zod.string(),
+  "tipo": zod.enum(['cliente', 'lojista']).optional(),
+  "nomeCliente": zod.string().nullish(),
+  "senhaDispo": zod.string().nullish(),
+  "garantia": zod.string().nullish(),
+  "dataServico": zod.string().nullish(),
   "status": zod.enum(['aguardando', 'em andamento', 'concluido', 'problema', 'encerrado']),
   "createdAt": zod.coerce.date()
 })
@@ -178,6 +193,11 @@ export const UpdateOrderStatusResponse = zod.object({
   "servico": zod.string(),
   "valor": zod.string(),
   "tempo": zod.string(),
+  "tipo": zod.enum(['cliente', 'lojista']).optional(),
+  "nomeCliente": zod.string().nullish(),
+  "senhaDispo": zod.string().nullish(),
+  "garantia": zod.string().nullish(),
+  "dataServico": zod.string().nullish(),
   "status": zod.enum(['aguardando', 'em andamento', 'concluido', 'problema', 'encerrado']),
   "createdAt": zod.coerce.date()
 })

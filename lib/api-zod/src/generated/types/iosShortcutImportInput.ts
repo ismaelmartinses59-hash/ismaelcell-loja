@@ -13,5 +13,5 @@ export interface IosShortcutImportInput {
      * @maxLength 10485760
      */
   fileBase64: string;
-  mimeType: IosShortcutImportInputMimeType;
+  mimeType?: IosShortcutImportInputMimeType;
 }
