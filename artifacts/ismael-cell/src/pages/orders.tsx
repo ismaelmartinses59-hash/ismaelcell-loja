@@ -53,13 +53,21 @@ export default function Orders() {
   }, []);
 
   useEffect(() => {
-    const draftId = new URLSearchParams(window.location.search).get("shareImport");
-    if (!draftId || !/^[A-Za-z0-9_-]{32,80}$/.test(draftId)) return;
-    sessionStorage.setItem("pending-share-import", draftId);
-    setSharedImportId(draftId);
-    setCatalogoTab("pecas");
-    setShowCatalogo(true);
-    window.history.replaceState(null, "", `${BASE_URL}/ordens`);
+    const params = new URLSearchParams(window.location.search);
+    const draftId = params.get("shareImport");
+    if (draftId && /^[A-Za-z0-9_-]{32,80}$/.test(draftId)) {
+      sessionStorage.setItem("pending-share-import", draftId);
+      setSharedImportId(draftId);
+      setCatalogoTab("pecas");
+      setShowCatalogo(true);
+      window.history.replaceState(null, "", `${BASE_URL}/ordens`);
+      return;
+    }
+    if (params.get("abrirEstoque") === "1") {
+      setCatalogoTab("pecas");
+      setShowCatalogo(true);
+      window.history.replaceState(null, "", `${BASE_URL}/ordens`);
+    }
   }, [BASE_URL]);
 
   interface ContaResumo { conta: { closedAt: string | null }; saldo: number }
