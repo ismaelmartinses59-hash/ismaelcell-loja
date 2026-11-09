@@ -321,9 +321,9 @@ export function calcularDeficitOperacionalCarregado(
   if (saldoDeficitAuditadoCentavos !== undefined && saldoDeficitAuditadoCentavos !== null) {
     return Math.trunc(saldoDeficitAuditadoCentavos);
   }
-  const saldoNegativoSalvo = Math.min(0, Math.trunc(saldoOperacionalDisponivelCentavos));
   const fluxoSemanaAnterior = Math.max(0, Math.trunc(entradasSemanaAnteriorCentavos)) -
     Math.max(0, Math.trunc(saidasSemanaAnteriorCentavos));
+  const saldoNegativoSalvo = Math.min(0, Math.trunc(saldoOperacionalDisponivelCentavos));
   return Math.min(0, saldoNegativoSalvo + fluxoSemanaAnterior);
 }
 

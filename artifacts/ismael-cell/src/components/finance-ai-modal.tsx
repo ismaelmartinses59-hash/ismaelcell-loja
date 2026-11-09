@@ -546,7 +546,10 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                         <p data-testid="text-reserva-protegida" className="text-lg font-extrabold text-blue-950">{fmt(summary.reserva)}</p>
                       </div>
                     </div>
-                    {!financialNotesHidden && <p className="mt-2 text-[11px] text-emerald-800">Estes são os saldos atuais. A operação pendente até a próxima abertura é {fmt(data.movimentoSemana.operacaoPendente)} e não aumenta o limite para pedidos. Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAntesPedidos)} − débitos do ciclo anterior {fmt(data.movimentoSemana.saidasCicloAnterior)} = {fmt(data.movimentoSemana.saldoOperacionalAnterior)}; pedidos de estoque: {fmt(data.movimentoSemana.saidasPedidosEstoque)}. Para a próxima abertura: + operação após esta abertura {fmt(data.movimentoSemana.alocacaoOperacao)} − outras saídas {fmt(data.movimentoSemana.saidasOperacionais)}. A atividade abaixo mostra somente o que aconteceu depois da abertura e não substitui nem zera estes saldos.</p>}
+                    <p className="mt-2 rounded-lg bg-white/70 p-2 text-[11px] leading-relaxed text-emerald-950">
+                      Saldo da operação após as movimentações desta semana: {fmt(data.movimentoSemana.saldoCarryInSemana)} + {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas = {fmt(data.movimentoSemana.saldoOperacionalDisponivel)}.
+                    </p>
+                    {!financialNotesHidden && <p className="mt-2 text-[11px] text-emerald-800">Este é o saldo da operação após o saldo anterior, as entradas e as saídas da semana. A projeção 60/40 permanece separada; a reserva só recebe valor se houver resultado elegível positivo.</p>}
                   </div>
                 )}
                 <div className="mt-2 grid grid-cols-2 gap-2">
@@ -555,20 +558,20 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     <p data-testid="text-protecao-calculada-semana" className="mt-1 font-bold text-violet-900">{fmt(protecaoRateadaSemana)}</p>
                     {!financialNotesHidden && <p className="text-[11px] text-violet-700">{!summary.protecaoAtiva ? "Proteção desativada; nenhum valor é destinado à reserva." : "Recalculada a cada lançamento: todas as entradas e saídas em dinheiro/PIX, inclusive Peças e segunda, primeiro compensam o déficit anterior. O 60/40 é apenas uma projeção e só entra na reserva se a semana fechar positiva."}</p>}
                   </div>
-                  <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
-                    <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Líquido após compensar o déficit anterior</p>
-                    <p data-testid="text-saldo-operacional-semana" className="mt-1 font-bold text-emerald-900">{fmt(liquidoRateadoSemana)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Entradas em dinheiro/PIX {fmt(entradasRateadasSemana)} − todas as saídas {fmt(saidasRateadasSemana)} − déficit anterior. A semana é recalculada em tempo real; se o resultado fechar em zero ou negativo, não há rateio.</p>}
+                  <div className={`rounded-xl border p-3 ${liquidoRateadoSemana < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
+                    <p className={`flex items-center gap-1 text-xs ${liquidoRateadoSemana < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> Saldo operacional após movimentos</p>
+                    <p data-testid="text-saldo-operacional-semana" className={`mt-1 font-bold ${liquidoRateadoSemana < 0 ? "text-rose-900" : "text-emerald-900"}`}>{fmt(liquidoRateadoSemana)}</p>
+                    {!financialNotesHidden && <p className={`text-[11px] ${liquidoRateadoSemana < 0 ? "text-rose-700" : "text-emerald-700"}`}>{fmt(data.movimentoSemana.saldoCarryInSemana)} de saldo anterior + {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas.</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Operação rateada nesta semana · {percentualOperacaoExibido}%</p>
                     <p data-testid="text-operacao-rateada-semana" className="mt-1 font-bold text-emerald-900">{fmt(operacaoRateadaSemana)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Projeção da parcela operacional pelo resultado elegível acumulado na semana. O saldo disponível acima continua separado e considera a abertura real, os débitos do ciclo anterior e as saídas já registradas.</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-emerald-700">Projeção da parcela operacional sobre o fluxo elegível desta semana. O saldo disponível acima já mostra o saldo anterior depois das entradas e saídas atuais.</p>}
                   </div>
                   <div className={`rounded-xl border p-3 ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "border-rose-100 bg-rose-50" : "border-slate-200 bg-slate-50"}`}>
-                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : "text-slate-700"}`}><Wallet className="h-3.5 w-3.5" /> Resultado após compensar o déficit</p>
+                    <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-700" : "text-slate-700"}`}><Wallet className="h-3.5 w-3.5" /> Fluxo líquido desta semana</p>
                     <p data-testid="text-resultado-operacional-semana" className={`mt-1 font-bold ${data.movimentoSemana.resultadoOperacionalSemana < 0 ? "text-rose-900" : "text-slate-900"}`}>{fmt(data.movimentoSemana.resultadoOperacionalSemana)}</p>
-                    {!financialNotesHidden && <p className="text-[11px] text-slate-700">Resultado elegível da semana após descontar o déficit anterior. Atualiza junto com as entradas e saídas; o saldo disponível para pedidos continua separado e não inclui a projeção desta semana.</p>}
+                    {!financialNotesHidden && <p className="text-[11px] text-slate-700">Entradas menos saídas em dinheiro/PIX, sem incluir o saldo operacional recebido da semana anterior.</p>}
                   </div>
                   {!data.movimentoSemana.aberturaRealNoPeriodo && <>
                     <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
@@ -579,7 +582,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     <div className={`rounded-xl border p-3 ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
                       <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "Déficit carregado" : "Saldo restante do ciclo anterior"}</p>
                       <p data-testid="text-alocacao-operacao-semana" className={`mt-1 font-bold ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-900" : "text-emerald-900"}`}>{fmt(data.movimentoSemana.saldoOperacionalDisponivel)}</p>
-                      {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}>Operação pendente até a próxima abertura real: {fmt(data.movimentoSemana.operacaoPendente)} (não aumenta o limite para pedidos). Saldo anterior {fmt(data.movimentoSemana.saldoOperacionalAntesPedidos)} − pedidos/saídas atribuídos ao ciclo anterior {fmt(data.movimentoSemana.saidasCicloAnterior)} (pedidos de estoque: {fmt(data.movimentoSemana.saidasPedidosEstoque)}) = {fmt(data.movimentoSemana.saldoOperacionalAnterior)}. Depois: + operação desta semana {fmt(data.movimentoSemana.alocacaoOperacao)} − outras saídas {fmt(data.movimentoSemana.saidasOperacionais)}. Déficits são cobertos pelas próximas alocações.</p>}
+                       {!financialNotesHidden && <p className={`text-[11px] ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}>Saldo operacional após os movimentos: {fmt(data.movimentoSemana.saldoCarryInSemana)} de saldo anterior + {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas = {fmt(data.movimentoSemana.saldoOperacionalDisponivel)}. Operação pendente até a próxima abertura real: {fmt(data.movimentoSemana.operacaoPendente)} (não aumenta o limite para pedidos).</p>}
                     </div>
                   </>}
                 </div>
@@ -636,7 +639,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                 {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma entrada nova desde a última leitura; a projeção continua baseada no resultado elegível acumulado da semana.</p>}
                 {data.reservaAutomatica.estado === "sem_aumento" && <p className="mt-1 text-slate-600">Nenhuma reserva é acrescentada durante a semana aberta. A projeção só será aplicada no fechamento, se o resultado for positivo.</p>}
                 <p className="mt-2 text-xs leading-relaxed text-slate-600">
-                  O cálculo em tempo real considera {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas − {fmt(Math.abs(Math.min(0, data.movimentoSemana.saldoCarryInSemana ?? 0)))} de déficit anterior = {fmt(liquidoRateadoSemana)}. {summary.protecaoAtiva && liquidoRateadoSemana > 0 ? `Se a semana fechar agora, a projeção é ${fmt(operacaoRateadaSemana)} para operação (60%) e ${fmt(protecaoRateadaSemana)} para proteção (40%).` : liquidoRateadoSemana > 0 ? "Com a proteção desativada, o líquido positivo fica na operação." : "Como o líquido não é positivo, a reserva projetada é zero e o déficit segue no saldo operacional."} A projeção de proteção só será adicionada à reserva depois do fechamento semanal; a reserva acumulada não tem teto máximo.
+                  O saldo da operação considera {fmt(data.movimentoSemana.saldoCarryInSemana)} de saldo anterior + {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas = {fmt(liquidoRateadoSemana)}. O fluxo líquido apenas desta semana é {fmt(data.movimentoSemana.resultadoOperacionalSemana)} e define a projeção de 60/40; {summary.protecaoAtiva && operacaoRateadaSemana > 0 ? `a projeção atual é ${fmt(operacaoRateadaSemana)} para operação e ${fmt(protecaoRateadaSemana)} para proteção.` : "como o fluxo elegível não é positivo, não há rateio para a reserva."} A parcela protegida só será adicionada à reserva depois do fechamento semanal.
                 </p>
                 <p className="mt-1 text-xs text-slate-500">É uma proteção no cálculo do app, não uma transferência ou saída do Caixa. Gastos e transferências não registrados podem alterar o saldo real.</p>
               </section>

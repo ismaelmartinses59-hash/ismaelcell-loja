@@ -133,6 +133,15 @@ test("o déficit anterior é coberto antes do rateio e a projeção muda com as 
   assert.equal(depoisDaDespesa.percentualProtecao, 0);
   assert.equal(depoisDaDespesa.saldoOperacionalFinalCentavos, -5_000);
 });
+test("saldo positivo anterior compensa as saídas da semana antes de carregar o déficit", () => {
+  const semana = calcularAlocacaoComSaldoAnterior(72_082, 36_000, 117_580, true);
+
+  assert.equal(semana.fluxoSemanaCentavos, -81_580);
+  assert.equal(semana.fluxoLiquidoCentavos, -81_580);
+  assert.equal(semana.operacaoCentavos, 0);
+  assert.equal(semana.protecaoCentavos, 0);
+  assert.equal(semana.saldoOperacionalFinalCentavos, -9_498);
+});
 test("a semana atual compensa o déficit de R$ 1.355,80 antes de ratear", () => {
   const saldoCarry = calcularDeficitOperacionalCarregado(84_585, 260_000, 395_580);
   assert.equal(saldoCarry, -135_580);
