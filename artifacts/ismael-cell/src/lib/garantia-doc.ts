@@ -91,7 +91,7 @@ import cartaoUrl from "@/assets/cartao-garantia.jpg";
     drawField(ctx, order.nomeCliente ?? "—", 348); // CLIENTE
     drawField(ctx, order.modelo, 447); // APARELHO
     drawField(ctx, order.servico, 544); // SERVIÇO REALIZADO
-    drawField(ctx, order.codigo, 640); // ORDEM DE SERVIÇO (OS)
+    drawField(ctx, String(order.id), 640); // NÚMERO DA ORDEM DE SERVIÇO
     drawField(ctx, dataServicoStr(order), 736); // DATA DO SERVIÇO
     drawField(ctx, periodo, 829); // GARANTIA
     drawField(ctx, exp ? fmtData(exp) : "—", 927); // VÁLIDA ATÉ
@@ -113,7 +113,7 @@ import cartaoUrl from "@/assets/cartao-garantia.jpg";
     const exp = expiry(order);
     return (
       `🛡️ *GARANTIA — Ismael Cell*\n` +
-      `OS: ${order.codigo}\n` +
+      `OS: ${order.id}\n` +
       (order.nomeCliente ? `Cliente: ${order.nomeCliente}\n` : "") +
       `Aparelho: ${order.modelo}\n` +
       `Serviço: ${order.servico}\n` +
@@ -128,7 +128,7 @@ import cartaoUrl from "@/assets/cartao-garantia.jpg";
   export async function sendGarantiaWhatsApp(order: Order): Promise<void> {
     const canvas = await renderCanvas(order);
     const blob = await canvasToBlob(canvas);
-    const file = new File([blob], `garantia-${order.codigo}.jpg`, { type: "image/jpeg" });
+    const file = new File([blob], `garantia-${order.id}.jpg`, { type: "image/jpeg" });
     const text = mensagem(order);
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -153,7 +153,7 @@ import cartaoUrl from "@/assets/cartao-garantia.jpg";
     const dataUrl = canvas.toDataURL("image/jpeg", 0.92);
     const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"/>
     <meta name="viewport" content="width=device-width, initial-scale=1"/>
-    <title>Garantia ${order.codigo} — Ismael Cell</title>
+    <title>Garantia ${order.id} — Ismael Cell</title>
     <style>
       @page { size: landscape; margin: 8mm; }
       *{ -webkit-print-color-adjust:exact; print-color-adjust:exact; }

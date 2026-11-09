@@ -115,7 +115,12 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
     ? ordersRegistrar.find(o => {
         const codNum = o.codigo.replace(/^OS-/i, "").toLowerCase();
         const termLow = buscaAtiva.toLowerCase();
-        return codNum === termLow || codNum.includes(termLow) || o.codigo.toLowerCase().includes(termLow);
+        return (
+          String(o.id).includes(termLow) ||
+          codNum === termLow ||
+          codNum.includes(termLow) ||
+          o.codigo.toLowerCase().includes(termLow)
+        );
       }) ?? (ordersRegistrar.length === 1 ? ordersRegistrar[0] : null)
     : null;
 
@@ -192,6 +197,7 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
       .filter(o => !consultaBusca
         || o.modelo.toLowerCase().includes(consultaBusca.toLowerCase())
         || o.codigo.toLowerCase().includes(consultaBusca.toLowerCase())
+        || String(o.id).includes(consultaBusca.trim())
         || (o.nomeCliente ?? "").toLowerCase().includes(consultaBusca.toLowerCase())
       )
       .sort((a, b) => {
@@ -295,7 +301,7 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
           valor: "0",
           tempo: "—",
           tipo: OrderTipo.cliente,
-          nomeCliente: nomeRegistrar.trim() || undefined,
+          nomeCliente: nomeRegistrar.trim() || null,
           garantia: garantiaSelecionada,
           dataServico: dataRegistrar,
         }),
@@ -305,10 +311,13 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
         throw new Error(erro.error || "Erro ao criar garantia");
       }
       const ordem: Order = await r.json();
-      setOrdemCriada(ordem);
+      setOrdemCriada({
+        ...ordem,
+        nomeCliente: nomeRegistrar.trim() || ordem.nomeCliente || null,
+      });
       queryClient.invalidateQueries({ queryKey: getListOrdersQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetOrderStatsQueryKey() });
-      toast({ title: "✅ Garantia criada!", description: `${ordem.codigo} — ${garantiaSelecionada}` });
+      toast({ title: "✅ Garantia criada!", description: `OS ${ordem.id} — ${garantiaSelecionada}` });
     } catch (erro) {
       toast({
         title: "Não foi possível criar a garantia",
@@ -620,7 +629,7 @@ export function GarantiaModal({ open, onClose, initialCodigo }: GarantiaModalPro
                               <div className="min-w-0">
                                 <p className="font-semibold text-sm truncate">{o.modelo}</p>
                                 {o.nomeCliente && <p className="text-xs text-muted-foreground truncate">{o.nomeCliente}</p>}
-                                <p className="font-mono text-[10px] text-muted-foreground">#{o.codigo}</p>
+                                <p className="font-mono text-[10px] text-muted-foreground">OS {o.id}</p>
                               </div>
                               <div className="flex items-center gap-1.5 shrink-0">
                                 {!isEditing && (
