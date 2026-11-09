@@ -425,6 +425,15 @@ async function carregarSaldoOperacionalBase(
   });
 }
 
+class ReservaReconciliationRequiredError extends Error {
+  constructor(readonly inicioDia: number) {
+    super(
+      `A correção da reserva da semana iniciada em ${daySP(new Date(inicioDia * 86400000 + 43200000))} excede o saldo atual; é necessária conciliação manual.`,
+    );
+    this.name = "ReservaReconciliationRequiredError";
+  }
+}
+
 async function fecharSemanasDeReservaPendentes(
   semanaAtual: number,
   baseFisicaDisponivel: boolean,
@@ -559,9 +568,7 @@ async function fecharSemanasDeReservaPendentes(
       const saldoAntes = reservaAtual;
       const novoSaldo = reservaAtual + ajuste;
       if (novoSaldo < 0) {
-        throw new Error(
-          `A correção da reserva da semana iniciada em ${daySP(new Date(inicio * 86400000 + 43200000))} excede o saldo atual; é necessária conciliação manual.`,
-        );
+        throw new ReservaReconciliationRequiredError(inicio);
       }
       reservaAtual = novoSaldo;
       ajusteTotal += ajuste;
@@ -1184,20 +1191,41 @@ async function snapshot() {
   );
   const entradasSemana = fluxoReservaSemana.entradas;
   const taxaReserva = alocacaoReservaSemana.percentualProtecao;
-  const fechamentoReserva = await fecharSemanasDeReservaPendentes(
-    weekStart, dinheiro !== null, saldoCarryInSemana,
-  );
-  const reservaAutomatica = await atualizarReservaGradual(
-    dinheiro === null ? null : dinheiro + pix, config.reserva, config.reservaSemana,
-    compraOperacional,
-    expensesTotal,
-    alocacaoReservaSemana.protecaoCentavos,
-    alocacaoSemana.necessidadeOperacionalCentavos,
-    taxaReserva,
-    today,
-    weekStart,
-    sessao?.aberturaAt ?? null,
-  );
+  let conciliacaoReservaPendente: string | null = null;
+  let fechamentoReserva = { ajuste: 0 };
+  try {
+    fechamentoReserva = await fecharSemanasDeReservaPendentes(
+      weekStart, dinheiro !== null, saldoCarryInSemana,
+    );
+  } catch (error) {
+    if (!(error instanceof ReservaReconciliationRequiredError)) throw error;
+    conciliacaoReservaPendente = daySP(
+      new Date(error.inicioDia * 86400000 + 43200000),
+    );
+  }
+  const reservaAutomatica = conciliacaoReservaPendente
+    ? {
+        reserva: config.reserva,
+        reservaSemana: config.reservaSemana,
+        aporte: 0,
+        entradaNova: 0,
+        protecaoPendente: alocacaoReservaSemana.protecaoCentavos,
+        inicioAgora: false,
+        compraPlanejada: 0,
+        protecaoAtiva: config.proteger,
+        saldosAtuais: null as { dinheiro: number; pix: number } | null,
+      }
+    : await atualizarReservaGradual(
+        dinheiro === null ? null : dinheiro + pix, config.reserva, config.reservaSemana,
+        compraOperacional,
+        expensesTotal,
+        alocacaoReservaSemana.protecaoCentavos,
+        alocacaoSemana.necessidadeOperacionalCentavos,
+        taxaReserva,
+        today,
+        weekStart,
+        sessao?.aberturaAt ?? null,
+      );
   const historicoReserva = await db.select().from(reservaAjustesTable)
     .orderBy(desc(reservaAjustesTable.id));
   if (reservaAutomatica.saldosAtuais) {
@@ -1223,9 +1251,9 @@ async function snapshot() {
     .filter(row => row.tipo === "saida")
     .reduce((sum, row) => sum + row.valorCentavos, 0);
   const saldos = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, 0, 0);
-  const disponivel = saldos.disponivel;
+  const disponivel = conciliacaoReservaPendente ? null : saldos.disponivel;
   const spending = calcularDisponibilidade(dinheiro, pix, config.reserva, config.proteger, expensesTotal, config.meta);
-  const safeToSpend = spending.podeGastar;
+  const safeToSpend = conciliacaoReservaPendente ? null : spending.podeGastar;
   const recentDays = totalPeriod(today - 27, today);
   const distinctDays = new Set(recent.filter(row => dayIndex(row.createdAt) >= today - 27)
     .map(row => daySP(row.createdAt))).size;
@@ -1238,15 +1266,18 @@ async function snapshot() {
       valor: cents(row.valor),
       categoria: row.tipo === "saida" ? classificar(row.categoria, row.motivo) : null,
     })),
-    hoje: today, disponivel, total, reserva: config.reserva, proteger: config.proteger,
+    hoje: today, disponivel, total: conciliacaoReservaPendente ? null : total,
+    reserva: config.reserva, proteger: config.proteger,
     mediaCompras: purchaseAverage, semanasComCompras: purchaseValues.length,
     contasPrevistas: expensesTotal, estoqueBaixo: stockLow,
   });
-  const situacao = alerts.some(a => a.nivel === "risco") ? "risco" :
+  const situacao = conciliacaoReservaPendente ? "atencao" :
+    alerts.some(a => a.nivel === "risco") ? "risco" :
     alerts.some(a => a.nivel === "atencao") ? "atencao" :
     alerts.some(a => a.nivel === "positivo") ? "saudavel" : recent.length === 0 ? "sem_dados" : "sem_alertas";
   return {
     atualizadoEm: now.toISOString(),
+    conciliacaoReservaPendente,
     ultimoFechamentoCaixa: ultimoFechamento[0]?.fechamentoAt?.toISOString() ?? null,
     saldos: {
       dinheiro: dinheiro === null ? null : money(dinheiro),

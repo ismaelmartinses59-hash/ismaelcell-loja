@@ -20,6 +20,7 @@ type Alert = { nivel: "risco" | "atencao" | "positivo"; titulo: string; texto: s
 type FinanceSnapshot = {
   atualizadoEm: string;
   ultimoFechamentoCaixa: string | null;
+  conciliacaoReservaPendente: string | null;
   saldos: {
     dinheiro: number | null; pix: number; total: number | null;
     reserva: number; protecaoAtiva: boolean; disponivel: number | null;
@@ -415,6 +416,14 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
           )}
           {data && summary && (
             <>
+              {data.conciliacaoReservaPendente && (
+                <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                  <p className="font-semibold">Conciliação manual necessária para a reserva</p>
+                  <p className="mt-1">
+                    O fechamento da semana iniciada em {data.conciliacaoReservaPendente} não pode ser aplicado sem reduzir a reserva registrada abaixo de zero. Nenhum saldo foi alterado. A disponibilidade para gastar ficará indisponível e o uso da reserva está bloqueado até a conciliação.
+                  </p>
+                </div>
+              )}
               <div className={financialNotesHidden ? "sticky top-16 z-10 -mx-4 bg-white px-4 pb-2 pt-2 shadow-sm" : ""}>
               <section aria-label="Movimentação financeira desta semana">
                 <div className="mb-2 flex items-center justify-between">
@@ -563,9 +572,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   </div>
                   {!data.movimentoSemana.aberturaRealNoPeriodo && <>
                     <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
-                      <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> Saldo protegido total {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
+                      <p className="flex items-center gap-1 text-xs text-blue-700"><LockKeyhole className="h-3.5 w-3.5" /> {data.conciliacaoReservaPendente ? "Saldo protegido registrado (pendente de conciliação)" : "Saldo protegido total"} {summary.protecaoAtiva ? "" : "(proteção desativada)"}</p>
                       <p data-testid="text-reserva-protegida" className="mt-1 font-bold text-blue-900">{fmt(summary.reserva)}</p>
-                       <p className="text-[11px] text-blue-700">{!financialNotesHidden && "Acumulado das semanas fechadas · sem teto máximo. A semana atual ainda é provisória."}</p>
+                        <p className="text-[11px] text-blue-700">{!financialNotesHidden && (data.conciliacaoReservaPendente ? "Último valor registrado; não confirmado pela conciliação pendente." : "Acumulado das semanas fechadas · sem teto máximo. A semana atual ainda é provisória.")}</p>
                     </div>
                     <div className={`rounded-xl border p-3 ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
                       <p className={`flex items-center gap-1 text-xs ${data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> {data.movimentoSemana.saldoOperacionalDisponivel < 0 ? "Déficit carregado" : "Saldo restante do ciclo anterior"}</p>
@@ -574,7 +583,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                     </div>
                   </>}
                 </div>
-                <ReservaUtilizacaoPanel saldo={summary.reserva} />
+                {data.conciliacaoReservaPendente
+                  ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">O saldo protegido exibido é o último valor registrado e ainda não foi conciliado. Não é possível registrar uso da reserva até concluir a conciliação.</p>
+                  : <ReservaUtilizacaoPanel saldo={summary.reserva} />}
                 <p data-testid="text-lancamentos-sem-forma-semana" className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
                   Lançamentos com forma de pagamento não informada, excluídos do cálculo: entradas {fmt(data.movimentoSemana.entradasSemForma)} e saídas {fmt(data.movimentoSemana.saidasSemForma)}. O app não presume que sejam dinheiro ou PIX.
                 </p>
@@ -618,7 +629,8 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                       : `No fechamento semanal, o saldo protegido foi reduzido em ${fmt(-data.reservaAutomatica.aporte)} para refletir o resultado final.`}
                   </p>
                 )}
-                {data.reservaAutomatica.estado === "pausada" && <p className="mt-1 text-amber-700">Aumento automático pausado: ative a proteção da reserva abaixo.</p>}
+                    {data.conciliacaoReservaPendente && <p className="mt-1 font-medium text-amber-800">A atualização automática da reserva está suspensa até a conciliação manual.</p>}
+                    {data.reservaAutomatica.estado === "pausada" && <p className="mt-1 text-amber-700">Aumento automático pausado: ative a proteção da reserva abaixo.</p>}
                 {data.reservaAutomatica.estado === "sem_saldo" && <p className="mt-1 text-amber-700">Sem sessão da gaveta, não é seguro aumentar a reserva.</p>}
                 {data.reservaAutomatica.estado === "iniciando" && <p className="mt-1 text-slate-600">Acompanhamento iniciado. A reserva da semana será definida somente após o fechamento do período.</p>}
                 {data.reservaAutomatica.estado === "sem_entradas" && <p className="mt-1 text-slate-600">Nenhuma entrada nova desde a última leitura; a projeção continua baseada no resultado elegível acumulado da semana.</p>}
