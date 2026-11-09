@@ -33,8 +33,10 @@ interface EncryptedDraft {
 }
 
 function draftEncryptionKey(): Buffer {
-  const sessionSecret = process.env.SESSION_SECRET;
-  if (!sessionSecret) throw new Error("SESSION_SECRET is required to protect shortcut drafts");
+  const sessionSecret = process.env.SESSION_SECRET || process.env.ADMIN_PASSWORD;
+  if (!sessionSecret) {
+    throw new Error("SESSION_SECRET or ADMIN_PASSWORD is required to protect shortcut drafts");
+  }
   return createHash("sha256").update("ios-shortcut-draft-v1:").update(sessionSecret).digest();
 }
 
