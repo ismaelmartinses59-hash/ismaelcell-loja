@@ -161,10 +161,17 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
     return;
   }
 
+  const leituraStartedAt = Date.now();
   try {
     const itens = await interpretarNota(fileBase64, mimeType, (raw) => {
       req.log.error({ raw }, "Atalho do iPhone: JSON inválido da IA");
     });
+    req.log.info({
+      durationMs: Date.now() - leituraStartedAt,
+      mimeType,
+      fileBytes: fileBytes.length,
+      itemCount: itens.length,
+    }, "Leitura da nota compartilhada concluída");
     if (itens.length === 0) {
       res.status(502).json({ error: "Não encontrei peças no PDF compartilhado." });
       return;
@@ -188,12 +195,17 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
       expiresInMinutes: DRAFT_TTL_MS / 60_000,
     }));
   } catch (error) {
+    const leituraMeta = {
+      durationMs: Date.now() - leituraStartedAt,
+      mimeType,
+      fileBytes: fileBytes.length,
+    };
     if (error instanceof NotaReaderError) {
-      if (error.statusCode === 503) req.log.error({ err: error }, "Leitura de PDF pelo Atalho indisponível");
+      req.log.warn({ ...leituraMeta, err: error }, "Falha na leitura da nota compartilhada");
       res.status(error.statusCode).json({ error: error.message });
       return;
     }
-    req.log.error({ err: error }, "Falha ao preparar rascunho do Atalho");
+    req.log.error({ ...leituraMeta, err: error }, "Falha ao preparar rascunho do Atalho");
     res.status(503).json({ error: "Não consegui preparar o rascunho. Tente novamente." });
   }
 });

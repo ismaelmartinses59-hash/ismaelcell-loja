@@ -33,6 +33,7 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
   const revokeToken = useRevokeIosShortcutToken();
   const [token, setToken] = useState<string | null>(null);
   const endpoint = `${window.location.origin}${BASE}/api/share-shortcut/ios/import`;
+  const openImportUrl = `${window.location.origin}${BASE}/ordens?abrirEstoque=1`;
 
   useEffect(() => {
     if (!open) setToken(null);
@@ -87,7 +88,7 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
             Atalho para o Compartilhar do iPhone
           </DialogTitle>
           <DialogDescription>
-            O Atalho lê o PDF e abre esta nota para revisão. O estoque só muda depois que você confirmar no Ismael Cell.
+            O app abre primeiro e mostra a espera enquanto o Atalho envia a nota. Depois, você revisa as peças; o estoque só muda após sua confirmação.
           </DialogDescription>
         </DialogHeader>
 
@@ -133,7 +134,10 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
                 <strong className="text-foreground">Mostrar na Folha de Compartilhamento</strong>. Aceite PDFs e imagens.
               </li>
               <li>
-                Adicione a ação <strong className="text-foreground">Codificar em Base64</strong> para a Entrada do Atalho.
+                Primeiro adicione a ação <strong className="text-foreground">Abrir URLs</strong> com o endereço de importação abaixo. Ela precisa vir antes do envio.
+              </li>
+              <li>
+                Depois, adicione <strong className="text-foreground">Codificar em Base64</strong> para a Entrada do Atalho.
               </li>
               <li>
                 Adicione <strong className="text-foreground">Obter Conteúdo do URL</strong>: método POST e corpo JSON com{" "}
@@ -142,9 +146,19 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
                 <code>Bearer [seu código]</code>.
               </li>
               <li>
-                Da resposta, obtenha o valor <code>openUrl</code> e passe-o à ação <strong className="text-foreground">Abrir URLs</strong>.
+                Da resposta, obtenha o valor <code>openUrl</code> e use outra ação <strong className="text-foreground">Abrir URLs</strong> para mostrar as peças lidas.
               </li>
             </ol>
+          </div>
+
+          <div className="space-y-2">
+            <p className="font-medium">Endereço para abrir o app primeiro</p>
+            <div className="flex gap-2">
+              <Input aria-label="Endereço para abrir a importação" readOnly value={openImportUrl} className="min-w-0 text-xs" />
+              <Button type="button" variant="outline" size="icon" aria-label="Copiar endereço de importação" onClick={() => void copy(openImportUrl, "Endereço de importação")}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
 
           <div className="space-y-2">

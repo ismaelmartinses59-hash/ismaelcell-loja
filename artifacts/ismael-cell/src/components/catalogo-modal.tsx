@@ -1839,6 +1839,19 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   const [shortcutSetupOpen, setShortcutSetupOpen] = useState(false);
   const sharedImportRequestRef = useRef<string | null>(null);
   const consumeShortcutDraft = useConsumeIosShortcutDraft();
+  const [sharedImportElapsedSeconds, setSharedImportElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!open || !sharedImportPending) {
+      setSharedImportElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const interval = window.setInterval(() => {
+      setSharedImportElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [open, sharedImportPending]);
 
   useEffect(() => {
     try {
@@ -2509,6 +2522,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   }, [sharePreview]);
 
   const lowStock = pecas.filter((p) => p.quantidade <= 1);
+  const sharedImportElapsedLabel = `${Math.floor(sharedImportElapsedSeconds / 60)}:${String(sharedImportElapsedSeconds % 60).padStart(2, "0")}`;
   // Joga as peças ZERADAS (0 em estoque) para o final da lista, sem perder a
   // ordem original entre as demais — assim as que ainda têm estoque ficam no topo.
   const ordenarPorEstoque = (lista: Peca[]) =>
@@ -4788,7 +4802,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
             Adicionar nota ao estoque
           </DialogTitle>
           <DialogDescription>
-            O Ismael Cell abriu. Aguarde o Atalho enviar a nota para leitura.
+            O app abriu antes da leitura. Aguarde enquanto o Atalho envia a nota e o servidor identifica as peças.
           </DialogDescription>
         </DialogHeader>
         <div role="status" aria-live="polite" className="flex flex-col items-center gap-3 py-5 text-center">
@@ -4796,6 +4810,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
           <p className="font-medium">Preparando sua importação</p>
           <p className="text-sm text-muted-foreground">
             Depois da leitura, você confere as peças antes de adicioná-las. O estoque não muda sem sua confirmação.
+          </p>
+          <p className="font-mono text-xs text-muted-foreground">
+            Tempo decorrido: {sharedImportElapsedLabel}
           </p>
         </div>
         <div className="flex justify-end">
