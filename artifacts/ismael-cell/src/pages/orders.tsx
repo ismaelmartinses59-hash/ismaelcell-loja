@@ -46,10 +46,12 @@ export default function Orders() {
   const [catalogoTab, setCatalogoTab] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos">("pecas");
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   const [sharedImportId, setSharedImportId] = useState<string | null>(null);
+  const [sharedImportPending, setSharedImportPending] = useState(false);
 
   const clearSharedImport = useCallback(() => {
     sessionStorage.removeItem("pending-share-import");
     setSharedImportId(null);
+    setSharedImportPending(false);
   }, []);
 
   useEffect(() => {
@@ -66,6 +68,7 @@ export default function Orders() {
     if (params.get("abrirEstoque") === "1") {
       setCatalogoTab("pecas");
       setShowCatalogo(true);
+      setSharedImportPending(true);
       window.history.replaceState(null, "", `${BASE_URL}/ordens`);
     }
   }, [BASE_URL]);
@@ -184,6 +187,8 @@ export default function Orders() {
         initialTab={catalogoTab}
         soloTab={catalogoTab === "receber" || catalogoTab === "espera" || catalogoTab === "garantias" || catalogoTab === "devolucoes"}
         sharedImportId={sharedImportId}
+        sharedImportPending={sharedImportPending}
+        onSharedImportPendingCancel={() => setSharedImportPending(false)}
         onSharedImportConsumed={clearSharedImport}
       />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />

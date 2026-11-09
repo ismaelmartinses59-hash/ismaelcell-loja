@@ -1580,10 +1580,12 @@ interface CatalogoModalProps {
   initialTab?: "pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos";
   soloTab?: boolean;
   sharedImportId?: string | null;
+  sharedImportPending?: boolean;
+  onSharedImportPendingCancel?: () => void;
   onSharedImportConsumed?: () => void;
 }
 
-export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, sharedImportId, onSharedImportConsumed }: CatalogoModalProps) {
+export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, sharedImportId, sharedImportPending, onSharedImportPendingCancel, onSharedImportConsumed }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos">(initialTab ?? "pecas");
@@ -2514,7 +2516,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   const pendentes = garantias.filter((g) => g.status === "pendente");
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <>
+    <Dialog open={open && !sharedImportPending} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-lg w-full max-h-[90vh] flex flex-col min-h-0 overflow-hidden p-0 gap-0">
 
         {/* Header */}
@@ -4772,5 +4775,36 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
 
       </DialogContent>
     </Dialog>
+    <Dialog
+      open={open && Boolean(sharedImportPending)}
+      onOpenChange={(next) => {
+        if (!next) onSharedImportPendingCancel?.();
+      }}
+    >
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-emerald-600" />
+            Adicionar nota ao estoque
+          </DialogTitle>
+          <DialogDescription>
+            O Ismael Cell abriu. Aguarde o Atalho enviar a nota para leitura.
+          </DialogDescription>
+        </DialogHeader>
+        <div role="status" aria-live="polite" className="flex flex-col items-center gap-3 py-5 text-center">
+          <RefreshCw className="h-9 w-9 animate-spin text-emerald-600" />
+          <p className="font-medium">Preparando sua importação</p>
+          <p className="text-sm text-muted-foreground">
+            Depois da leitura, você confere as peças antes de adicioná-las. O estoque não muda sem sua confirmação.
+          </p>
+        </div>
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={() => onSharedImportPendingCancel?.()}>
+            Voltar ao catálogo
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
