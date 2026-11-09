@@ -1838,11 +1838,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   const [qualidadesPersonalizadas, setQualidadesPersonalizadas] = useState<QualidadesPersonalizadas>(lerQualidadesPersonalizadas);
   const [shortcutSetupOpen, setShortcutSetupOpen] = useState(false);
   const sharedImportRequestRef = useRef<string | null>(null);
+  const sharedImportCompletionTimerRef = useRef<number | null>(null);
   const consumeShortcutDraft = useConsumeIosShortcutDraft();
   const [sharedImportElapsedSeconds, setSharedImportElapsedSeconds] = useState(0);
+  const [sharedImportComplete, setSharedImportComplete] = useState(false);
 
   useEffect(() => {
-    if (!open || !sharedImportPending) {
+    if (!open || (!sharedImportPending && !sharedImportComplete)) {
       setSharedImportElapsedSeconds(0);
       return;
     }
@@ -1851,7 +1853,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
       setSharedImportElapsedSeconds(Math.floor((Date.now() - startedAt) / 1000));
     }, 1000);
     return () => window.clearInterval(interval);
-  }, [open, sharedImportPending]);
+  }, [open, sharedImportPending, sharedImportComplete]);
+
+  useEffect(() => () => {
+    if (sharedImportCompletionTimerRef.current !== null) {
+      window.clearTimeout(sharedImportCompletionTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     try {
@@ -1932,8 +1940,13 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
     void consumeShortcutDraft.mutateAsync({ data: { draftId: sharedImportId } })
       .then((result) => {
         if (!result.itens.length) throw new Error("Não encontrei peças neste PDF.");
-        prepararLinhasImportadas(result.itens);
-        onSharedImportConsumed?.();
+        setSharedImportComplete(true);
+        sharedImportCompletionTimerRef.current = window.setTimeout(() => {
+          sharedImportCompletionTimerRef.current = null;
+          prepararLinhasImportadas(result.itens);
+          onSharedImportConsumed?.();
+          setSharedImportComplete(false);
+        }, 700);
       })
       .catch((error: unknown) => {
         const status = error && typeof error === "object" && "status" in error
@@ -2523,6 +2536,10 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
 
   const lowStock = pecas.filter((p) => p.quantidade <= 1);
   const sharedImportElapsedLabel = `${Math.floor(sharedImportElapsedSeconds / 60)}:${String(sharedImportElapsedSeconds % 60).padStart(2, "0")}`;
+  const sharedImportProgress = sharedImportComplete
+    ? 100
+    : Math.min(90, Math.round(90 * (1 - Math.exp(-sharedImportElapsedSeconds / 40))));
+  const sharedImportRingCircumference = 2 * Math.PI * 48;
   // Joga as peças ZERADAS (0 em estoque) para o final da lista, sem perder a
   // ordem original entre as demais — assim as que ainda têm estoque ficam no topo.
   const ordenarPorEstoque = (lista: Peca[]) =>
@@ -2531,7 +2548,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
 
   return (
     <>
-    <Dialog open={open && !sharedImportPending} onOpenChange={(v) => { if (!v) onClose(); }}>
+    <Dialog open={open && !sharedImportPending && !sharedImportComplete} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-lg w-full max-h-[90vh] flex flex-col min-h-0 overflow-hidden p-0 gap-0">
 
         {/* Header */}
@@ -4790,7 +4807,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
       </DialogContent>
     </Dialog>
     <Dialog
-      open={open && Boolean(sharedImportPending)}
+      open={open && (Boolean(sharedImportPending) || sharedImportComplete)}
       onOpenChange={(next) => {
         if (!next) onSharedImportPendingCancel?.();
       }}
@@ -4802,24 +4819,69 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
             Adicionar nota ao estoque
           </DialogTitle>
           <DialogDescription>
-            O app abriu antes da leitura. Aguarde enquanto o Atalho envia a nota e o servidor identifica as peças.
+            {sharedImportComplete
+              ? "A nota foi lida. Abrindo a conferência das peças."
+              : "O app abriu antes da leitura. Aguarde enquanto o Atalho envia a nota e o servidor identifica as peças."}
           </DialogDescription>
         </DialogHeader>
-        <div role="status" aria-live="polite" className="flex flex-col items-center gap-3 py-5 text-center">
-          <RefreshCw className="h-9 w-9 animate-spin text-emerald-600" />
-          <p className="font-medium">Preparando sua importação</p>
+        <div role="status" aria-live="polite" className="flex flex-col items-center gap-4 py-5 text-center">
+          <div
+            className="relative h-28 w-28"
+            role="progressbar"
+            aria-label="Progresso visual aproximado da leitura"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={sharedImportProgress}
+          >
+            <svg viewBox="0 0 120 120" className="-rotate-90 h-full w-full" aria-hidden="true">
+              <defs>
+                <linearGradient id="shared-import-progress-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#38bdf8" />
+                  <stop offset="100%" stopColor="#2563eb" />
+                </linearGradient>
+              </defs>
+              <circle cx="60" cy="60" r="48" fill="none" stroke="#dbeafe" strokeWidth="9" />
+              <circle
+                cx="60"
+                cy="60"
+                r="48"
+                fill="none"
+                stroke="url(#shared-import-progress-gradient)"
+                strokeWidth="9"
+                strokeLinecap="round"
+                strokeDasharray={sharedImportRingCircumference}
+                strokeDashoffset={sharedImportRingCircumference * (1 - sharedImportProgress / 100)}
+                style={{ transition: "stroke-dashoffset 900ms cubic-bezier(0.22, 1, 0.36, 1)" }}
+              />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Package className={`h-8 w-8 ${sharedImportComplete ? "text-blue-700" : "text-sky-600"}`} aria-hidden="true" />
+            </div>
+          </div>
+          <p className="font-semibold tracking-tight">
+            {sharedImportComplete ? "Leitura concluída" : "Lendo sua nota"}
+          </p>
           <p className="text-sm text-muted-foreground">
-            Depois da leitura, você confere as peças antes de adicioná-las. O estoque não muda sem sua confirmação.
+            {sharedImportComplete
+              ? "Sua conferência vai abrir em instantes."
+              : "Depois da leitura, você confere as peças antes de adicioná-las. O estoque não muda sem sua confirmação."}
           </p>
           <p className="font-mono text-xs text-muted-foreground">
             Tempo decorrido: {sharedImportElapsedLabel}
           </p>
+          {!sharedImportComplete && (
+            <p className="text-[11px] text-muted-foreground/80">
+              Indicador visual aproximado; a conferência abre quando a leitura terminar.
+            </p>
+          )}
         </div>
-        <div className="flex justify-end">
-          <Button type="button" variant="outline" onClick={() => onSharedImportPendingCancel?.()}>
-            Voltar ao catálogo
-          </Button>
-        </div>
+        {!sharedImportComplete && (
+          <div className="flex justify-end">
+            <Button type="button" variant="outline" onClick={() => onSharedImportPendingCancel?.()}>
+              Voltar ao catálogo
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
     </>
