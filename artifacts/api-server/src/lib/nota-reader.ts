@@ -54,7 +54,7 @@ export async function interpretarNota(
         maxOutputTokens: 8192,
         httpOptions: {
           timeout: TEMPO_MAXIMO_LEITURA_MS,
-          retryOptions: { attempts: 1 },
+          retryOptions: { attempts: 3 },
         },
       },
     });
