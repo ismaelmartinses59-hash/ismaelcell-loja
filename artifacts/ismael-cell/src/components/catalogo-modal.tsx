@@ -1581,11 +1581,12 @@ interface CatalogoModalProps {
   soloTab?: boolean;
   sharedImportId?: string | null;
   sharedImportPending?: boolean;
+  sharedImportError?: string | null;
   onSharedImportPendingCancel?: () => void;
   onSharedImportConsumed?: () => void;
 }
 
-export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, sharedImportId, sharedImportPending, onSharedImportPendingCancel, onSharedImportConsumed }: CatalogoModalProps) {
+export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, sharedImportId, sharedImportPending, sharedImportError, onSharedImportPendingCancel, onSharedImportConsumed }: CatalogoModalProps) {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [aba, setAba] = useState<"pecas" | "garantias" | "historico" | "receber" | "encomendas" | "espera" | "devolucoes" | "pedidos">(initialTab ?? "pecas");
@@ -4808,7 +4809,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
       </DialogContent>
     </Dialog>
     <Dialog
-      open={open && (Boolean(sharedImportPending) || sharedImportComplete)}
+      open={open && (Boolean(sharedImportPending) || sharedImportComplete || Boolean(sharedImportError))}
       onOpenChange={(next) => {
         if (!next) onSharedImportPendingCancel?.();
       }}
@@ -4816,15 +4817,33 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5 text-emerald-600" />
-            Adicionar nota ao estoque
+            {sharedImportError
+              ? <AlertTriangle className="h-5 w-5 text-amber-600" />
+              : <Package className="h-5 w-5 text-emerald-600" />}
+            {sharedImportError ? "Não foi possível ler a nota" : "Adicionar nota ao estoque"}
           </DialogTitle>
           <DialogDescription>
-            {sharedImportComplete
+            {sharedImportError === "reader-unavailable"
+              ? "O leitor está temporariamente indisponível. Nenhuma peça foi adicionada ao estoque."
+              : sharedImportError === "note-unreadable"
+                ? "Não consegui identificar as peças desta nota. Nenhuma peça foi adicionada ao estoque."
+                : sharedImportComplete
               ? "A nota foi lida. Abrindo a conferência das peças."
               : "O app abriu antes da leitura. Aguarde enquanto o Atalho envia a nota e o servidor identifica as peças."}
           </DialogDescription>
         </DialogHeader>
+        {sharedImportError ? (
+          <div role="alert" className="flex flex-col items-center gap-4 py-5 text-center">
+            <AlertTriangle className="h-12 w-12 text-amber-500" aria-hidden="true" />
+            <p className="text-sm text-muted-foreground">
+              Compartilhe a foto ou o PDF novamente para tentar a leitura.
+            </p>
+            <Button type="button" variant="outline" onClick={() => onSharedImportPendingCancel?.()}>
+              Fechar
+            </Button>
+          </div>
+        ) : (
+        <>
         <div role="status" aria-live="polite" className="flex flex-col items-center gap-4 py-5 text-center">
           <div
             className="relative h-28 w-28"
@@ -4888,6 +4907,8 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
               Voltar ao catálogo
             </Button>
           </div>
+        )}
+        </>
         )}
       </DialogContent>
     </Dialog>

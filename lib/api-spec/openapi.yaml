@@ -87,7 +87,7 @@ paths:
               $ref: "#/components/schemas/IosShortcutImportInput"
       responses:
         "200":
-          description: Temporary app link for reviewing extracted items
+          description: App handoff link for reviewing extracted items or showing a reader error
           content:
             application/json:
               schema:
@@ -100,10 +100,6 @@ paths:
           description: File too large
         "415":
           description: Unsupported file format
-        "502":
-          description: The invoice could not be interpreted
-        "503":
-          description: Invoice reader unavailable
 
   /share-shortcut/ios/draft:
     post:

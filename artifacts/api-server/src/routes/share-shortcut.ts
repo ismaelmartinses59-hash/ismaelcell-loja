@@ -162,6 +162,15 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
   }
 
   const leituraStartedAt = Date.now();
+  const sendErrorHandoff = (errorCode: "reader-unavailable" | "note-unreadable") => {
+    const errorUrl = new URL("/ordens", origin);
+    errorUrl.searchParams.set("shareImportError", errorCode);
+    res.json(ImportIosShortcutNoteResponse.parse({
+      openUrl: errorUrl.toString(),
+      itemCount: 0,
+      expiresInMinutes: 0,
+    }));
+  };
   req.log.info({
     mimeType,
     fileBytes: fileBytes.length,
@@ -177,7 +186,7 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
       itemCount: itens.length,
     }, "Leitura da nota compartilhada concluída");
     if (itens.length === 0) {
-      res.status(502).json({ error: "Não encontrei peças no PDF compartilhado." });
+      sendErrorHandoff("note-unreadable");
       return;
     }
 
@@ -206,11 +215,11 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
     };
     if (error instanceof NotaReaderError) {
       req.log.warn({ ...leituraMeta, err: error }, "Falha na leitura da nota compartilhada");
-      res.status(error.statusCode).json({ error: error.message });
+      sendErrorHandoff(error.statusCode === 503 ? "reader-unavailable" : "note-unreadable");
       return;
     }
     req.log.error({ ...leituraMeta, err: error }, "Falha ao preparar rascunho do Atalho");
-    res.status(503).json({ error: "Não consegui preparar o rascunho. Tente novamente." });
+    sendErrorHandoff("reader-unavailable");
   }
 });
 

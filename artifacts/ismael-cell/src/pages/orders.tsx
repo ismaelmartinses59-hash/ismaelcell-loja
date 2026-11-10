@@ -47,6 +47,7 @@ export default function Orders() {
   const BASE_URL = import.meta.env.BASE_URL.replace(/\/$/, "");
   const [sharedImportId, setSharedImportId] = useState<string | null>(null);
   const [sharedImportPending, setSharedImportPending] = useState(false);
+  const [sharedImportError, setSharedImportError] = useState<string | null>(null);
 
   const clearSharedImport = useCallback(() => {
     sessionStorage.removeItem("pending-share-import");
@@ -62,6 +63,15 @@ export default function Orders() {
       setSharedImportId(draftId);
       setCatalogoTab("pecas");
       setShowCatalogo(true);
+      window.history.replaceState(null, "", `${BASE_URL}/ordens`);
+      return;
+    }
+    const importError = params.get("shareImportError");
+    if (importError === "reader-unavailable" || importError === "note-unreadable") {
+      setCatalogoTab("pecas");
+      setShowCatalogo(true);
+      setSharedImportPending(false);
+      setSharedImportError(importError);
       window.history.replaceState(null, "", `${BASE_URL}/ordens`);
       return;
     }
@@ -188,7 +198,11 @@ export default function Orders() {
         soloTab={catalogoTab === "receber" || catalogoTab === "espera" || catalogoTab === "garantias" || catalogoTab === "devolucoes"}
         sharedImportId={sharedImportId}
         sharedImportPending={sharedImportPending}
-        onSharedImportPendingCancel={() => setSharedImportPending(false)}
+        sharedImportError={sharedImportError}
+        onSharedImportPendingCancel={() => {
+          setSharedImportPending(false);
+          setSharedImportError(null);
+        }}
         onSharedImportConsumed={clearSharedImport}
       />
       <CaixaModal open={showCaixa} onClose={() => setShowCaixa(false)} />

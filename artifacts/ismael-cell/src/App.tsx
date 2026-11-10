@@ -67,9 +67,15 @@ function AuthenticatedOrders() {
 
   useEffect(() => {
     if (session.data?.authenticated === false) {
-      const draftId = new URLSearchParams(window.location.search).get("shareImport");
+      const params = new URLSearchParams(window.location.search);
+      const draftId = params.get("shareImport");
+      const importError = params.get("shareImportError");
       if (draftId && /^[A-Za-z0-9_-]{32,80}$/.test(draftId)) {
         sessionStorage.setItem("pending-share-import", draftId);
+      }
+      if (importError === "reader-unavailable" || importError === "note-unreadable") {
+        sessionStorage.removeItem("pending-share-import");
+        sessionStorage.setItem("pending-share-import-error", importError);
       }
       client.clear();
       localStorage.removeItem("isLoggedIn");

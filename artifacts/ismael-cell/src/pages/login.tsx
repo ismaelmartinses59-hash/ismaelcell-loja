@@ -67,10 +67,18 @@ export default function Login() {
       localStorage.removeItem("userEmail");
       const pendingDraft = sessionStorage.getItem("pending-share-import");
       if (pendingDraft && /^[A-Za-z0-9_-]{32,80}$/.test(pendingDraft)) {
+        sessionStorage.removeItem("pending-share-import-error");
         setLocation(`/ordens?shareImport=${encodeURIComponent(pendingDraft)}`);
       } else {
         sessionStorage.removeItem("pending-share-import");
-        setLocation("/ordens");
+        const pendingImportError = sessionStorage.getItem("pending-share-import-error");
+        if (pendingImportError === "reader-unavailable" || pendingImportError === "note-unreadable") {
+          sessionStorage.removeItem("pending-share-import-error");
+          setLocation(`/ordens?shareImportError=${encodeURIComponent(pendingImportError)}`);
+        } else {
+          sessionStorage.removeItem("pending-share-import-error");
+          setLocation("/ordens");
+        }
       }
     } catch {
       toast({
