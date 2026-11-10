@@ -1,4 +1,4 @@
-import { ai } from "@workspace/integrations-gemini-ai";
+import { getAiWithRetries } from "@workspace/integrations-gemini-ai";
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
 const TEMPO_MAXIMO_LEITURA_MS = 25_000;
@@ -38,9 +38,9 @@ export async function interpretarNota(
     "Não invente itens que não estão na nota. Não adicione comentários.",
   ].join("\n");
 
-  let response: Awaited<ReturnType<typeof ai.models.generateContent>>;
+  let raw = "";
   try {
-    response = await ai.models.generateContent({
+    const response = await getAiWithRetries().models.generateContent({
       model: "gemini-2.5-flash",
       contents: [{
         role: "user",
@@ -54,10 +54,10 @@ export async function interpretarNota(
         maxOutputTokens: 8192,
         httpOptions: {
           timeout: TEMPO_MAXIMO_LEITURA_MS,
-          retryOptions: { attempts: 3 },
         },
       },
     });
+    raw = response.text ?? "";
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
     const providerStatus =
@@ -96,7 +96,6 @@ export async function interpretarNota(
     );
   }
 
-  const raw = response.text ?? "";
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);

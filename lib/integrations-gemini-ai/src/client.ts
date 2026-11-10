@@ -1,6 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 
 let _ai: GoogleGenAI | null = null;
+let _aiWithRetries: GoogleGenAI | null = null;
 
 /**
  * Lazily builds (and caches) the Gemini client. Validation of the integration
@@ -9,9 +10,7 @@ let _ai: GoogleGenAI | null = null;
  * integration isn't provisioned (e.g. external hosts like Railway). The AI
  * feature only fails if it is actually invoked without the integration.
  */
-export function getAi(): GoogleGenAI {
-  if (_ai) return _ai;
-
+function createAi(retryAttempts?: number): GoogleGenAI {
   const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   if (!apiKey) {
     throw new Error(
@@ -26,14 +25,27 @@ export function getAi(): GoogleGenAI {
   //   API key is set → let the SDK use its default Google endpoint.
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
 
-  _ai = new GoogleGenAI({
-    apiKey,
-    ...(baseUrl
-      ? { httpOptions: { apiVersion: "", baseUrl } }
-      : {}),
-  });
+  const httpOptions = {
+    ...(baseUrl ? { apiVersion: "", baseUrl } : {}),
+    ...(retryAttempts ? { retryOptions: { attempts: retryAttempts } } : {}),
+  };
 
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions,
+  });
+}
+
+export function getAi(): GoogleGenAI {
+  if (_ai) return _ai;
+  _ai = createAi();
   return _ai;
+}
+
+export function getAiWithRetries(): GoogleGenAI {
+  if (_aiWithRetries) return _aiWithRetries;
+  _aiWithRetries = createAi(3);
+  return _aiWithRetries;
 }
 
 /**
