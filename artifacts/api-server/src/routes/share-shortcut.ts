@@ -214,7 +214,12 @@ router.post("/share-shortcut/ios/import", async (req, res): Promise<void> => {
       fileBytes: fileBytes.length,
     };
     if (error instanceof NotaReaderError) {
-      req.log.warn({ ...leituraMeta, err: error }, "Falha na leitura da nota compartilhada");
+      req.log.warn({
+        ...leituraMeta,
+        err: error,
+        readerDiagnostic: error.diagnosticCode,
+        providerStatus: error.providerStatus,
+      }, "Falha na leitura da nota compartilhada");
       sendErrorHandoff(error.statusCode === 503 ? "reader-unavailable" : "note-unreadable");
       return;
     }

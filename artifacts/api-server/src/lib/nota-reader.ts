@@ -14,6 +14,8 @@ export class NotaReaderError extends Error {
   constructor(
     message: string,
     readonly statusCode: 502 | 503,
+    readonly diagnosticCode?: string,
+    readonly providerStatus?: number,
   ) {
     super(message);
     this.name = "NotaReaderError";
@@ -58,16 +60,40 @@ export async function interpretarNota(
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "";
+    const providerStatus =
+      err && typeof err === "object" && "status" in err &&
+      typeof err.status === "number" && Number.isInteger(err.status) &&
+      err.status >= 100 && err.status <= 599
+        ? err.status
+        : undefined;
     if (/timeout|timed out|deadline|abort/i.test(message)) {
       throw new NotaReaderError(
         "A leitura passou de 25 segundos. Tente uma foto menor ou mais próxima da nota.",
         503,
+        "timeout",
+        providerStatus,
       );
     }
     if (message.includes("AI_INTEGRATIONS_GEMINI_API_KEY")) {
-      throw new NotaReaderError("A leitura automática de notas não está configurada neste servidor.", 503);
+      throw new NotaReaderError(
+        "A leitura automática de notas não está configurada neste servidor.",
+        503,
+        "missing-api-key",
+        providerStatus,
+      );
     }
-    throw new NotaReaderError("O leitor de notas ficou indisponível por alguns instantes. Tente novamente.", 503);
+    const diagnosticCode =
+      providerStatus === 429 ? "rate-limited" :
+      providerStatus === 401 || providerStatus === 403 ? "auth-or-permission" :
+      providerStatus !== undefined && providerStatus >= 500 ? "provider-unavailable" :
+      providerStatus !== undefined ? "provider-request-failed" :
+      "network-or-client-error";
+    throw new NotaReaderError(
+      "O leitor de notas ficou indisponível por alguns instantes. Tente novamente.",
+      503,
+      diagnosticCode,
+      providerStatus,
+    );
   }
 
   const raw = response.text ?? "";
