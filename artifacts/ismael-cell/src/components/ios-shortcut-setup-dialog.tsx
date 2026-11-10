@@ -33,7 +33,6 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
   const revokeToken = useRevokeIosShortcutToken();
   const [token, setToken] = useState<string | null>(null);
   const endpoint = `${window.location.origin}${BASE}/api/share-shortcut/ios/import`;
-  const openImportUrl = `${window.location.origin}${BASE}/ordens?abrirEstoque=1`;
 
   useEffect(() => {
     if (!open) setToken(null);
@@ -88,7 +87,7 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
             Atalho para o Compartilhar do iPhone
           </DialogTitle>
           <DialogDescription>
-            O app abre primeiro e mostra a espera enquanto o Atalho envia a nota. Depois, você revisa as peças; o estoque só muda após sua confirmação.
+            O Atalho envia a nota primeiro e abre a conferência quando a leitura termina. O estoque só muda após sua confirmação.
           </DialogDescription>
         </DialogHeader>
 
@@ -98,7 +97,7 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
             <p className="mt-1 text-muted-foreground">
               {statusQuery.data?.configured
                 ? "Já existe um código ativo. Gerar outro substitui o anterior e desconecta o Atalho antigo."
-                : "O código é mostrado uma única vez e só permite enviar PDFs para leitura."}
+                : "O código é mostrado uma única vez e permite enviar PDFs e imagens para leitura."}
             </p>
             <Button className="mt-3" size="sm" onClick={() => void handleCreate()} disabled={createToken.isPending}>
               <KeyRound className="mr-2 h-4 w-4" />
@@ -134,9 +133,6 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
                 <strong className="text-foreground">Mostrar na Folha de Compartilhamento</strong>. Aceite PDFs e imagens.
               </li>
               <li>
-                Primeiro adicione a ação <strong className="text-foreground">Abrir URLs</strong> com o endereço de importação abaixo. Ela precisa vir antes do envio.
-              </li>
-              <li>
                 Para fotos, redimensione a imagem para cerca de 2000 px antes de converter. Para PDFs, pule esta etapa. Depois, adicione{" "}
                 <strong className="text-foreground">Codificar em Base64</strong> para a entrada do Atalho.
               </li>
@@ -144,22 +140,12 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
                 Adicione <strong className="text-foreground">Obter Conteúdo do URL</strong>: método POST e corpo JSON com{" "}
                 <code>fileBase64</code> igual ao resultado Base64. O servidor identifica se é PDF ou imagem; se já existir um campo{" "}
                 <code>mimeType</code>, ele pode permanecer. No cabeçalho <code>Authorization</code>, use{" "}
-                <code>Bearer [seu código]</code>.
+                <code>Bearer [seu código]</code>. Envie como <code>application/json</code>.
               </li>
               <li>
-                Da resposta, obtenha o valor <code>openUrl</code> e use outra ação <strong className="text-foreground">Abrir URLs</strong> para mostrar as peças lidas.
+                Da resposta, obtenha o valor <code>openUrl</code> e use <strong className="text-foreground">Abrir URLs</strong> como última ação para mostrar as peças lidas. Não abra o app antes do envio.
               </li>
             </ol>
-          </div>
-
-          <div className="space-y-2">
-            <p className="font-medium">Endereço para abrir o app primeiro</p>
-            <div className="flex gap-2">
-              <Input aria-label="Endereço para abrir a importação" readOnly value={openImportUrl} className="min-w-0 text-xs" />
-              <Button type="button" variant="outline" size="icon" aria-label="Copiar endereço de importação" onClick={() => void copy(openImportUrl, "Endereço de importação")}>
-                <Copy className="h-4 w-4" />
-              </Button>
-            </div>
           </div>
 
           <div className="space-y-2">
@@ -173,7 +159,7 @@ export function IosShortcutSetupDialog({ open, onOpenChange }: IosShortcutSetupD
           </div>
 
           <div className="rounded-lg bg-amber-50 p-3 text-xs text-amber-900">
-            O código permite enviar PDFs para leitura automática. Não o compartilhe. Revogue-o aqui se não quiser mais usar o Atalho.
+            O código permite enviar PDFs e imagens para leitura automática. Não o compartilhe. Revogue-o aqui se não quiser mais usar o Atalho.
           </div>
 
           {statusQuery.data?.configured && (
