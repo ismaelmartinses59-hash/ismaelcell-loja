@@ -152,6 +152,17 @@ test("a semana atual compensa o déficit de R$ 1.355,80 antes de ratear", () => 
   assert.equal(resultado.percentualProtecao, 0);
   assert.equal(resultado.saldoOperacionalFinalCentavos, -31_080);
 });
+test("entradas reduzem o déficit atual e cada nova entrada atualiza o saldo", () => {
+  const saldoComEntradasAtuais = calcularAlocacaoComSaldoAnterior(
+    -318_090, 247_000, 0, true,
+  );
+  assert.equal(saldoComEntradasAtuais.saldoOperacionalFinalCentavos, -71_090);
+
+  const saldoAposNovaEntrada = calcularAlocacaoComSaldoAnterior(
+    -318_090, 257_000, 0, true,
+  );
+  assert.equal(saldoAposNovaEntrada.saldoOperacionalFinalCentavos, -61_090);
+});
 test("saldo auditado prevalece sobre a base positiva separada para pedidos", () => {
   assert.equal(calcularDeficitOperacionalCarregado(84_585, 260_000, 395_580, -135_580), -135_580);
 });

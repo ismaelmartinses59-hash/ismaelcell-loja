@@ -112,7 +112,9 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
     queryKey: ["financeiro-ia"],
     enabled: open,
     staleTime: 0,
-    refetchInterval: open ? 15000 : false,
+    refetchInterval: open ? 3000 : false,
+    refetchOnWindowFocus: true,
+    refetchOnReconnect: true,
     queryFn: () => api("/financeiro-ia"),
   });
   const [question, setQuestion] = useState("");
