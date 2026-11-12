@@ -50,6 +50,7 @@ type FinanceSnapshot = {
     saidasOperacionais: number;
     saldoOperacionalDisponivel: number;
     resultadoOperacionalSemana: number;
+    marcoCorrecaoOperacional: boolean;
     aberturaRealNoPeriodo: boolean;
     consolidadoNaAbertura: { abertura: string; entradas: number; saidas: number; liquido: number; operacao: number; protecao: number } | null;
     necessidadeOperacional: number;
@@ -563,7 +564,7 @@ export function FinanceAiModal({ open, onClose }: { open: boolean; onClose: () =
                   <div className={`rounded-xl border p-3 ${liquidoRateadoSemana < 0 ? "border-rose-100 bg-rose-50" : "border-emerald-100 bg-emerald-50"}`}>
                     <p className={`flex items-center gap-1 text-xs ${liquidoRateadoSemana < 0 ? "text-rose-700" : "text-emerald-700"}`}><Wallet className="h-3.5 w-3.5" /> Saldo operacional após movimentos</p>
                     <p data-testid="text-saldo-operacional-semana" className={`mt-1 font-bold ${liquidoRateadoSemana < 0 ? "text-rose-900" : "text-emerald-900"}`}>{fmt(liquidoRateadoSemana)}</p>
-                    {!financialNotesHidden && <p className={`text-[11px] ${liquidoRateadoSemana < 0 ? "text-rose-700" : "text-emerald-700"}`}>{fmt(data.movimentoSemana.saldoCarryInSemana)} de saldo anterior + {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas.</p>}
+                    {!financialNotesHidden && <p className={`text-[11px] ${liquidoRateadoSemana < 0 ? "text-rose-700" : "text-emerald-700"}`}>{fmt(data.movimentoSemana.saldoCarryInSemana)} de saldo anterior + {fmt(entradasRateadasSemana)} em entradas − {fmt(saidasRateadasSemana)} em saídas.{data.movimentoSemana.marcoCorrecaoOperacional ? " Saídas anteriores ao marco já estão incorporadas no saldo inicial; novas saídas continuam sendo descontadas." : ""}</p>}
                   </div>
                   <div className="rounded-xl border border-emerald-100 bg-emerald-50 p-3">
                     <p className="flex items-center gap-1 text-xs text-emerald-700"><Wallet className="h-3.5 w-3.5" /> Operação rateada nesta semana · {percentualOperacaoExibido}%</p>

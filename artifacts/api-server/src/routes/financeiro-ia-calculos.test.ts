@@ -162,6 +162,11 @@ test("entradas reduzem o déficit atual e cada nova entrada atualiza o saldo", (
     -318_090, 257_000, 0, true,
   );
   assert.equal(saldoAposNovaEntrada.saldoOperacionalFinalCentavos, -61_090);
+
+  const saldoAposNovaSaida = calcularAlocacaoComSaldoAnterior(
+    -318_090, 257_000, 2_500, true,
+  );
+  assert.equal(saldoAposNovaSaida.saldoOperacionalFinalCentavos, -63_590);
 });
 test("saldo auditado prevalece sobre a base positiva separada para pedidos", () => {
   assert.equal(calcularDeficitOperacionalCarregado(84_585, 260_000, 395_580, -135_580), -135_580);

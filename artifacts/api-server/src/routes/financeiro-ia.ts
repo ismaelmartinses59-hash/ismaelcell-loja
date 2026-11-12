@@ -50,6 +50,7 @@ const keys = {
   operacaoModelo: "ia_fin_operacao_modelo",
   operacaoCorrecaoPedidoOutubro: "ia_fin_operacao_correcao_pedido_outubro_2026",
   operacaoCorrecaoPedidoOutubroDelta: "ia_fin_operacao_correcao_pedido_outubro_delta_centavos",
+  operacaoMarcoCorrecaoSemana: "ia_fin_operacao_marco_correcao_semana_",
   reservaCorrecaoSaldoOutubro: "ia_fin_reserva_correcao_saldo_outubro_2026",
 };
 const MODELO_ACUMULACAO_RESERVA = "alocacao-semanal-fechamento-v2";
@@ -141,6 +142,68 @@ function lerSaldoOperacionalAuditoria(value: string | undefined): number | null 
     throw new Error("Saldo operacional da auditoria anterior está inválido");
   }
   return saldoFinal as number;
+}
+
+type MarcoCorrecaoOperacional = {
+  semana: number;
+  saldoBaseCentavos: number;
+  entradasJaContadasCentavos: number;
+  ultimoLancamentoId: number;
+};
+
+function lerMarcoCorrecaoOperacional(value: string | undefined): MarcoCorrecaoOperacional | null {
+  if (value === undefined) return null;
+  try {
+    const marco = JSON.parse(value) as Partial<MarcoCorrecaoOperacional>;
+    if (
+      !Number.isSafeInteger(marco.semana) ||
+      !Number.isSafeInteger(marco.saldoBaseCentavos) ||
+      !Number.isSafeInteger(marco.entradasJaContadasCentavos) ||
+      !Number.isSafeInteger(marco.ultimoLancamentoId) ||
+      (marco.ultimoLancamentoId as number) < 0
+    ) throw new Error();
+    return marco as MarcoCorrecaoOperacional;
+  } catch {
+    throw new Error("Marco de correção operacional inválido");
+  }
+}
+
+async function garantirMarcoCorrecaoOperacional(
+  semana: number,
+  saldoAnteriorAtual: number,
+  entradasJaContadasCentavos: number,
+  movimentos: { dia: number; id: number }[],
+) {
+  const key = `${keys.operacaoMarcoCorrecaoSemana}${semana}`;
+  return db.transaction(async tx => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(65812004)`);
+    const rows = await tx.select().from(appConfigTable).where(eq(appConfigTable.key, key)).limit(1);
+    const salvo = lerMarcoCorrecaoOperacional(rows[0]?.value);
+    if (salvo) {
+      if (salvo.semana !== semana) throw new Error("Semana do marco operacional não corresponde");
+      return salvo;
+    }
+    const semanaDaCorrecao = Math.floor(Date.parse("2026-11-09T12:00:00.000Z") / 86400000);
+    if (
+      semana !== semanaDaCorrecao ||
+      saldoAnteriorAtual !== -182_114 ||
+      entradasJaContadasCentavos < 247_000
+    ) return null;
+
+    const marco: MarcoCorrecaoOperacional = {
+      semana,
+      saldoBaseCentavos: -318_090,
+      entradasJaContadasCentavos,
+      ultimoLancamentoId: movimentos
+        .filter(movimento => movimento.dia >= semana)
+        .reduce((maior, movimento) => Math.max(maior, movimento.id), 0),
+    };
+    await tx.insert(appConfigTable).values({ key, value: JSON.stringify(marco) })
+      .onConflictDoNothing({ target: appConfigTable.key });
+    const [persistido] = await tx.select().from(appConfigTable)
+      .where(eq(appConfigTable.key, key)).limit(1);
+    return lerMarcoCorrecaoOperacional(persistido?.value);
+  });
 }
 
 async function carregarSaldoOperacionalBase(
@@ -1143,7 +1206,7 @@ async function snapshot() {
     expensesTotal + compraOperacional,
     config.proteger,
   );
-  const fluxoReservaSemana = somarMovimentosElegiveisDoPeriodo(
+  let fluxoReservaSemana = somarMovimentosElegiveisDoPeriodo(
     movimentosRecentes, weekStart, today,
   );
   const auditoriaSemanaAnterior = config.rows.get(
@@ -1157,9 +1220,29 @@ async function snapshot() {
   const saldoCarryBaseSemana = aberturaNoPeriodoAtual
     ? saldoOperacionalAnterior
     : saldoOperacionalAntesPedidos;
-  const saldoCarryInSemana = saldoCarryAuditado !== null
+  let saldoCarryInSemana = saldoCarryAuditado !== null
     ? saldoCarryAuditado
     : saldoCarryBaseSemana;
+  const saldoCarryFechamentoReserva = saldoCarryInSemana;
+  const marcoCorrecao = await garantirMarcoCorrecaoOperacional(
+    weekStart,
+    saldoCarryInSemana,
+    fluxoReservaSemana.entradas,
+    movimentosRecentes,
+  );
+  if (marcoCorrecao) {
+    const movimentosAposMarco = movimentosRecentes.filter(row =>
+      row.id > marcoCorrecao.ultimoLancamentoId && row.dia >= weekStart && row.dia <= today,
+    );
+    const fluxoAposMarco = somarMovimentosElegiveisDoPeriodo(
+      movimentosAposMarco, weekStart, today,
+    );
+    saldoCarryInSemana = marcoCorrecao.saldoBaseCentavos;
+    fluxoReservaSemana = {
+      entradas: marcoCorrecao.entradasJaContadasCentavos + fluxoAposMarco.entradas,
+      saidas: fluxoAposMarco.saidas,
+    };
+  }
   const saldoOperacionalInicialSemana = aberturaNoPeriodoAtual && estadoOperacional.aberturaPeriodoAt
     ? (() => {
         const aberturaAt = estadoOperacional.aberturaPeriodoAt!;
@@ -1192,7 +1275,7 @@ async function snapshot() {
   let fechamentoReserva = { ajuste: 0 };
   try {
     fechamentoReserva = await fecharSemanasDeReservaPendentes(
-      weekStart, dinheiro !== null, saldoCarryInSemana,
+      weekStart, dinheiro !== null, saldoCarryFechamentoReserva,
     );
   } catch (error) {
     if (!(error instanceof ReservaReconciliationRequiredError)) throw error;
@@ -1335,6 +1418,7 @@ async function snapshot() {
       saidasOperacionais: money(fluxoOperacionalSemana.saidasOperacionais),
       saldoOperacionalDisponivel: money(saldoOperacionalDisponivel),
       resultadoOperacionalSemana: money(resultadoOperacionalSemana),
+      marcoCorrecaoOperacional: marcoCorrecao !== null,
       aberturaRealNoPeriodo: aberturaNoPeriodoAtual,
       consolidadoNaAbertura,
       necessidadeOperacional: money(alocacaoSemana.necessidadeOperacionalCentavos),
