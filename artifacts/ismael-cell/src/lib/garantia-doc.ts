@@ -136,9 +136,9 @@ import cartaoUrl from "@/assets/cartao-garantia.jpg";
     const text = mensagem(order);
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      // No iPhone envie somente o cartão. Anexar texto aqui fazia o WhatsApp
-      // criar uma segunda mensagem e podia misturar o compartilhamento da OS.
-      await navigator.share({ files: [file] });
+      // Compartilha o cartão junto com a legenda própria da garantia.
+      // Não reutiliza o texto/link de acompanhamento de uma ordem de serviço.
+      await navigator.share({ files: [file], text });
       return;
     }
 
