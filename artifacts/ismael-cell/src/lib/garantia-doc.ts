@@ -84,6 +84,10 @@ import cartaoUrl from "@/assets/cartao-garantia.jpg";
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas não suportado");
     ctx.drawImage(img, 0, 0, W, H);
+    // Os campos foram medidos na arte-base de 1536×1024, mas o JPG
+    // distribuído tem dimensões menores. Escala o contexto para manter
+    // os textos alinhados nos tamanhos real e futuro da imagem.
+    ctx.scale(W / 1536, H / 1024);
 
     const exp = expiry(order);
     const periodo = order.garantia && order.garantia !== "Sem garantia" ? order.garantia : "—";
@@ -132,7 +136,9 @@ import cartaoUrl from "@/assets/cartao-garantia.jpg";
     const text = mensagem(order);
 
     if (navigator.canShare && navigator.canShare({ files: [file] })) {
-      await navigator.share({ files: [file], text });
+      // No iPhone envie somente o cartão. Anexar texto aqui fazia o WhatsApp
+      // criar uma segunda mensagem e podia misturar o compartilhamento da OS.
+      await navigator.share({ files: [file] });
       return;
     }
 
