@@ -304,6 +304,7 @@ interface PecaFormProps {
 
 function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, existentes = [], onAdicionarEstoque, adicionandoEstoque }: PecaFormProps) {
   const [modelo, setModelo] = useState(initial?.modelo ?? "");
+  const [modeloEmFoco, setModeloEmFoco] = useState(false);
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
   const [valor, setValor] = useState(initial?.valor ?? "");
   const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 1));
@@ -464,15 +465,17 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
               <Input
                 placeholder="Ex: Tela A03 Core, Bateria S21..."
                 value={modelo}
+                onFocus={() => setModeloEmFoco(true)}
+                onBlur={() => window.setTimeout(() => setModeloEmFoco(false), 200)}
                 onChange={(e) => { setModelo(e.target.value); setQualidade(""); setNormAI(null); }}
               />
-              {modeloSugestoes.length > 0 && (
+              {modeloEmFoco && modeloSugestoes.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
                   {modeloSugestoes.map((p) => (
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => { setModelo(p.modelo); setQualidade(p.qualidade); }}
+                      onClick={() => { setModelo(p.modelo); setQualidade(p.qualidade); setModeloEmFoco(false); }}
                       className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2"
                     >
                       <span className="text-xs font-medium">{p.modelo}</span>
@@ -2489,25 +2492,38 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
     try {
       const html2canvas = html2canvasRef.current ?? (await import("html2canvas")).default;
       html2canvasRef.current = html2canvas;
-      if (setor === "cliente" && bgImgRef.current && !bgImgRef.current.complete) {
-        await new Promise((r) => { bgImgRef.current!.onload = r; bgImgRef.current!.onerror = r; });
-      }
-      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      // Aguarda o React montar o cartão oculto. No primeiro toque, uma única
+      // animação de quadro às vezes capturava o cartão antes de concluir o layout.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
       const el = shareRef.current;
-      if (!el) { setSharingPeca(null); setGeneratingShare(false); return; }
+      if (!el) throw new Error("Cartão de compartilhamento não foi montado");
+      await document.fonts?.ready;
+      await Promise.all(Array.from(el.querySelectorAll("img")).map(async (img) => {
+        if (typeof img.decode === "function") await img.decode();
+        else if (!img.complete) await new Promise<void>((resolve, reject) => {
+          img.onload = () => resolve();
+          img.onerror = () => reject(new Error("Não foi possível carregar a imagem do cartão"));
+        });
+      }));
+      if (setor === "cliente" && bgImgRef.current && !bgImgRef.current.complete) {
+        await new Promise<void>((resolve, reject) => {
+          bgImgRef.current!.onload = () => resolve();
+          bgImgRef.current!.onerror = () => reject(new Error("Não foi possível carregar o fundo do cartão"));
+        });
+      }
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const canvas = await html2canvas(el, { backgroundColor: setor === "cliente" ? "#000000" : "#ffffff", scale: 1.5, useCORS: true, logging: false });
-      canvas.toBlob((blob) => {
-        if (!blob) { setSharingPeca(null); setGeneratingShare(false); return; }
-        const file = new File([blob], `${peca.modelo.replace(/\s+/g, "-")}.png`, { type: "image/png" });
-        const url = URL.createObjectURL(blob);
-        setSharePreview({ url, file, modelo: peca.modelo });
-        setSharingPeca(null);
-        setGeneratingShare(false);
-      }, "image/png");
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((result) => result ? resolve(result) : reject(new Error("Não foi possível finalizar a imagem")), "image/png");
+      });
+      const file = new File([blob], `${peca.modelo.replace(/\s+/g, "-")}.png`, { type: "image/png" });
+      const url = URL.createObjectURL(blob);
+      setSharePreview({ url, file, modelo: peca.modelo });
     } catch {
+      toast({ title: "Não foi possível gerar a imagem", variant: "destructive" });
+    } finally {
       setSharingPeca(null);
       setGeneratingShare(false);
-      toast({ title: "Não foi possível gerar a imagem", variant: "destructive" });
     }
   }, [toast, setor]);
 
@@ -4726,30 +4742,43 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
           </Dialog>
         )}
 
-        {/* Indicador de geração */}
-        {generatingShare && (
-          <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center">
+        {/* Indicador de geração em um diálogo próprio para não ser cortado pelo catálogo. */}
+        <Dialog open={generatingShare} onOpenChange={() => {}}>
+          <DialogContent className="w-[calc(100vw-2rem)] max-w-sm p-0 border-0 bg-transparent shadow-none [&>button:last-child]:hidden">
             <div className="bg-white rounded-2xl px-6 py-5 flex items-center gap-3 shadow-xl">
               <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
               <span className="text-sm font-medium">Gerando imagem...</span>
             </div>
-          </div>
-        )}
+          </DialogContent>
+        </Dialog>
 
-        {/* Preview com botão para compartilhar (gesto fresco do usuário) */}
-        {sharePreview && (
-          <div className="fixed inset-0 z-[60] bg-black/70 flex flex-col items-center justify-center p-4" onClick={closeSharePreview}>
-            <div className="bg-white rounded-2xl p-3 max-w-sm w-full shadow-2xl flex flex-col gap-3" onClick={(e) => e.stopPropagation()}>
-              <img src={sharePreview.url} alt="Preview" className="w-full rounded-xl max-h-[60vh] object-contain bg-gray-100" />
-              <div className="flex gap-2">
-                <Button variant="outline" className="flex-1" onClick={closeSharePreview}>Cancelar</Button>
-                <Button className="flex-1 bg-green-600 hover:bg-green-700 text-white" onClick={() => { confirmShare(); }}>
+        {/* Preview em um diálogo próprio: evita recorte por overflow/transform no iPhone. */}
+        <Dialog open={Boolean(sharePreview)} onOpenChange={(next) => { if (!next) closeSharePreview(); }}>
+          <DialogContent
+            className="w-[calc(100vw-2rem)] max-w-sm max-h-[calc(100dvh-2rem)] overflow-y-auto p-3 gap-3 rounded-2xl [&>button:last-child]:hidden"
+            aria-describedby="share-preview-description"
+          >
+            <DialogHeader className="space-y-1">
+              <DialogTitle className="text-base">Compartilhar imagem</DialogTitle>
+              <DialogDescription id="share-preview-description" className="text-sm">
+                Confira a imagem antes de enviar.
+              </DialogDescription>
+            </DialogHeader>
+            {sharePreview && (
+              <>
+                <img src={sharePreview.url} alt={`Prévia da imagem de ${sharePreview.modelo}`} className="w-full max-h-[60dvh] rounded-xl object-contain bg-gray-100" />
+                <div className="flex gap-2 shrink-0">
+                  <Button type="button" variant="outline" className="min-h-11 flex-1 border-slate-300 bg-white font-semibold text-slate-900 hover:bg-slate-50" onClick={closeSharePreview}>
+                    Fechar
+                  </Button>
+                  <Button type="button" className="min-h-11 flex-1 bg-green-700 font-semibold !text-white hover:bg-green-800" onClick={() => { void confirmShare(); }}>
                   <Share2 className="w-4 h-4 mr-1.5" /> Compartilhar
-                </Button>
-              </div>
-            </div>
-          </div>
-        )}
+                  </Button>
+                </div>
+              </>
+            )}
+          </DialogContent>
+        </Dialog>
 
         {/* Card oculto para gerar imagem de compartilhamento */}
         {sharingPeca && setor === "lojista" && (
