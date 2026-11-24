@@ -1378,12 +1378,16 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                         ))}
                       </div>
                     )}
-                    {(!pecaEstoqueEncontrada || r.modoNomeCompleto) && <div className="mt-2">
+                    <div className="mt-2">
                       <label className="text-[10px] font-medium text-violet-700 uppercase mb-1 block">
-                        Encontrar peça no estoque (opcional)
+                        Selecionar ou alterar peça no estoque (opcional)
                       </label>
                       <Input
-                        value={r.buscaCorrecao ?? ""}
+                        value={
+                          r.buscaCorrecao?.trim()
+                            ? r.buscaCorrecao
+                            : (r.correcaoManual ? pecaCorrecaoSelecionada?.modelo : pecaEstoqueEncontrada?.modelo) ?? ""
+                        }
                         onChange={(e) => update(i, { buscaCorrecao: e.target.value })}
                         onFocus={() => setFocusBuscaIdx(i)}
                         onBlur={() => setTimeout(() => setFocusBuscaIdx((c) => (c === i ? null : c)), 300)}
@@ -1392,7 +1396,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                         className="h-8 border-violet-200 focus-visible:ring-violet-400"
                       />
                       <p className="mt-1 text-[10px] text-violet-700">
-                        Se você sabe que é a mesma peça, selecione o nome antigo aqui. A decisão de corrigir é sua, mesmo com nomes diferentes.
+                        {pecaEstoqueEncontrada && !r.correcaoManual
+                          ? "Peça detectada automaticamente. Você pode pesquisar e escolher outra peça."
+                          : "Se você sabe que é a mesma peça, selecione o nome antigo aqui. A decisão de corrigir é sua, mesmo com nomes diferentes."}
                       </p>
                       {focusBuscaIdx === i && candidatosBuscaPara(r).length > 0 && (
                         <div className="relative z-50 mt-1 bg-white border border-violet-200 rounded-lg shadow-lg overflow-x-hidden max-h-56 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
@@ -1417,7 +1423,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                           Nenhuma peça encontrada no estoque com esse modelo.
                         </div>
                       )}
-                    </div>}
+                    </div>
                   </div>
                   <div className="w-20 shrink-0">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qtd.</label>
@@ -1478,7 +1484,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                     </span>
                   </div>
                 )}
-                {jaCadastrada(r) && (
+                {jaCadastrada(r) && !r.correcaoManual && (
                   <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800 space-y-2">
                     <div className="flex items-start gap-1.5">
                       <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
