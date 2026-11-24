@@ -926,6 +926,9 @@ interface ImportRow {
   correcaoManual?: boolean;
   buscaCorrecao?: string;
   modoNomeCompleto?: boolean;
+  vinculoAutoProcessado?: boolean;
+  vinculoEditadoPeloUsuario?: boolean;
+  modeloEditadoPeloUsuario?: boolean;
 }
 
 interface ImportarNotaDraft {
@@ -1179,6 +1182,7 @@ interface ImportarNotaDialogProps {
   open: boolean;
   itensIniciais: ImportRow[];
   pecasExistentes: PecaExistenteImport[];
+  pecasExistentesCarregadas: boolean;
   qualidadesPersonalizadas: QualidadesPersonalizadas;
   precosExistentes: Record<string, { cliente?: string; lojista?: string }>;
   onConfirm: (rows: ImportRow[], formaInvestimento: FormaInvest, destino: Destino, fornecedor: string) => void;
@@ -1191,7 +1195,7 @@ interface ImportarNotaDialogProps {
   loading: boolean;
 }
 
-function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPersonalizadas, precosExistentes, onConfirm, onClose, onCancel, onDraftChange, formaInvestInicial, destinoInicial, fornecedorInicial, loading }: ImportarNotaDialogProps) {
+function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExistentesCarregadas, qualidadesPersonalizadas, precosExistentes, onConfirm, onClose, onCancel, onDraftChange, formaInvestInicial, destinoInicial, fornecedorInicial, loading }: ImportarNotaDialogProps) {
   const [rows, setRows] = useState<ImportRow[]>(itensIniciais);
   const [formaInvest, setFormaInvest] = useState<FormaInvest>(formaInvestInicial);
   // "Esse pedido chegou?" — estoque (já chegou) ou encomenda (a caminho)
@@ -1267,10 +1271,14 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
   const comSugestaoCorrecao = useCallback((row: ImportRow): ImportRow => {
     const qualidadeInformada = row.qualidadeImportadaOriginal?.trim() || row.qualidade.trim();
     const qualidadeNormalizada = normalizarQualidadeImportada(qualidadeInformada);
-    const qualidadeConhecida = qualidadesConhecidasPara(row.modelo)
+    const modeloImportado = row.modeloEditadoPeloUsuario
+      ? row.modelo
+      : row.modeloOriginal?.trim() || row.modelo;
+    const qualidadeConhecida = qualidadesConhecidasPara(modeloImportado)
       .find((qualidade) => chaveQualidade(qualidade) === chaveQualidade(qualidadeNormalizada));
     const linhaNormalizada = {
       ...row,
+      modelo: modeloImportado,
       qualidade: qualidadeConhecida ?? "",
       qualidadeImportadaOriginal: qualidadeConhecida ? undefined : qualidadeInformada || undefined,
     };
@@ -1292,6 +1300,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
         correcaoModeloAntigo: undefined,
         aplicarCorrecao: undefined,
         correcaoManual: false,
+        vinculoAutoProcessado: true,
       };
     }
 
@@ -1304,10 +1313,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
       correcaoModeloAntigo: undefined,
       aplicarCorrecao: undefined,
       correcaoManual: false,
+      vinculoAutoProcessado: true,
     };
   }, [pecasExistentes, precosExistentes, qualidadesPersonalizadas]);
 
-  // Inicializa somente na abertura; não reinicializa enquanto o usuário edita.
+  // Reinicializa somente na abertura; a associação automática aguarda os dois estoques.
   const abriuRef = useRef(false);
   useEffect(() => {
     if (!open) {
@@ -1316,14 +1326,37 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
     }
     if (abriuRef.current) return;
     abriuRef.current = true;
-    setRows(itensIniciais.map(comSugestaoCorrecao));
+    setRows(itensIniciais.map((row) => ({
+      ...row,
+      vinculoAutoProcessado: false,
+      vinculoEditadoPeloUsuario: false,
+    })));
     setFormaInvest(formaInvestInicial);
     setDestino(destinoInicial);
     setFornecedor(fornecedorInicial);
   }, [open]);
 
+  useEffect(() => {
+    if (!open || !pecasExistentesCarregadas) return;
+    setRows((atuais) =>
+      atuais.map((row) => {
+        if (row.vinculoAutoProcessado || row.vinculoEditadoPeloUsuario) return row;
+        return {
+          ...comSugestaoCorrecao(row),
+          vinculoAutoProcessado: true,
+        };
+      }),
+    );
+  }, [open, pecasExistentesCarregadas, comSugestaoCorrecao]);
+
   const update = (i: number, patch: Partial<ImportRow>) => {
-    setRows((cur) => cur.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
+    setRows((cur) => cur.map((r, idx) => (idx === i
+      ? {
+          ...r,
+          ...patch,
+          ...(patch.buscaCorrecao !== undefined ? { vinculoEditadoPeloUsuario: true } : {}),
+        }
+      : r)));
   };
   // Igual ao update, mas ao mudar modelo/qualidade puxa o último preço do sistema (se a peça já existir).
   const updateComPreco = (i: number, patch: Partial<ImportRow>) => {
@@ -1335,6 +1368,10 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
         const dadosAtualizados = {
           ...r,
           ...patch,
+          ...((patch.modelo !== undefined || patch.qualidade !== undefined)
+            ? { vinculoEditadoPeloUsuario: true }
+            : {}),
+          ...(patch.modelo !== undefined ? { modeloEditadoPeloUsuario: true } : {}),
           ...(patch.qualidade !== undefined && patch.qualidade !== r.qualidade
             ? { qualidadeImportadaOriginal: undefined }
             : {}),
@@ -1342,6 +1379,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
         const next = r.correcaoManual && r.correcaoPecaId
           ? dadosAtualizados
           : comSugestaoCorrecao(dadosAtualizados);
+        next.vinculoAutoProcessado = true;
         const pecaSelecionada = pecasExistentes.find((peca) => peca.id === next.correcaoPecaId);
         if (
           next.aplicarCorrecao &&
@@ -1373,6 +1411,8 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
           correcaoModeloAntigo: peca.modelo,
           aplicarCorrecao: false,
           correcaoManual: true,
+          vinculoAutoProcessado: true,
+          vinculoEditadoPeloUsuario: true,
           buscaCorrecao: peca.modelo,
           valorCliente: precoAplicavel?.cliente || r.valorCliente.trim() || "",
           valorLojista: precoAplicavel?.lojista || r.valorLojista.trim() || "",
@@ -1478,9 +1518,13 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                         className="h-8 border-violet-200 focus-visible:ring-violet-400"
                       />
                       <p className="mt-1 text-[10px] text-violet-700">
-                        {pecaEstoqueEncontrada && !r.correcaoManual
-                          ? "Peça detectada automaticamente. Você pode pesquisar e escolher outra peça."
-                          : "Se você sabe que é a mesma peça, selecione o nome antigo aqui. A decisão de corrigir é sua, mesmo com nomes diferentes."}
+                        {!pecasExistentesCarregadas
+                          ? "Consultando as peças dos estoques Cliente e Lojista..."
+                          : !r.qualidade.trim()
+                            ? "Escolha uma qualidade cadastrada para procurar a peça com segurança."
+                            : pecaEstoqueEncontrada && !r.correcaoManual
+                              ? "Peça detectada automaticamente. Você pode pesquisar e escolher outra peça."
+                              : "Não encontrei uma correspondência segura por modelo e qualidade. Se for a mesma peça, busque o nome antigo aqui."}
                       </p>
                       {focusBuscaIdx === i && candidatosBuscaPara(r).length > 0 && (
                         <div className="relative z-50 mt-1 bg-white border border-violet-200 rounded-lg shadow-lg overflow-x-hidden max-h-56 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
@@ -1916,12 +1960,20 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   });
 
   // Peças dos DOIS setores, para saber o preço atual (cliente + lojista) de cada modelo já cadastrado.
-  const { data: pecasClienteAll = [] } = useQuery<Peca[]>({
+  const {
+    data: pecasClienteAll = [],
+    isSuccess: pecasClienteCarregadas,
+    isFetching: pecasClienteCarregando,
+  } = useQuery<Peca[]>({
     queryKey: ["pecas", "cliente", ""],
     queryFn: () => apiFetch(`/api/pecas?setor=cliente`),
     enabled: open,
   });
-  const { data: pecasLojistaAll = [] } = useQuery<Peca[]>({
+  const {
+    data: pecasLojistaAll = [],
+    isSuccess: pecasLojistaCarregadas,
+    isFetching: pecasLojistaCarregando,
+  } = useQuery<Peca[]>({
     queryKey: ["pecas", "lojista", ""],
     queryFn: () => apiFetch(`/api/pecas?setor=lojista`),
     enabled: open,
@@ -2891,6 +2943,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
               <ImportarNotaDialog
                 open={importOpen}
                 itensIniciais={importRows}
+                pecasExistentesCarregadas={
+                  pecasClienteCarregadas &&
+                  pecasLojistaCarregadas &&
+                  !pecasClienteCarregando &&
+                  !pecasLojistaCarregando
+                }
                 pecasExistentes={pecasClienteAll.flatMap((p) => {
                   const gemea = pecasLojistaAll.find(
                     (g) =>
