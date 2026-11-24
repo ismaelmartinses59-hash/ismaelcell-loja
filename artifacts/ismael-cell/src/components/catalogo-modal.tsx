@@ -1123,11 +1123,14 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
   // Nomes de modelos já cadastrados (sem repetir) para o autocomplete.
   const modelosSugeridos = [...new Set(pecasExistentes.map((p) => p.modelo.trim()).filter(Boolean))].sort();
   // Chave modelo+qualidade (normalizada) do que já existe, para avisar quando vai somar no estoque.
-  const chavesExistentes = new Set(
-    pecasExistentes.map((p) => `${p.modelo.toLowerCase().trim()}|${p.qualidade}`),
-  );
+  const pecaCorrespondenteEstoque = (r: ImportRow) =>
+    pecasExistentes.find(
+      (peca) =>
+        peca.modelo.trim().toLocaleLowerCase("pt-BR") === r.modelo.trim().toLocaleLowerCase("pt-BR") &&
+        chaveQualidade(peca.qualidade) === chaveQualidade(r.qualidade),
+    );
   const jaCadastrada = (r: ImportRow) =>
-    !!r.modelo.trim() && !!r.qualidade && chavesExistentes.has(`${r.modelo.toLowerCase().trim()}|${r.qualidade}`);
+    !!r.modelo.trim() && !!r.qualidade && !!pecaCorrespondenteEstoque(r);
 
   // Índice da linha cujo campo "Modelo" está em foco (para mostrar as sugestões).
   // datalist não funciona no Safari do iPhone, então usamos um dropdown próprio.
@@ -1334,6 +1337,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
             const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
+            const pecaEstoqueEncontrada = pecaCorrespondenteEstoque(r);
             const qualidadeCorrecaoCompativel = Boolean(
               pecaCorrecaoSelecionada &&
               chaveQualidade(pecaCorrecaoSelecionada.qualidade) === chaveQualidade(r.qualidade),
@@ -1373,7 +1377,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                         ))}
                       </div>
                     )}
-                    <div className="mt-2">
+                    {(!pecaEstoqueEncontrada || r.modoNomeCompleto) && <div className="mt-2">
                       <label className="text-[10px] font-medium text-violet-700 uppercase mb-1 block">
                         Encontrar peça no estoque (opcional)
                       </label>
@@ -1412,7 +1416,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                           Nenhuma peça encontrada no estoque com esse modelo.
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </div>
                   <div className="w-20 shrink-0">
                     <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qtd.</label>
@@ -1477,7 +1481,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                   <div className="rounded-lg bg-green-50 border border-green-200 px-2.5 py-2 text-[11px] text-green-800 space-y-2">
                     <div className="flex items-start gap-1.5">
                       <Check className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                      <span>Já existe no sistema — vai <b>somar {r.quantidade || 0} no estoque</b> desta peça, sem criar cópia.</span>
+                      <span>
+                        Peça selecionada automaticamente: <b>{pecaEstoqueEncontrada?.modelo ?? r.modelo}</b> ·{" "}
+                        <b>{pecaEstoqueEncontrada?.qualidade ?? r.qualidade}</b>.
+                        Ao cadastrar, vai <b>somar {r.quantidade || 0} no estoque</b> dela, sem criar cópia.
+                      </span>
                     </div>
                     <button
                       type="button"
