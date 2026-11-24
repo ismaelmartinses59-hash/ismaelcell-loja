@@ -20,6 +20,7 @@ const BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 const QUALIDADES = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
 const QUALIDADES_BATERIA = ["Skaiky", "Foxcomm", "Original China"];
 const QUALIDADES_PERSONALIZADAS_STORAGE = "ismael-cell-qualidades-personalizadas";
+const OUTRA_QUALIDADE_VALUE = "__qualidade_personalizada__";
 const SUGESTOES_QUALIDADE: Array<{ palavra: string; opcoes: string[] }> = [
   { palavra: "bateria", opcoes: QUALIDADES_BATERIA },
 ];
@@ -316,14 +317,16 @@ interface PecaFormProps {
   loading: boolean;
   pedirInvestimento?: boolean;
   existentes?: Peca[];
+  qualidadesPersonalizadas: QualidadesPersonalizadas;
   onAdicionarEstoque?: (peca: Peca, qtd: number, custo: string, forma: string) => void;
   adicionandoEstoque?: boolean;
 }
 
-function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, existentes = [], onAdicionarEstoque, adicionandoEstoque }: PecaFormProps) {
+function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, existentes = [], qualidadesPersonalizadas, onAdicionarEstoque, adicionandoEstoque }: PecaFormProps) {
   const [modelo, setModelo] = useState(initial?.modelo ?? "");
   const [modeloEmFoco, setModeloEmFoco] = useState(false);
   const [qualidade, setQualidade] = useState(initial?.qualidade ?? "");
+  const [outraQualidadeAtiva, setOutraQualidadeAtiva] = useState(false);
   const [valor, setValor] = useState(initial?.valor ?? "");
   const [quantidade, setQuantidade] = useState(String(initial?.quantidade ?? 1));
   const [custo, setCusto] = useState(initial?.valorCusto ?? "");
@@ -456,13 +459,14 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
     quantidadeNumerica < (isEdicao ? 0 : 1);
 
     const submit = () => {
+    const qualidadeFinal = outraQualidadeAtiva ? normalizarNomeQualidade(qualidade) : qualidade;
       if (duplicada) return;
-      if (!modelo.trim() || !qualidade || !valor.trim()) return;
+    if (!modelo.trim() || !qualidadeFinal || !valor.trim()) return;
       if (quantidadeInvalida || quantidadeNumerica === null) return;
     if (pedirInvestimento && destino === "encomenda" && (!fornecedor.trim() || !valorLojista.trim())) return;
     onSave({
       modelo: modelo.trim(),
-      qualidade,
+      qualidade: qualidadeFinal,
       valor: valor.trim(),
       valorCusto: custo.trim(),
       quantidade: quantidadeNumerica,
@@ -471,7 +475,19 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
   };
   const lower = modelo.toLowerCase();
   const match = SUGESTOES_QUALIDADE.find((s) => lower.includes(s.palavra));
-  const qualidadesAtivas = match ? match.opcoes : QUALIDADES;
+  const categoriaQualidade = match ? "bateria" : "geral";
+  const qualidadesAtivas = [...new Map(
+    [
+      ...(match ? match.opcoes : QUALIDADES),
+      ...qualidadesPersonalizadas[categoriaQualidade],
+      ...existentes
+        .filter((peca) => modeloEhBateria(peca.modelo) === Boolean(match))
+        .map((peca) => peca.qualidade),
+    ]
+      .map(normalizarNomeQualidade)
+      .filter((nome) => nome && nome !== OUTRA_QUALIDADE_VALUE)
+      .map((nome) => [chaveQualidade(nome), nome] as const),
+  ).values(), OUTRA_QUALIDADE_VALUE];
 
   return (
     <div className="bg-muted/40 rounded-xl p-4 space-y-3 border">
@@ -485,7 +501,12 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
                 value={modelo}
                 onFocus={() => setModeloEmFoco(true)}
                 onBlur={() => window.setTimeout(() => setModeloEmFoco(false), 200)}
-                onChange={(e) => { setModelo(e.target.value); setQualidade(""); setNormAI(null); }}
+                onChange={(e) => {
+                  setModelo(e.target.value);
+                  setQualidade("");
+                  setOutraQualidadeAtiva(false);
+                  setNormAI(null);
+                }}
               />
               {modeloEmFoco && modeloSugestoes.length > 0 && (
                 <div className="absolute z-50 left-0 right-0 mt-1 bg-white border rounded-lg shadow-lg overflow-hidden">
@@ -493,7 +514,7 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
                     <button
                       key={p.id}
                       type="button"
-                      onClick={() => { setModelo(p.modelo); setQualidade(p.qualidade); setModeloEmFoco(false); }}
+                      onClick={() => { setModelo(p.modelo); setQualidade(p.qualidade); setOutraQualidadeAtiva(false); setModeloEmFoco(false); }}
                       className="w-full text-left px-3 py-2 hover:bg-muted flex items-center justify-between gap-2"
                     >
                       <span className="text-xs font-medium">{p.modelo}</span>
@@ -628,12 +649,36 @@ function PecaForm({ initial, onSave, onCancel, loading, pedirInvestimento, exist
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Qualidade</label>
-          <Select value={qualidade} onValueChange={setQualidade}>
+          <Select
+            value={outraQualidadeAtiva ? OUTRA_QUALIDADE_VALUE : qualidade}
+            onValueChange={(value) => {
+              if (value === OUTRA_QUALIDADE_VALUE) {
+                setOutraQualidadeAtiva(true);
+                setQualidade("");
+                return;
+              }
+              setOutraQualidadeAtiva(false);
+              setQualidade(value);
+            }}
+          >
             <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
             <SelectContent>
-              {qualidadesAtivas.map((q) => <SelectItem key={q} value={q}>{q}</SelectItem>)}
+              {qualidadesAtivas.map((q) => (
+                <SelectItem key={q} value={q}>
+                  {q === OUTRA_QUALIDADE_VALUE ? "OUTRA" : q}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
+          {outraQualidadeAtiva && (
+            <Input
+              className="mt-2"
+              placeholder="Digite o nome da nova qualidade"
+              value={qualidade}
+              onChange={(e) => setQualidade(normalizarNomeQualidade(e.target.value))}
+              autoComplete="off"
+            />
+          )}
         </div>
         <div>
           <label className="text-xs font-medium text-muted-foreground mb-1 block">Quantidade em Estoque</label>
@@ -2061,6 +2106,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   const [importFornecedor, setImportFornecedor] = useState("");
   const [importSaving, setImportSaving] = useState(false);
   const [qualidadesPersonalizadas, setQualidadesPersonalizadas] = useState<QualidadesPersonalizadas>(lerQualidadesPersonalizadas);
+  const registrarQualidadePersonalizada = (item: { modelo: string; qualidade: string }) => {
+    setQualidadesPersonalizadas((atuais) => mesclarQualidadesPersonalizadas(atuais, [item]));
+  };
   const [shortcutSetupOpen, setShortcutSetupOpen] = useState(false);
   const sharedImportRequestRef = useRef<string | null>(null);
   const sharedImportCompletionTimerRef = useRef<number | null>(null);
@@ -2263,7 +2311,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
 
   const addMutation = useMutation({
     mutationFn: (data: Omit<Peca, "id"> & { formaInvestimento?: FormaInvest }) => apiFetch("/api/pecas", { method: "POST", body: JSON.stringify({ ...data, setor }) }),
-    onSuccess: () => { invalidatePecas(); setShowAdd(false); toast({ title: "Peça adicionada!" }); },
+    onSuccess: (_response, data) => {
+      registrarQualidadePersonalizada(data);
+      invalidatePecas();
+      setShowAdd(false);
+      toast({ title: "Peça adicionada!" });
+    },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
 
@@ -2312,7 +2365,11 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
             ],
         }),
       }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["encomendas"] }); setShowAdd(false); },
+    onSuccess: (_response, data) => {
+      registrarQualidadePersonalizada(data);
+      qc.invalidateQueries({ queryKey: ["encomendas"] });
+      setShowAdd(false);
+    },
     onError: (err: unknown) => { const msg = err instanceof Error ? err.message : "Tente novamente."; toast({ title: "Erro ao criar encomenda", description: msg, variant: "destructive" }); },
   });
 
@@ -2344,6 +2401,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
           formaInvestimento: previewData.formaInvestimento,
         }),
       });
+      registrarQualidadePersonalizada(previewData);
       invalidatePecas();
       setPreviewData(null);
       setShowAdd(false);
@@ -2357,7 +2415,12 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   const editMutation = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Omit<Peca, "id"> }) =>
       apiFetch(`/api/pecas/${id}`, { method: "PUT", body: JSON.stringify(data) }),
-    onSuccess: () => { invalidatePecas(); setEditingId(null); toast({ title: "Peça atualizada!" }); },
+    onSuccess: (_response, { data }) => {
+      registrarQualidadePersonalizada(data);
+      invalidatePecas();
+      setEditingId(null);
+      toast({ title: "Peça atualizada!" });
+    },
     onError: () => toast({ title: "Erro ao salvar", variant: "destructive" }),
   });
   const adicionarEstoqueMutation = useMutation({
@@ -2979,6 +3042,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
               {showAdd && (
                   <PecaForm
                     existentes={[...pecasClienteAll, ...pecasLojistaAll]}
+                    qualidadesPersonalizadas={qualidadesPersonalizadas}
                     onSave={handleAddSubmit}
                     onCancel={() => { setShowAdd(false); setPreviewData(null); }}
                     loading={addMutation.isPending || savingTwin}
@@ -3004,7 +3068,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
               {ordenarPorEstoque(search.trim() ? pecas : lowStock).map((peca) => (
                 <div key={peca.id}>
                   {editingId === peca.id ? (
-                    <PecaForm initial={peca} existentes={[...pecasClienteAll, ...pecasLojistaAll]} onSave={(data) => editMutation.mutate({ id: peca.id, data })} onCancel={() => setEditingId(null)} loading={editMutation.isPending} />
+                    <PecaForm initial={peca} existentes={[...pecasClienteAll, ...pecasLojistaAll]} qualidadesPersonalizadas={qualidadesPersonalizadas} onSave={(data) => editMutation.mutate({ id: peca.id, data })} onCancel={() => setEditingId(null)} loading={editMutation.isPending} />
                   ) : deletingId === peca.id ? (
                     <div className="border border-red-200 bg-red-50 rounded-xl p-3 flex items-center justify-between gap-3">
                       <span className="text-sm text-red-700">Remover <strong>{peca.modelo}</strong>?</span>
