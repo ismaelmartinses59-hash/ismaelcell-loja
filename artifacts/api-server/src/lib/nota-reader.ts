@@ -1,7 +1,7 @@
 import { getAiWithRetries } from "@workspace/integrations-gemini-ai";
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
-const TEMPO_MAXIMO_LEITURA_MS = 25_000;
+const TEMPO_MAXIMO_LEITURA_MS = 60_000;
 
 export interface NotaImportItem {
   modelo: string;
@@ -58,7 +58,7 @@ export async function interpretarNota(
     "Você recebe a NOTA/PEDIDO de um fornecedor de peças de celular (telas/displays, baterias etc).",
     "Extraia CADA item da nota. Para cada item devolva:",
     '- "modeloOriginal": o nome completo da peça como está escrito na nota.',
-    '- "modelo": nome curto para o estoque: preserve tipo e todos os modelos compatíveis/separadores; retire qualidade, cor e texto comercial. Preserve qualquer característica que diferencie o produto; não descarte cor/detalhe técnico se não puder separá-lo em outro campo. Preserve tokens de modelo como REDMI/POCO quando fizerem parte da identificação (ex: "TELA REDMI 13C/POCO C65").',
+    '- "modelo": nome curto para o estoque: preserve tipo e todos os modelos compatíveis/separadores; retire qualidade, cor e texto comercial. Preserve qualquer característica que diferencie o produto; não descarte cor/detalhe técnico se não puder separá-lo em outro campo. Copie as marcas e os modelos sem abreviar nem alterar a grafia (REDMI deve continuar REDMI; ex: "TELA REDMI 13C/POCO C65").',
     '- "quantidade": número inteiro de unidades daquele item (se não achar, use 1).',
     '- "custo": o valor UNITÁRIO em reais que aparece na nota, só números com ponto decimal (ex: "85.00"). Se não houver, use "".',
     `- "qualidade": SE a nota indicar a qualidade da tela, escolha a mais próxima desta lista: ${QUALIDADES_TELA.join(", ")}. Se não indicar, use "".`,
@@ -96,7 +96,7 @@ export async function interpretarNota(
         : undefined;
     if (/timeout|timed out|deadline|abort/i.test(message)) {
       throw new NotaReaderError(
-        "A leitura passou de 25 segundos. Tente uma foto menor ou mais próxima da nota.",
+        "A leitura passou de 60 segundos. Tente novamente; se continuar, envie uma foto menor ou mais próxima da nota.",
         503,
         "timeout",
         providerStatus,
