@@ -939,10 +939,27 @@ function tokensModeloImport(modelo: string): string[] {
 }
 
 const MARCAS_MODELO_IMPORT = new Set([
-  "SAMSUNG", "APPLE", "MOTOROLA", "MOTO", "XIAOMI", "REDMI", "POCO", "REALME",
+  "SAM", "SAMSUNG", "APPLE", "MOTOROLA", "MOTO", "XIAOMI", "REDMI", "POCO", "REALME",
   "OPPO", "VIVO", "HUAWEI", "HONOR", "GOOGLE", "PIXEL", "ONEPLUS", "LG",
   "SONY", "NOKIA", "ASUS", "TECNO", "INFINIX", "TCL", "ALCATEL", "ZTE", "LENOVO",
 ]);
+
+function marcaCanonicaImport(token: string): string {
+  return token === "SAM" ? "SAMSUNG" : token;
+}
+
+function tokensIdentidadeModeloImport(modelo: string): { tokens: string[]; marca?: string } {
+  const tokens = modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .filter(Boolean);
+  const indiceMarca = tokens.findIndex((token) => MARCAS_MODELO_IMPORT.has(token));
+  const marca = indiceMarca >= 0 ? marcaCanonicaImport(tokens[indiceMarca]) : undefined;
+  if (indiceMarca >= 0) tokens.splice(indiceMarca, 1);
+  return { tokens, marca };
+}
 
 function correcaoMarcaPrefixoSegura(modeloAntigo: string, modeloNovo: string): boolean {
   const antigo = tokensModeloImport(modeloAntigo);
@@ -981,16 +998,37 @@ function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): b
 }
 
 function mesmoModeloImport(modeloA: string | undefined, modeloB: string): boolean {
-  const chaveCompleta = (modelo: string) => modelo
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .split(/[^A-Z0-9]+/)
-    .filter(Boolean)
-    .join("|");
-  const chaveA = chaveCompleta(modeloA ?? "");
-  const chaveB = chaveCompleta(modeloB);
-  return chaveA.replace(/\|/g, "").length >= 3 && chaveA === chaveB;
+  const identidadeA = tokensIdentidadeModeloImport(modeloA ?? "");
+  const identidadeB = tokensIdentidadeModeloImport(modeloB);
+  return (
+    (!identidadeA.marca || !identidadeB.marca || identidadeA.marca === identidadeB.marca) &&
+    identidadeA.tokens.join("|").replace(/\|/g, "").length >= 3 &&
+    identidadeA.tokens.join("|") === identidadeB.tokens.join("|")
+  );
+}
+
+function sugerirModeloExistenteExato(
+  row: Pick<ImportRow, "modelo" | "qualidade">,
+  existentes: PecaExistenteImport[],
+): PecaExistenteImport | null {
+  const modeloNovo = row.modelo.trim();
+  const qualidade = row.qualidade.trim().toLocaleLowerCase("pt-BR");
+  if (!modeloNovo || !qualidade) return null;
+
+  const candidatosUnicos = new Map<string, PecaExistenteImport>();
+  for (const peca of existentes) {
+    const modeloExistente = peca.modelo.trim();
+    if (
+      peca.qualidade.trim().toLocaleLowerCase("pt-BR") !== qualidade ||
+      modeloExistente.toLocaleLowerCase("pt-BR") === modeloNovo.toLocaleLowerCase("pt-BR") ||
+      !mesmoModeloImport(modeloExistente, modeloNovo)
+    ) continue;
+    const chave = `${modeloExistente.toLocaleLowerCase("pt-BR")}|${qualidade}`;
+    if (!candidatosUnicos.has(chave)) candidatosUnicos.set(chave, peca);
+  }
+
+  const candidatos = [...candidatosUnicos.values()];
+  return candidatos.length === 1 ? candidatos[0] : null;
 }
 
 function contemSequenciaDeTokens(texto: string, consulta: string): boolean {
@@ -1111,6 +1149,24 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
   };
 
   const comSugestaoCorrecao = useCallback((row: ImportRow): ImportRow => {
+    const modeloExistente = sugerirModeloExistenteExato(row, pecasExistentes);
+    if (modeloExistente) {
+      const preco = precosExistentes[
+        `${modeloExistente.modelo.toLowerCase().trim()}|${modeloExistente.qualidade}`
+      ];
+      return {
+        ...row,
+        modelo: modeloExistente.modelo,
+        valorCliente: row.valorCliente.trim() || preco?.cliente || "",
+        valorLojista: row.valorLojista.trim() || preco?.lojista || "",
+        correcaoPecaId: undefined,
+        correcaoGemeaId: undefined,
+        correcaoModeloAntigo: undefined,
+        aplicarCorrecao: undefined,
+        correcaoManual: false,
+      };
+    }
+
     const sugestao = sugerirCorrecaoImport(row, pecasExistentes);
     if (!sugestao) {
       return {
