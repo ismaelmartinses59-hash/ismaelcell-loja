@@ -980,6 +980,23 @@ function marcaModeloImport(modelo: string): string | null {
     .find((token) => MARCAS_MODELO_IMPORT.has(token)) ?? null;
 }
 
+function codigosModeloImport(modelo: string): string[] {
+  const normalizado = modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase();
+  const encontrados = normalizado.match(/\b[A-Z]{1,8}\s*\d{1,5}[A-Z0-9]*\b/g) ?? [];
+  return [...new Set(encontrados.map((codigo) => codigo.replace(/\s+/g, "")))];
+}
+
+function categoriaProdutoImport(modelo: string): string | null {
+  const texto = ` ${modelo.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, " ")} `;
+  if (/\sBATERIA\s/.test(texto)) return "bateria";
+  if (/\s(TELA|DISPLAY|LCD|TOUCH|FRONTAL|MODULO)\s/.test(texto)) return "tela";
+  if (/\s(CONECTOR|PLACA|FLEX)\s/.test(texto)) return "outro";
+  return null;
+}
+
 function marcasCompativeisImport(modeloA: string, modeloB: string): boolean {
   const marcaA = marcaModeloImport(modeloA);
   const marcaB = marcaModeloImport(modeloB);
@@ -990,20 +1007,19 @@ function marcasCompativeisImport(modeloA: string, modeloB: string): boolean {
 
 function modeloContemIdentidadeImport(modeloA: string, modeloB: string): boolean {
   if (!marcasCompativeisImport(modeloA, modeloB)) return false;
-  const identidadeA = tokensIdentidadeModeloImport(modeloA);
-  const identidadeB = tokensIdentidadeModeloImport(modeloB);
-  if (!identidadeA.length || !identidadeB.length) return false;
+  const categoriaA = categoriaProdutoImport(modeloA);
+  const categoriaB = categoriaProdutoImport(modeloB);
+  if (categoriaA && categoriaB && categoriaA !== categoriaB) return false;
+  const codigosA = codigosModeloImport(modeloA);
+  const codigosB = new Set(codigosModeloImport(modeloB));
+  if (!codigosA.length || !codigosB.size) return false;
 
   // Não associe uma peça com aro a outra sem aro, mesmo quando o modelo coincide.
   const comAroA = /\bC\s*\/\s*A\b/i.test(modeloA);
   const comAroB = /\bC\s*\/\s*A\b/i.test(modeloB);
   if (comAroA !== comAroB) return false;
 
-  const contem = (tokensMaiores: string[], tokensMenores: string[]) =>
-    tokensMaiores.some((_, inicio) =>
-      tokensMenores.every((token, deslocamento) => tokensMaiores[inicio + deslocamento] === token),
-    );
-  return contem(identidadeA, identidadeB) || contem(identidadeB, identidadeA);
+  return codigosA.some((codigo) => codigosB.has(codigo));
 }
 
 function correcaoMarcaPrefixoSegura(modeloAntigo: string, modeloNovo: string): boolean {
@@ -1074,7 +1090,8 @@ function sugerirModeloExistenteExato(
   const qualidade = chaveQualidade(row.qualidade);
   if (!modeloNovo || !qualidade) return null;
 
-  const candidatosUnicos = new Map<string, PecaExistenteImport>();
+  const codigosNota = new Set(codigosModeloImport(modeloNovo));
+  const candidatosUnicos = new Map<string, { peca: PecaExistenteImport; pontuacao: number }>();
   for (const peca of existentes) {
     const modeloExistente = peca.modelo.trim();
     if (
@@ -1083,6 +1100,7 @@ function sugerirModeloExistenteExato(
     ) continue;
     const chave = `${marcaModeloImport(modeloExistente) ?? ""}|${tokensIdentidadeModeloImport(modeloExistente).join("|")}|${qualidade}`;
     const atual = candidatosUnicos.get(chave);
+    const pontuacao = codigosModeloImport(modeloExistente).filter((codigo) => codigosNota.has(codigo)).length;
     const contarMarcas = (modelo: string) =>
       modelo
         .normalize("NFD")
@@ -1092,16 +1110,22 @@ function sugerirModeloExistenteExato(
         .filter((token) => MARCAS_MODELO_IMPORT.has(token)).length;
     if (
       !atual ||
-      contarMarcas(modeloExistente) < contarMarcas(atual.modelo) ||
-      (contarMarcas(modeloExistente) === contarMarcas(atual.modelo) &&
-        modeloExistente.length < atual.modelo.length)
+      pontuacao > atual.pontuacao ||
+      (pontuacao === atual.pontuacao &&
+        contarMarcas(modeloExistente) < contarMarcas(atual.peca.modelo)) ||
+      (pontuacao === atual.pontuacao &&
+        contarMarcas(modeloExistente) === contarMarcas(atual.peca.modelo) &&
+        modeloExistente.length < atual.peca.modelo.length)
     ) {
-      candidatosUnicos.set(chave, peca);
+      candidatosUnicos.set(chave, { peca, pontuacao });
     }
   }
 
   const candidatos = [...candidatosUnicos.values()];
-  return candidatos.length === 1 ? candidatos[0] : null;
+  if (candidatos.length === 0) return null;
+  const melhorPontuacao = Math.max(...candidatos.map((candidato) => candidato.pontuacao));
+  const melhores = candidatos.filter((candidato) => candidato.pontuacao === melhorPontuacao);
+  return melhores.length === 1 ? melhores[0].peca : null;
 }
 
 function contemSequenciaDeTokens(texto: string, consulta: string): boolean {
