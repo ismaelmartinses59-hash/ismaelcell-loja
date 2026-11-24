@@ -944,7 +944,7 @@ interface PecaExistenteImport {
 
 const PALAVRAS_GENERICAS_PECA = new Set([
   "TELA", "DISPLAY", "LCD", "TOUCH", "FRONTAL", "MODULO", "PECA",
-  "BATERIA", "PLACA", "CONECTOR", "FLEX", "ARO",
+  "BATERIA", "PLACA", "CONECTOR", "FLEX", "ARO", "DO", "DA", "DE",
 ]);
 
 function tokensModeloImport(modelo: string): string[] {
@@ -969,6 +969,41 @@ function tokensIdentidadeModeloImport(modelo: string): string[] {
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
     .filter((token) => Boolean(token) && !MARCAS_MODELO_IMPORT.has(token));
+}
+
+function marcaModeloImport(modelo: string): string | null {
+  return modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .split(/[^A-Z0-9]+/)
+    .find((token) => MARCAS_MODELO_IMPORT.has(token)) ?? null;
+}
+
+function marcasCompativeisImport(modeloA: string, modeloB: string): boolean {
+  const marcaA = marcaModeloImport(modeloA);
+  const marcaB = marcaModeloImport(modeloB);
+  return !marcaA || !marcaB || marcaA === marcaB ||
+    (marcaA === "REALM" && marcaB === "REALME") ||
+    (marcaA === "REALME" && marcaB === "REALM");
+}
+
+function modeloContemIdentidadeImport(modeloA: string, modeloB: string): boolean {
+  if (!marcasCompativeisImport(modeloA, modeloB)) return false;
+  const identidadeA = tokensIdentidadeModeloImport(modeloA);
+  const identidadeB = tokensIdentidadeModeloImport(modeloB);
+  if (!identidadeA.length || !identidadeB.length) return false;
+
+  // Não associe uma peça com aro a outra sem aro, mesmo quando o modelo coincide.
+  const comAroA = /\bC\s*\/\s*A\b/i.test(modeloA);
+  const comAroB = /\bC\s*\/\s*A\b/i.test(modeloB);
+  if (comAroA !== comAroB) return false;
+
+  const contem = (tokensMaiores: string[], tokensMenores: string[]) =>
+    tokensMaiores.some((_, inicio) =>
+      tokensMenores.every((token, deslocamento) => tokensMaiores[inicio + deslocamento] === token),
+    );
+  return contem(identidadeA, identidadeB) || contem(identidadeB, identidadeA);
 }
 
 function correcaoMarcaPrefixoSegura(modeloAntigo: string, modeloNovo: string): boolean {
@@ -1008,6 +1043,7 @@ function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): b
 }
 
 function mesmoModeloImport(modeloA: string | undefined, modeloB: string): boolean {
+  if (!marcasCompativeisImport(modeloA ?? "", modeloB)) return false;
   const identidadeA = tokensIdentidadeModeloImport(modeloA ?? "");
   const identidadeB = tokensIdentidadeModeloImport(modeloB);
   const chaveA = identidadeA.join("|");
@@ -1023,7 +1059,8 @@ function removerMarcasModeloImport(modelo: string): string {
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .split(/([^A-Z0-9]+)/i)
-    .filter((parte) => !MARCAS_MODELO_IMPORT.has(parte.toUpperCase()))
+    .map((parte) => parte.toUpperCase() === "REALM" ? "REALME" : parte)
+    .filter((parte) => !MARCAS_MODELO_IMPORT.has(parte.toUpperCase()) || ["REALME", "POCO"].includes(parte.toUpperCase()))
     .join("")
     .replace(/\s+/g, " ")
     .trim();
@@ -1042,9 +1079,9 @@ function sugerirModeloExistenteExato(
     const modeloExistente = peca.modelo.trim();
     if (
       chaveQualidade(peca.qualidade) !== qualidade ||
-      !mesmoModeloImport(modeloExistente, modeloNovo)
+      !modeloContemIdentidadeImport(modeloExistente, modeloNovo)
     ) continue;
-    const chave = `${tokensIdentidadeModeloImport(modeloExistente).join("|")}|${qualidade}`;
+    const chave = `${marcaModeloImport(modeloExistente) ?? ""}|${tokensIdentidadeModeloImport(modeloExistente).join("|")}|${qualidade}`;
     const atual = candidatosUnicos.get(chave);
     const contarMarcas = (modelo: string) =>
       modelo
