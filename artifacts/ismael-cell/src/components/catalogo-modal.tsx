@@ -971,6 +971,7 @@ interface ImportRow {
   correcaoManual?: boolean;
   buscaCorrecao?: string;
   modoNomeCompleto?: boolean;
+  qualidadeOutraAtiva?: boolean;
   vinculoAutoProcessado?: boolean;
   vinculoEditadoPeloUsuario?: boolean;
 }
@@ -984,9 +985,48 @@ interface ImportarNotaDraft {
 
 interface PecaExistenteImport {
   id: number;
-  gemeaId: number;
+  gemeaId?: number;
   modelo: string;
   qualidade: string;
+}
+
+function montarPecasExistentesImport(
+  cliente: Peca[],
+  lojista: Peca[],
+): PecaExistenteImport[] {
+  const porIdentidade = new Map<string, PecaExistenteImport>();
+  const chave = (peca: Pick<Peca, "modelo" | "qualidade">) =>
+    `${peca.modelo.trim().toLocaleLowerCase("pt-BR")}|${chaveQualidade(peca.qualidade)}`;
+
+  for (const peca of cliente) {
+    const identidade = chave(peca);
+    const gemea = lojista.find((candidata) => chave(candidata) === identidade);
+    const atual = porIdentidade.get(identidade);
+    if (!atual || (!atual.gemeaId && gemea)) {
+      porIdentidade.set(identidade, {
+        id: peca.id,
+        gemeaId: gemea?.id,
+        modelo: peca.modelo,
+        qualidade: peca.qualidade,
+      });
+    }
+  }
+
+  for (const peca of lojista) {
+    const identidade = chave(peca);
+    const atual = porIdentidade.get(identidade);
+    if (atual) {
+      if (!atual.gemeaId) porIdentidade.set(identidade, { ...atual, gemeaId: peca.id });
+      continue;
+    }
+    porIdentidade.set(identidade, {
+      id: peca.id,
+      modelo: peca.modelo,
+      qualidade: peca.qualidade,
+    });
+  }
+
+  return [...porIdentidade.values()];
 }
 
 const PALAVRAS_GENERICAS_PECA = new Set([
@@ -1156,7 +1196,7 @@ function sugerirModeloExistenteExato(
       chaveQualidade(peca.qualidade) !== qualidade ||
       !modeloContemIdentidadeImport(modeloExistente, modeloNovo)
     ) continue;
-    const chave = `${marcaModeloImport(modeloExistente) ?? ""}|${tokensIdentidadeModeloImport(modeloExistente).join("|")}|${qualidade}`;
+    const chave = `${marcasModeloImport(modeloExistente).sort().join("&")}|${tokensModeloImport(modeloExistente).join("|")}|${qualidade}`;
     const atual = candidatosUnicos.get(chave);
     const pontuacao = codigosModeloImport(modeloExistente).filter((codigo) => codigosNota.has(codigo)).length;
     const contarMarcas = (modelo: string) =>
@@ -1274,7 +1314,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
         .map(normalizarQualidadeImportada)
         .filter(Boolean)
         .map((qualidade) => [chaveQualidade(qualidade), qualidade] as const),
-    ).values()];
+    ).values(), OUTRA_QUALIDADE_VALUE];
   };
   // Chave modelo+qualidade (normalizada) do que já existe, para avisar quando vai somar no estoque.
   const pecaCorrespondenteEstoque = (r: ImportRow) =>
@@ -1303,6 +1343,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
     if (!busca) return [];
     const encontrados = new Map<string, PecaExistenteImport>();
     for (const peca of pecasExistentes) {
+      if (!peca.gemeaId) continue;
       if (!contemSequenciaDeTokens(peca.modelo, busca)) continue;
       const chave = `${peca.modelo.trim().toLowerCase()}|${peca.qualidade.trim().toLowerCase()}`;
       if (!encontrados.has(chave)) encontrados.set(chave, peca);
@@ -1329,11 +1370,16 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
     const modeloImportado = row.modelo;
     const qualidadeConhecida = qualidadesConhecidasPara(modeloImportado)
       .find((qualidade) => chaveQualidade(qualidade) === chaveQualidade(qualidadeNormalizada));
+    const qualidadeDigitada = row.qualidadeOutraAtiva
+      ? normalizarNomeQualidade(row.qualidade)
+      : "";
     const linhaNormalizada = {
       ...row,
       modelo: modeloImportado,
-      qualidade: qualidadeConhecida ?? "",
-      qualidadeImportadaOriginal: qualidadeConhecida ? undefined : qualidadeInformada || undefined,
+      qualidade: row.qualidadeOutraAtiva ? qualidadeDigitada : qualidadeConhecida ?? "",
+      qualidadeImportadaOriginal: row.qualidadeOutraAtiva || qualidadeConhecida
+        ? undefined
+        : qualidadeInformada || undefined,
     };
     // Compare o nome normalizado e o texto original da nota. Use a peça só
     // quando as duas leituras apontarem para o mesmo cadastro ou uma única peça.
@@ -1461,6 +1507,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
     );
   };
   const selecionarCorrecaoManual = (i: number, peca: PecaExistenteImport) => {
+    if (!peca.gemeaId) return;
     setRows((cur) =>
       cur.map((r, idx) => {
         if (idx !== i) return r;
@@ -1521,7 +1568,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
           )}
           {rows.map((r, i) => {
             const qualidadesAtivas = qualidadesConhecidasPara(r.modelo);
-            const qualidadeSelecionada = qualidadesAtivas.find((q) => chaveQualidade(q) === chaveQualidade(r.qualidade)) ?? "";
+            const qualidadeSelecionada = r.qualidadeOutraAtiva
+              ? OUTRA_QUALIDADE_VALUE
+              : qualidadesAtivas.find((q) => chaveQualidade(q) === chaveQualidade(r.qualidade)) ?? "";
             const sugCliente = sugestaoPrecoCliente(r.valorCusto);
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
             const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
@@ -1535,7 +1584,10 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
               qualidadeCorrecaoCompativel &&
               mesmoModeloImport(pecaCorrecaoSelecionada.modelo, r.modelo),
             );
-            const candidatosOutraQualidade = !r.correcaoPecaId ? candidatosOutraQualidadePara(r) : [];
+            const candidatosOutraQualidade =
+              !r.correcaoPecaId && !pecaEstoqueEncontrada
+                ? candidatosOutraQualidadePara(r)
+                : [];
             return (
               <div key={i} className={`rounded-xl border p-3 space-y-2.5 ${rowValida(r) ? "bg-white" : "bg-amber-50/50 border-amber-300"}`}>
                 <div className="flex items-start gap-2">
@@ -1589,6 +1641,8 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
                             ? "Escolha uma qualidade cadastrada para procurar a peça com segurança."
                             : pecaEstoqueEncontrada && !r.correcaoManual
                               ? "Peça detectada automaticamente. Você pode pesquisar e escolher outra peça."
+                              : candidatosOutraQualidade.length > 0
+                                ? `Encontrei ${candidatosOutraQualidade[0].modelo} no estoque, mas a qualidade é ${candidatosOutraQualidade[0].qualidade}. Confira antes de vincular.`
                               : "Não encontrei uma correspondência segura por modelo e qualidade. Se for a mesma peça, busque o nome antigo aqui."}
                       </p>
                       {focusBuscaIdx === i && candidatosBuscaPara(r).length > 0 && (
@@ -1635,22 +1689,51 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
                   <label className="text-[10px] font-medium text-muted-foreground uppercase mb-1 block">Qualidade</label>
                   <Select
                     value={qualidadeSelecionada}
-                    onValueChange={(v) => updateComPreco(i, { qualidade: v })}
+                    onValueChange={(v) => {
+                      if (v === OUTRA_QUALIDADE_VALUE) {
+                        update(i, {
+                          qualidade: "",
+                          qualidadeOutraAtiva: true,
+                          qualidadeImportadaOriginal: undefined,
+                        });
+                        return;
+                      }
+                      updateComPreco(i, {
+                        qualidade: v,
+                        qualidadeOutraAtiva: false,
+                        qualidadeImportadaOriginal: undefined,
+                      });
+                    }}
                   >
                     <SelectTrigger className="h-9"><SelectValue placeholder="Escolha a qualidade" /></SelectTrigger>
                     <SelectContent className="max-h-48 overflow-y-auto overscroll-contain touch-pan-y [-webkit-overflow-scrolling:touch]">
                       {qualidadesAtivas.map((q) => (
                         <SelectItem key={chaveQualidade(q)} value={q}>
-                          {QUALIDADES.some((padrao) => chaveQualidade(padrao) === chaveQualidade(q))
+                          {q === OUTRA_QUALIDADE_VALUE
+                            ? "OUTRA"
+                            : QUALIDADES.some((padrao) => chaveQualidade(padrao) === chaveQualidade(q))
                             ? q.toLocaleUpperCase("pt-BR")
                             : q}
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  {r.qualidadeImportadaOriginal && !r.qualidade && (
+                  {r.qualidadeOutraAtiva && (
+                    <Input
+                      className="mt-2"
+                      placeholder="Digite o nome da nova qualidade"
+                      value={r.qualidade}
+                      onChange={(e) => updateComPreco(i, {
+                        qualidade: normalizarNomeQualidade(e.target.value),
+                        qualidadeOutraAtiva: true,
+                        qualidadeImportadaOriginal: undefined,
+                      })}
+                      autoComplete="off"
+                    />
+                  )}
+                  {r.qualidadeImportadaOriginal && !r.qualidade && !r.qualidadeOutraAtiva && (
                     <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-900">
-                      A nota informa “{r.qualidadeImportadaOriginal}”, mas essa qualidade não está cadastrada. Escolha uma qualidade existente ou cadastre-a primeiro no estoque.
+                      A nota informa “{r.qualidadeImportadaOriginal}”, mas essa qualidade não está salva. Escolha uma existente ou selecione OUTRA para cadastrar uma nova.
                     </div>
                   )}
                 </div>
@@ -3032,14 +3115,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
                   !pecasClienteCarregando &&
                   !pecasLojistaCarregando
                 }
-                pecasExistentes={pecasClienteAll.flatMap((p) => {
-                  const gemea = pecasLojistaAll.find(
-                    (g) =>
-                      g.modelo.trim().toLowerCase() === p.modelo.trim().toLowerCase() &&
-                      g.qualidade.trim().toLowerCase() === p.qualidade.trim().toLowerCase(),
-                  );
-                  return gemea ? [{ id: p.id, gemeaId: gemea.id, modelo: p.modelo, qualidade: p.qualidade }] : [];
-                })}
+                pecasExistentes={montarPecasExistentesImport(pecasClienteAll, pecasLojistaAll)}
                 qualidadesPersonalizadas={qualidadesPersonalizadas}
                 precosExistentes={precosExistentes}
                 onConfirm={confirmImport}
