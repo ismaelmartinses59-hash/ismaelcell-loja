@@ -42,6 +42,16 @@ function chaveQualidade(qualidade: string): string {
   return normalizarNomeQualidade(qualidade).toLocaleLowerCase("pt-BR");
 }
 
+function normalizarQualidadeImportada(qualidade: string): string {
+  const chaveCompacta = normalizarNomeQualidade(qualidade)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleUpperCase("pt-BR")
+    .replace(/[^A-Z0-9]/g, "");
+  if (["ORISA", "ORICHINA"].includes(chaveCompacta)) return "ORI CHINA";
+  return normalizarNomeQualidade(qualidade);
+}
+
 function modeloEhBateria(modelo: string): boolean {
   return modelo.normalize("NFKC").toLocaleLowerCase("pt-BR").includes("bateria");
 }
@@ -1170,17 +1180,23 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
   };
 
   const comSugestaoCorrecao = useCallback((row: ImportRow): ImportRow => {
-    const modeloExistente = sugerirModeloExistenteExato(row, pecasExistentes);
+    const linhaNormalizada = {
+      ...row,
+      qualidade: normalizarQualidadeImportada(row.qualidade),
+    };
+    const modeloExistente =
+      sugerirModeloExistenteExato(linhaNormalizada, pecasExistentes) ??
+      sugerirCorrecaoImport(linhaNormalizada, pecasExistentes);
     if (modeloExistente) {
       const preco = precosExistentes[
         `${modeloExistente.modelo.toLowerCase().trim()}|${modeloExistente.qualidade}`
       ];
       return {
-        ...row,
+        ...linhaNormalizada,
         modelo: modeloExistente.modelo,
         qualidade: modeloExistente.qualidade,
-        valorCliente: preco?.cliente || row.valorCliente.trim() || "",
-        valorLojista: preco?.lojista || row.valorLojista.trim() || "",
+        valorCliente: preco?.cliente || linhaNormalizada.valorCliente.trim() || "",
+        valorLojista: preco?.lojista || linhaNormalizada.valorLojista.trim() || "",
         correcaoPecaId: undefined,
         correcaoGemeaId: undefined,
         correcaoModeloAntigo: undefined,
@@ -1189,29 +1205,14 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
       };
     }
 
-    const modeloSemMarca = removerMarcasModeloImport(row.modelo);
-    const sugestao = sugerirCorrecaoImport(row, pecasExistentes);
-    if (!sugestao) {
-      return {
-        ...row,
-        modelo: modeloSemMarca || row.modelo,
-        correcaoPecaId: undefined,
-        correcaoGemeaId: undefined,
-        correcaoModeloAntigo: undefined,
-        aplicarCorrecao: undefined,
-        correcaoManual: false,
-      };
-    }
-    const preco = precosExistentes[`${sugestao.modelo.toLowerCase().trim()}|${sugestao.qualidade}`];
+    const modeloSemMarca = removerMarcasModeloImport(linhaNormalizada.modelo);
     return {
-      ...row,
-      modelo: modeloSemMarca || row.modelo,
-      valorCliente: row.valorCliente.trim() || preco?.cliente || "",
-      valorLojista: row.valorLojista.trim() || preco?.lojista || "",
-      correcaoPecaId: sugestao.id,
-      correcaoGemeaId: sugestao.gemeaId,
-      correcaoModeloAntigo: sugestao.modelo,
-      aplicarCorrecao: false,
+      ...linhaNormalizada,
+      modelo: modeloSemMarca || linhaNormalizada.modelo,
+      correcaoPecaId: undefined,
+      correcaoGemeaId: undefined,
+      correcaoModeloAntigo: undefined,
+      aplicarCorrecao: undefined,
       correcaoManual: false,
     };
   }, [pecasExistentes, precosExistentes]);
@@ -1329,7 +1330,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
                   .map((peca) => peca.qualidade.trim()),
                 ...(!r.qualidadeOutra && r.qualidade ? [r.qualidade.trim()] : []),
               ]
-                .map(normalizarNomeQualidade)
+                .map(normalizarQualidadeImportada)
                 .filter(Boolean)
                 .map((q) => [chaveQualidade(q), q] as const),
             ).values()];
@@ -1976,7 +1977,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
     const rows: ImportRow[] = itens.map((it) => {
       const custo = (it.custo ?? "").replace(".", ",");
       const modelo = it.modelo ?? "";
-      const qualidade = it.qualidade ?? "";
+      const qualidade = normalizarQualidadeImportada(it.qualidade ?? "");
       const pe = precosExistentes[`${modelo.toLowerCase().trim()}|${qualidade}`];
       return {
         modelo,
