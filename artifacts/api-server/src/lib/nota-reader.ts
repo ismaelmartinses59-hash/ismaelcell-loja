@@ -1,6 +1,13 @@
 import { getAiWithRetries } from "@workspace/integrations-gemini-ai";
 
 const QUALIDADES_TELA = ["Diamond", "Gold Pro", "NN", "WEFIX", "INCELL", "ORI CHINA"];
+const QUALIDADES_CONHECIDAS: Record<string, string> = {
+  diamonds: "Diamond",
+  "diamonds s/a": "Diamond",
+  skaiky: "Skaiky",
+  foxcomm: "Foxcomm",
+  "original china": "Original China",
+};
 const TEMPO_MAXIMO_LEITURA_MS = 60_000;
 
 export interface NotaImportItem {
@@ -37,7 +44,11 @@ export function normalizarItensNota(parsed: unknown): NotaImportItem[] {
       const quantidade = parseInt(String(value.quantidade ?? "1"), 10);
       const custo = String(value.custo ?? "").replace(",", ".").replace(/[^0-9.]/g, "");
       const qualidadeRaw = String(value.qualidade ?? "").trim();
-      const qualidade = QUALIDADES_TELA.find((itemQuality) => itemQuality.toLowerCase() === qualidadeRaw.toLowerCase()) ?? "";
+      const chaveQualidade = qualidadeRaw.toLocaleLowerCase("pt-BR").replace(/\s+/g, " ");
+      const qualidade =
+        QUALIDADES_TELA.find((itemQuality) => itemQuality.toLowerCase() === chaveQualidade) ??
+        QUALIDADES_CONHECIDAS[chaveQualidade] ??
+        qualidadeRaw;
       return {
         modelo,
         modeloOriginal,
@@ -60,8 +71,8 @@ export async function interpretarNota(
     '- "modeloOriginal": o nome completo da peça como está escrito na nota.',
     '- "modelo": nome curto para o estoque: preserve tipo e todos os modelos compatíveis/separadores; retire qualidade, cor e texto comercial. Preserve qualquer característica que diferencie o produto; não descarte cor/detalhe técnico se não puder separá-lo em outro campo. Copie as marcas e os modelos sem abreviar nem alterar a grafia (REDMI deve continuar REDMI; ex: "TELA REDMI 13C/POCO C65").',
     '- "quantidade": número inteiro de unidades daquele item (se não achar, use 1).',
-    '- "custo": o valor UNITÁRIO em reais que aparece na nota, só números com ponto decimal (ex: "85.00"). Se não houver, use "".',
-    `- "qualidade": SE a nota indicar a qualidade da tela, escolha a mais próxima desta lista: ${QUALIDADES_TELA.join(", ")}. Se não indicar, use "".`,
+    '- "custo": leia a coluna PREÇO UNIT. e devolva esse valor unitário em reais, só números com ponto decimal (ex: "85.00"). Não use o TOTAL da linha como custo. Se o preço unitário estiver visível, não deixe vazio; use "" apenas se estiver ilegível ou ausente.',
+    `- "qualidade": copie a qualidade indicada na nota. Use a forma padrão mais próxima quando for claramente equivalente a uma destas: ${QUALIDADES_TELA.join(", ")}. Se o fornecedor escrever outra qualidade, preserve o texto como aparece (ex.: SKAIKY, TITAN S/A, ORI S/A); use "" somente se não houver qualidade indicada.`,
     'Responda APENAS um JSON no formato: { "itens": [ { "modeloOriginal": "", "modelo": "", "quantidade": 1, "custo": "", "qualidade": "" } ] }.',
     "Não invente itens que não estão na nota. Não adicione comentários.",
   ].join("\n");

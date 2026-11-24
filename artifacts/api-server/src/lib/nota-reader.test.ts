@@ -23,13 +23,27 @@ describe("normalizarItensNota", () => {
     });
   });
 
-  it("usa o modelo como descrição original para respostas antigas", () => {
+  it("usa o modelo como descrição original e preserva qualidade personalizada antiga", () => {
     const [item] = normalizarItensNota({
       itens: [{ modelo: "BATERIA A02", qualidade: "Foxcomm" }],
     });
 
     equal(item?.modeloOriginal, "BATERIA A02");
-    equal(item?.qualidade, "");
+    equal(item?.qualidade, "Foxcomm");
+  });
+
+  it("canonicaliza variações conhecidas e preserva qualidades do fornecedor", () => {
+    const itens = normalizarItensNota({
+      itens: [
+        { modelo: "TELA REDMI", custo: "65,00", qualidade: "DIAMONDS S/A" },
+        { modelo: "TELA SAMSUNG", custo: "42,00", qualidade: "ORI S/A" },
+        { modelo: "BATERIA SAMSUNG", custo: "50,00", qualidade: "SKAIKY" },
+        { modelo: "TELA REALME", custo: "63,00", qualidade: "TITAN S/A" },
+      ],
+    });
+
+    deepEqual(itens.map((item) => item.qualidade), ["Diamond", "ORI S/A", "Skaiky", "TITAN S/A"]);
+    deepEqual(itens.map((item) => item.custo), ["65.00", "42.00", "50.00", "63.00"]);
   });
 
   it("falha claramente se a resposta não tiver uma lista de itens", () => {
