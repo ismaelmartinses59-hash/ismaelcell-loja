@@ -973,7 +973,6 @@ interface ImportRow {
   modoNomeCompleto?: boolean;
   vinculoAutoProcessado?: boolean;
   vinculoEditadoPeloUsuario?: boolean;
-  modeloEditadoPeloUsuario?: boolean;
 }
 
 interface ImportarNotaDraft {
@@ -1020,12 +1019,25 @@ function tokensIdentidadeModeloImport(modelo: string): string[] {
 }
 
 function marcaModeloImport(modelo: string): string | null {
-  return modelo
+  return marcasModeloImport(modelo)[0] ?? null;
+}
+
+function marcasModeloImport(modelo: string): string[] {
+  const aliases: Record<string, string> = {
+    SAM: "SAMSUNG",
+    SAN: "SAMSUNG",
+    MOTO: "MOTOROLA",
+    REDM: "REDMI",
+    REALM: "REALME",
+  };
+  const marcas = modelo
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
-    .find((token) => MARCAS_MODELO_IMPORT.has(token)) ?? null;
+    .filter((token) => MARCAS_MODELO_IMPORT.has(token))
+    .map((token) => aliases[token] ?? token);
+  return [...new Set(marcas)];
 }
 
 function codigosModeloImport(modelo: string): string[] {
@@ -1046,11 +1058,9 @@ function categoriaProdutoImport(modelo: string): string | null {
 }
 
 function marcasCompativeisImport(modeloA: string, modeloB: string): boolean {
-  const marcaA = marcaModeloImport(modeloA);
-  const marcaB = marcaModeloImport(modeloB);
-  return !marcaA || !marcaB || marcaA === marcaB ||
-    (marcaA === "REALM" && marcaB === "REALME") ||
-    (marcaA === "REALME" && marcaB === "REALM");
+  const marcasA = marcasModeloImport(modeloA);
+  const marcasB = marcasModeloImport(modeloB);
+  return !marcasA.length || !marcasB.length || marcasA.some((marca) => marcasB.includes(marca));
 }
 
 function modeloContemIdentidadeImport(modeloA: string, modeloB: string): boolean {
@@ -1316,9 +1326,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
   const comSugestaoCorrecao = useCallback((row: ImportRow): ImportRow => {
     const qualidadeInformada = row.qualidadeImportadaOriginal?.trim() || row.qualidade.trim();
     const qualidadeNormalizada = normalizarQualidadeImportada(qualidadeInformada);
-    const modeloImportado = row.modeloEditadoPeloUsuario
-      ? row.modelo
-      : row.modeloOriginal?.trim() || row.modelo;
+    const modeloImportado = row.modelo;
     const qualidadeConhecida = qualidadesConhecidasPara(modeloImportado)
       .find((qualidade) => chaveQualidade(qualidade) === chaveQualidade(qualidadeNormalizada));
     const linhaNormalizada = {
@@ -1327,9 +1335,22 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
       qualidade: qualidadeConhecida ?? "",
       qualidadeImportadaOriginal: qualidadeConhecida ? undefined : qualidadeInformada || undefined,
     };
-    const modeloExistente =
-      sugerirModeloExistenteExato(linhaNormalizada, pecasExistentes) ??
-      sugerirCorrecaoImport(linhaNormalizada, pecasExistentes);
+    // Compare o nome normalizado e o texto original da nota. Use a peça só
+    // quando as duas leituras apontarem para o mesmo cadastro ou uma única peça.
+    const modelosConsulta = [...new Set([linhaNormalizada.modelo, row.modeloOriginal]
+      .map((modelo) => modelo?.trim() ?? "")
+      .filter(Boolean))];
+    const candidatosCorrespondentes = new Map<number, PecaExistenteImport>();
+    for (const modelo of modelosConsulta) {
+      const consulta = { ...linhaNormalizada, modelo };
+      const candidato =
+        sugerirModeloExistenteExato(consulta, pecasExistentes) ??
+        sugerirCorrecaoImport(consulta, pecasExistentes);
+      if (candidato) candidatosCorrespondentes.set(candidato.id, candidato);
+    }
+    const modeloExistente = candidatosCorrespondentes.size === 1
+      ? [...candidatosCorrespondentes.values()][0]
+      : null;
     if (modeloExistente) {
       const preco = precosExistentes[
         `${modeloExistente.modelo.toLowerCase().trim()}|${modeloExistente.qualidade}`
@@ -1416,7 +1437,6 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
           ...((patch.modelo !== undefined || patch.qualidade !== undefined)
             ? { vinculoEditadoPeloUsuario: true }
             : {}),
-          ...(patch.modelo !== undefined ? { modeloEditadoPeloUsuario: true } : {}),
           ...(patch.qualidade !== undefined && patch.qualidade !== r.qualidade
             ? { qualidadeImportadaOriginal: undefined }
             : {}),
