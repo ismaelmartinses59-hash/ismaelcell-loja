@@ -5,6 +5,7 @@ const TEMPO_MAXIMO_LEITURA_MS = 25_000;
 
 export interface NotaImportItem {
   modelo: string;
+  modeloOriginal: string;
   quantidade: number;
   custo: string;
   qualidade: string;
@@ -22,6 +23,32 @@ export class NotaReaderError extends Error {
   }
 }
 
+export function normalizarItensNota(parsed: unknown): NotaImportItem[] {
+  const itensRaw = Array.isArray(parsed) ? parsed : (parsed as { itens?: unknown } | null)?.itens;
+  if (!Array.isArray(itensRaw)) {
+    throw new NotaReaderError("Não encontrei itens na nota.", 502);
+  }
+  return itensRaw
+    .map((item): NotaImportItem | null => {
+      const value = (item ?? {}) as Record<string, unknown>;
+      const modelo = String(value.modelo ?? "").trim();
+      if (!modelo) return null;
+      const modeloOriginal = String(value.modeloOriginal ?? modelo).trim() || modelo;
+      const quantidade = parseInt(String(value.quantidade ?? "1"), 10);
+      const custo = String(value.custo ?? "").replace(",", ".").replace(/[^0-9.]/g, "");
+      const qualidadeRaw = String(value.qualidade ?? "").trim();
+      const qualidade = QUALIDADES_TELA.find((itemQuality) => itemQuality.toLowerCase() === qualidadeRaw.toLowerCase()) ?? "";
+      return {
+        modelo,
+        modeloOriginal,
+        quantidade: Number.isFinite(quantidade) && quantidade > 0 ? quantidade : 1,
+        custo,
+        qualidade,
+      };
+    })
+    .filter((item): item is NotaImportItem => item !== null);
+}
+
 export async function interpretarNota(
   fileBase64: string,
   mimeType: string,
@@ -30,11 +57,12 @@ export async function interpretarNota(
   const prompt = [
     "Você recebe a NOTA/PEDIDO de um fornecedor de peças de celular (telas/displays, baterias etc).",
     "Extraia CADA item da nota. Para cada item devolva:",
-    '- "modelo": o nome COMPLETO da peça como está escrito. Preserve todos os aparelhos compatíveis e os separadores (ex: "TELA REALME C63/C61/NARZO N63/NOTE 60/NOTE 60X"). Não reduza uma lista de compatibilidade a um único modelo.',
+    '- "modeloOriginal": o nome completo da peça como está escrito na nota.',
+    '- "modelo": nome curto para o estoque: preserve tipo e todos os modelos compatíveis/separadores; retire qualidade, cor e texto comercial. Preserve qualquer característica que diferencie o produto; não descarte cor/detalhe técnico se não puder separá-lo em outro campo. Preserve tokens de modelo como REDMI/POCO quando fizerem parte da identificação (ex: "TELA REDMI 13C/POCO C65").',
     '- "quantidade": número inteiro de unidades daquele item (se não achar, use 1).',
     '- "custo": o valor UNITÁRIO em reais que aparece na nota, só números com ponto decimal (ex: "85.00"). Se não houver, use "".',
     `- "qualidade": SE a nota indicar a qualidade da tela, escolha a mais próxima desta lista: ${QUALIDADES_TELA.join(", ")}. Se não indicar, use "".`,
-    'Responda APENAS um JSON no formato: { "itens": [ { "modelo": "", "quantidade": 1, "custo": "", "qualidade": "" } ] }.',
+    'Responda APENAS um JSON no formato: { "itens": [ { "modeloOriginal": "", "modelo": "", "quantidade": 1, "custo": "", "qualidade": "" } ] }.',
     "Não invente itens que não estão na nota. Não adicione comentários.",
   ].join("\n");
 
@@ -104,26 +132,5 @@ export async function interpretarNota(
     throw new NotaReaderError("Não consegui ler a nota. Tente uma foto mais nítida.", 502);
   }
 
-  const itensRaw = Array.isArray(parsed) ? parsed : (parsed as { itens?: unknown } | null)?.itens;
-  if (!Array.isArray(itensRaw)) {
-    throw new NotaReaderError("Não encontrei itens na nota.", 502);
-  }
-
-  return itensRaw
-    .map((item): NotaImportItem | null => {
-      const value = (item ?? {}) as Record<string, unknown>;
-      const modelo = String(value.modelo ?? "").trim();
-      if (!modelo) return null;
-      const quantidade = parseInt(String(value.quantidade ?? "1"), 10);
-      const custo = String(value.custo ?? "").replace(",", ".").replace(/[^0-9.]/g, "");
-      const qualidadeRaw = String(value.qualidade ?? "").trim();
-      const qualidade = QUALIDADES_TELA.find((itemQuality) => itemQuality.toLowerCase() === qualidadeRaw.toLowerCase()) ?? "";
-      return {
-        modelo,
-        quantidade: Number.isFinite(quantidade) && quantidade > 0 ? quantidade : 1,
-        custo,
-        qualidade,
-      };
-    })
-    .filter((item): item is NotaImportItem => item !== null);
+  return normalizarItensNota(parsed);
 }

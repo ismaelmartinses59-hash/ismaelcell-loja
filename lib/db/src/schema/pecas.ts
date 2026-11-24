@@ -11,5 +11,14 @@ export const pecasTable = pgTable("pecas", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const pecasAliasesTable = pgTable("pecas_aliases", {
+  id: serial("id").primaryKey(),
+  aliasModelo: text("alias_modelo").notNull(),
+  qualidade: text("qualidade").notNull(),
+  pecaId: integer("peca_id").notNull(),
+  gemeaId: integer("gemea_id").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export type Peca = typeof pecasTable.$inferSelect;
 export type InsertPeca = typeof pecasTable.$inferInsert;

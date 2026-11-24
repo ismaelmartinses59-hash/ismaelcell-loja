@@ -894,6 +894,7 @@ function PreviewLojistaDialog({ open, data, onConfirm, onCancel, onVoltar, loadi
 
 interface ImportRow {
   modelo: string;
+  modeloOriginal?: string;
   qualidade: string;
   qualidadeOutra?: boolean;
   quantidade: string;
@@ -1884,7 +1885,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
     setImportFornecedor("");
   };
 
-  const prepararLinhasImportadas = (itens: Array<{ modelo: string; quantidade: number; custo: string; qualidade: string }>) => {
+  const prepararLinhasImportadas = (itens: Array<{ modelo: string; modeloOriginal?: string; quantidade: number; custo: string; qualidade: string }>) => {
     const rows: ImportRow[] = itens.map((it) => {
       const custo = (it.custo ?? "").replace(".", ",");
       const modelo = it.modelo ?? "";
@@ -1892,6 +1893,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
       const pe = precosExistentes[`${modelo.toLowerCase().trim()}|${qualidade}`];
       return {
         modelo,
+        modeloOriginal: it.modeloOriginal || modelo,
         qualidade,
         quantidade: String(it.quantidade ?? 1),
         valorCusto: custo,
@@ -1920,7 +1922,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
         method: "POST",
         body: JSON.stringify({ fileBase64: base64, mimeType: file.type }),
       });
-      const itens = (resp?.itens ?? []) as Array<{ modelo: string; quantidade: number; custo: string; qualidade: string }>;
+      const itens = (resp?.itens ?? []) as Array<{ modelo: string; modeloOriginal?: string; quantidade: number; custo: string; qualidade: string }>;
       if (itens.length === 0) {
         toast({ title: "Nenhuma peça encontrada", description: "Tente uma foto mais nítida da nota.", variant: "destructive" });
         return;
@@ -2006,6 +2008,7 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
             valorCusto: r.valorCusto.trim(),
             valorCliente: r.valorCliente.trim(),
             valorLojista: r.valorLojista.trim(),
+            aliasModelo: r.modeloOriginal || r.modelo,
             correcaoPecaId: r.aplicarCorrecao ? r.correcaoPecaId : undefined,
             correcaoGemeaId: r.aplicarCorrecao ? r.correcaoGemeaId : undefined,
           })),

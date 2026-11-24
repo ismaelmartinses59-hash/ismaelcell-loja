@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { and, eq, ilike, or, sql } from "drizzle-orm";
-import { db, pecasTable, vendasTable, contasReceberItensTable, contasReceberPagamentosTable, caixaTable, devolucoesTable } from "@workspace/db";
+import { db, pecasTable, pecasAliasesTable, vendasTable, contasReceberItensTable, contasReceberPagamentosTable, caixaTable, devolucoesTable } from "@workspace/db";
 import { findOrCreateConta } from "./contas-receber";
 import { LABELS, normalizeForma, taxaFor, type FormaPagamento } from "../lib/formas-pagamento.js";
 import { interpretarNota, NotaReaderError } from "../lib/nota-reader.js";
@@ -8,6 +8,10 @@ import { ai } from "@workspace/integrations-gemini-ai";
 import { chaveEstoqueCompartilhado, mesmaPecaCompartilhada } from "./estoque-compartilhado.js";
 
 const router: IRouter = Router();
+
+function normalizarAliasModelo(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, "");
+}
 
 // Cliente e Lojista têm preços separados, mas representam o mesmo estoque físico.
 async function sincronizarQuantidadesCompartilhadas(): Promise<void> {
@@ -87,7 +91,32 @@ router.post("/pecas/importar-nota", async (req, res): Promise<void> => {
     const itens = await interpretarNota(fileBase64, mt, (raw) => {
       req.log.error({ raw }, "importar-nota: JSON inválido da IA");
     });
-    res.json({ itens });
+    const aliases = await db.select().from(pecasAliasesTable);
+    const resolvidos = await Promise.all(itens.map(async (item) => {
+      const matches = aliases.filter((candidate) =>
+        normalizarAliasModelo(candidate.aliasModelo) === normalizarAliasModelo(item.modeloOriginal) &&
+        candidate.qualidade.trim().toLowerCase() === item.qualidade.trim().toLowerCase(),
+      );
+      const destinos = new Set(matches.map((candidate) => `${candidate.pecaId}:${candidate.gemeaId}`));
+      if (destinos.size !== 1) return item;
+      const alias = matches[0];
+      if (!alias) return item;
+      const [peca, gemea] = await Promise.all([
+        db.select().from(pecasTable).where(eq(pecasTable.id, alias.pecaId)).limit(1),
+        db.select().from(pecasTable).where(eq(pecasTable.id, alias.gemeaId)).limit(1),
+      ]);
+      if (
+        !peca[0] ||
+        !gemea[0] ||
+        peca[0].setor !== "cliente" ||
+        gemea[0].setor !== "lojista" ||
+        peca[0].modelo.trim().toLowerCase() !== gemea[0].modelo.trim().toLowerCase() ||
+        peca[0].qualidade.trim().toLowerCase() !== item.qualidade.trim().toLowerCase() ||
+        gemea[0].qualidade.trim().toLowerCase() !== item.qualidade.trim().toLowerCase()
+      ) return item;
+      return { ...item, modelo: peca[0].modelo };
+    }));
+    res.json({ itens: resolvidos });
   } catch (err) {
     if (err instanceof NotaReaderError) {
       if (err.statusCode === 503) req.log.error({ err }, "importar-nota indisponível");
@@ -188,6 +217,7 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
     const o = (it ?? {}) as Record<string, unknown>;
     return {
       modelo: String(o.modelo ?? "").trim(),
+      aliasModelo: String(o.aliasModelo ?? "").trim(),
       qualidade: String(o.qualidade ?? "").trim(),
       valorCusto: String(o.valorCusto ?? "").trim(),
       valorCliente: String(o.valorCliente ?? "").trim(),
@@ -344,6 +374,35 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
         // lojista acompanha para manter os dois em sincronia.
         const r = await upsertSetor("cliente", n.valorCliente, n);
         await upsertSetor("lojista", n.valorLojista, n);
+        if (n.aliasModelo) {
+          const [pecaCliente] = await tx.select().from(pecasTable).where(and(
+            sql`lower(trim(${pecasTable.modelo})) = ${n.modelo.toLowerCase()}`,
+            sql`lower(trim(${pecasTable.qualidade})) = ${n.qualidade.toLowerCase().trim()}`,
+            eq(pecasTable.setor, "cliente"),
+          )).orderBy(pecasTable.id).limit(1);
+          const [pecaLojista] = await tx.select().from(pecasTable).where(and(
+            sql`lower(trim(${pecasTable.modelo})) = ${n.modelo.toLowerCase()}`,
+            sql`lower(trim(${pecasTable.qualidade})) = ${n.qualidade.toLowerCase().trim()}`,
+            eq(pecasTable.setor, "lojista"),
+          )).orderBy(pecasTable.id).limit(1);
+          if (pecaCliente && pecaLojista) {
+            const aliasesAtuais = await tx.select().from(pecasAliasesTable)
+              .where(sql`lower(trim(${pecasAliasesTable.qualidade})) = ${n.qualidade.toLowerCase().trim()}`);
+            const chaveAlias = normalizarAliasModelo(n.aliasModelo);
+            const jaExiste = aliasesAtuais.some((alias) =>
+              normalizarAliasModelo(alias.aliasModelo) === chaveAlias &&
+              alias.pecaId === pecaCliente.id && alias.gemeaId === pecaLojista.id,
+            );
+            if (!jaExiste) {
+              await tx.insert(pecasAliasesTable).values({
+                aliasModelo: n.aliasModelo,
+                qualidade: n.qualidade,
+                pecaId: pecaCliente.id,
+                gemeaId: pecaLojista.id,
+              });
+            }
+          }
+        }
         if (r === "somado") somados++; else criados++;
       }
       // Investimento da nota vira UMA saída no caixa (soma do custo × qtd de
