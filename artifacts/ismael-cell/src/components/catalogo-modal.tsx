@@ -1189,6 +1189,7 @@ function sugerirModeloExistenteExato(
   if (!modeloNovo || !qualidade) return null;
 
   const codigosNota = new Set(codigosModeloImport(modeloNovo));
+  const tokensNota = tokensModeloImport(modeloNovo);
   const candidatosUnicos = new Map<string, { peca: PecaExistenteImport; pontuacao: number }>();
   for (const peca of existentes) {
     const modeloExistente = peca.modelo.trim();
@@ -1198,7 +1199,19 @@ function sugerirModeloExistenteExato(
     ) continue;
     const chave = `${marcasModeloImport(modeloExistente).sort().join("&")}|${tokensModeloImport(modeloExistente).join("|")}|${qualidade}`;
     const atual = candidatosUnicos.get(chave);
-    const pontuacao = codigosModeloImport(modeloExistente).filter((codigo) => codigosNota.has(codigo)).length;
+    const tokensPeca = tokensModeloImport(modeloExistente);
+    const tokensCompartilhados = tokensPeca.filter((token) => tokensNota.includes(token)).length;
+    const tokensExtras = tokensPeca.length - tokensCompartilhados;
+    const fraseExata = tokensNota.some((_, inicio) =>
+      tokensPeca.every((token, deslocamento) => tokensNota[inicio + deslocamento] === token),
+    );
+    const codigosCompartilhados = codigosModeloImport(modeloExistente)
+      .filter((codigo) => codigosNota.has(codigo)).length;
+    const pontuacao =
+      codigosCompartilhados * 100 +
+      tokensCompartilhados * 5 +
+      (fraseExata ? 30 : 0) -
+      tokensExtras * 5;
     const contarMarcas = (modelo: string) =>
       modelo
         .normalize("NFD")
@@ -1381,22 +1394,21 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
         ? undefined
         : qualidadeInformada || undefined,
     };
-    // Compare o nome normalizado e o texto original da nota. Use a peça só
-    // quando as duas leituras apontarem para o mesmo cadastro ou uma única peça.
-    const modelosConsulta = [...new Set([linhaNormalizada.modelo, row.modeloOriginal]
-      .map((modelo) => modelo?.trim() ?? "")
-      .filter(Boolean))];
-    const candidatosCorrespondentes = new Map<number, PecaExistenteImport>();
-    for (const modelo of modelosConsulta) {
+    // Primeiro confie no modelo revisado que aparece na linha. Use a leitura
+    // original da nota somente como alternativa, para ela não criar um empate
+    // contra uma correspondência exata da mesma qualidade.
+    const buscarCorrespondencia = (modelo: string) => {
       const consulta = { ...linhaNormalizada, modelo };
-      const candidato =
+      return (
         sugerirModeloExistenteExato(consulta, pecasExistentes) ??
-        sugerirCorrecaoImport(consulta, pecasExistentes);
-      if (candidato) candidatosCorrespondentes.set(candidato.id, candidato);
-    }
-    const modeloExistente = candidatosCorrespondentes.size === 1
-      ? [...candidatosCorrespondentes.values()][0]
-      : null;
+        sugerirCorrecaoImport(consulta, pecasExistentes)
+      );
+    };
+    const modeloExistente =
+      buscarCorrespondencia(linhaNormalizada.modelo) ??
+      (row.modeloOriginal && row.modeloOriginal.trim() !== linhaNormalizada.modelo.trim()
+        ? buscarCorrespondencia(row.modeloOriginal.trim())
+        : null);
     if (modeloExistente) {
       const preco = precosExistentes[
         `${modeloExistente.modelo.toLowerCase().trim()}|${modeloExistente.qualidade}`
@@ -1575,6 +1587,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
             const sugLojista = sugestaoPrecoLojista(r.valorCusto);
             const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
             const pecaEstoqueEncontrada = pecaCorrespondenteEstoque(r);
+            const correspondenciaMesmaQualidade = pecasExistentes.find(
+              (peca) =>
+                chaveQualidade(peca.qualidade) === chaveQualidade(r.qualidade) &&
+                modeloContemIdentidadeImport(peca.modelo, r.modelo),
+            );
             const qualidadeCorrecaoCompativel = Boolean(
               pecaCorrecaoSelecionada &&
               chaveQualidade(pecaCorrecaoSelecionada.qualidade) === chaveQualidade(r.qualidade),
@@ -1585,7 +1602,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
               mesmoModeloImport(pecaCorrecaoSelecionada.modelo, r.modelo),
             );
             const candidatosOutraQualidade =
-              !r.correcaoPecaId && !pecaEstoqueEncontrada
+              !r.correcaoPecaId && !pecaEstoqueEncontrada && !correspondenciaMesmaQualidade
                 ? candidatosOutraQualidadePara(r)
                 : [];
             return (
@@ -1641,6 +1658,8 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
                             ? "Escolha uma qualidade cadastrada para procurar a peça com segurança."
                             : pecaEstoqueEncontrada && !r.correcaoManual
                               ? "Peça detectada automaticamente. Você pode pesquisar e escolher outra peça."
+                              : correspondenciaMesmaQualidade
+                                ? `Encontrei ${correspondenciaMesmaQualidade.modelo} com a qualidade ${r.qualidade}. Confira a correspondência e os preços.`
                               : candidatosOutraQualidade.length > 0
                                 ? `Encontrei ${candidatosOutraQualidade[0].modelo} no estoque, mas a qualidade é ${candidatosOutraQualidade[0].qualidade}. Confira antes de vincular.`
                               : "Não encontrei uma correspondência segura por modelo e qualidade. Se for a mesma peça, busque o nome antigo aqui."}
