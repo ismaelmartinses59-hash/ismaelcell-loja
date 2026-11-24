@@ -944,21 +944,13 @@ const MARCAS_MODELO_IMPORT = new Set([
   "SONY", "NOKIA", "ASUS", "TECNO", "INFINIX", "TCL", "ALCATEL", "ZTE", "LENOVO",
 ]);
 
-function marcaCanonicaImport(token: string): string {
-  return token === "SAM" || token === "SAN" ? "SAMSUNG" : token;
-}
-
-function tokensIdentidadeModeloImport(modelo: string): { tokens: string[]; marca?: string } {
-  const tokens = modelo
+function tokensIdentidadeModeloImport(modelo: string): string[] {
+  return modelo
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
-    .filter(Boolean);
-  const indiceMarca = tokens.findIndex((token) => MARCAS_MODELO_IMPORT.has(token));
-  const marca = indiceMarca >= 0 ? marcaCanonicaImport(tokens[indiceMarca]) : undefined;
-  if (indiceMarca >= 0) tokens.splice(indiceMarca, 1);
-  return { tokens, marca };
+    .filter((token) => Boolean(token) && !MARCAS_MODELO_IMPORT.has(token));
 }
 
 function correcaoMarcaPrefixoSegura(modeloAntigo: string, modeloNovo: string): boolean {
@@ -1000,10 +992,11 @@ function expansaoModeloImportSegura(modeloAntigo: string, modeloNovo: string): b
 function mesmoModeloImport(modeloA: string | undefined, modeloB: string): boolean {
   const identidadeA = tokensIdentidadeModeloImport(modeloA ?? "");
   const identidadeB = tokensIdentidadeModeloImport(modeloB);
+  const chaveA = identidadeA.join("|");
+  const chaveB = identidadeB.join("|");
   return (
-    (!identidadeA.marca || !identidadeB.marca || identidadeA.marca === identidadeB.marca) &&
-    identidadeA.tokens.join("|").replace(/\|/g, "").length >= 3 &&
-    identidadeA.tokens.join("|") === identidadeB.tokens.join("|")
+    chaveA.replace(/\|/g, "").length >= 3 &&
+    chaveA === chaveB
   );
 }
 
@@ -1023,19 +1016,33 @@ function sugerirModeloExistenteExato(
   existentes: PecaExistenteImport[],
 ): PecaExistenteImport | null {
   const modeloNovo = row.modelo.trim();
-  const qualidade = row.qualidade.trim().toLocaleLowerCase("pt-BR");
+  const qualidade = chaveQualidade(row.qualidade);
   if (!modeloNovo || !qualidade) return null;
 
   const candidatosUnicos = new Map<string, PecaExistenteImport>();
   for (const peca of existentes) {
     const modeloExistente = peca.modelo.trim();
     if (
-      peca.qualidade.trim().toLocaleLowerCase("pt-BR") !== qualidade ||
-      modeloExistente.toLocaleLowerCase("pt-BR") === modeloNovo.toLocaleLowerCase("pt-BR") ||
+      chaveQualidade(peca.qualidade) !== qualidade ||
       !mesmoModeloImport(modeloExistente, modeloNovo)
     ) continue;
-    const chave = `${modeloExistente.toLocaleLowerCase("pt-BR")}|${qualidade}`;
-    if (!candidatosUnicos.has(chave)) candidatosUnicos.set(chave, peca);
+    const chave = `${tokensIdentidadeModeloImport(modeloExistente).join("|")}|${qualidade}`;
+    const atual = candidatosUnicos.get(chave);
+    const contarMarcas = (modelo: string) =>
+      modelo
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toUpperCase()
+        .split(/[^A-Z0-9]+/)
+        .filter((token) => MARCAS_MODELO_IMPORT.has(token)).length;
+    if (
+      !atual ||
+      contarMarcas(modeloExistente) < contarMarcas(atual.modelo) ||
+      (contarMarcas(modeloExistente) === contarMarcas(atual.modelo) &&
+        modeloExistente.length < atual.modelo.length)
+    ) {
+      candidatosUnicos.set(chave, peca);
+    }
   }
 
   const candidatos = [...candidatosUnicos.values()];
@@ -1150,7 +1157,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
     const encontrados = new Map<string, PecaExistenteImport>();
     for (const peca of pecasExistentes) {
       if (
-        peca.qualidade.trim().toLowerCase() === row.qualidade.trim().toLowerCase() ||
+        chaveQualidade(peca.qualidade) === chaveQualidade(row.qualidade) ||
         !expansaoModeloImportSegura(peca.modelo, row.modelo)
       ) continue;
       const chave = `${peca.modelo.trim().toLowerCase()}|${peca.qualidade.trim().toLowerCase()}`;
@@ -1168,8 +1175,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
       return {
         ...row,
         modelo: modeloExistente.modelo,
-        valorCliente: row.valorCliente.trim() || preco?.cliente || "",
-        valorLojista: row.valorLojista.trim() || preco?.lojista || "",
+        qualidade: modeloExistente.qualidade,
+        valorCliente: preco?.cliente || row.valorCliente.trim() || "",
+        valorLojista: preco?.lojista || row.valorLojista.trim() || "",
         correcaoPecaId: undefined,
         correcaoGemeaId: undefined,
         correcaoModeloAntigo: undefined,
@@ -1237,7 +1245,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
         if (
           next.aplicarCorrecao &&
           pecaSelecionada &&
-          pecaSelecionada.qualidade.trim().toLowerCase() !== next.qualidade.trim().toLowerCase()
+          chaveQualidade(pecaSelecionada.qualidade) !== chaveQualidade(next.qualidade)
         ) {
           next.aplicarCorrecao = false;
         }
@@ -1253,8 +1261,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
       cur.map((r, idx) => {
         if (idx !== i) return r;
         const preco = precosExistentes[`${peca.modelo.toLowerCase().trim()}|${peca.qualidade}`];
-        const mesmaPeca = peca.qualidade.trim().toLowerCase() === r.qualidade.trim().toLowerCase()
-          && mesmoModeloImport(peca.modelo, r.modelo);
+        const mesmaQualidade = chaveQualidade(peca.qualidade) === chaveQualidade(r.qualidade);
+        const mesmaPeca = mesmaQualidade && mesmoModeloImport(peca.modelo, r.modelo);
+        const precoAplicavel = mesmaQualidade ? preco : undefined;
         return {
           ...r,
           modelo: mesmaPeca ? peca.modelo : r.modelo,
@@ -1264,8 +1273,8 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
           aplicarCorrecao: false,
           correcaoManual: true,
           buscaCorrecao: peca.modelo,
-          valorCliente: r.valorCliente.trim() || preco?.cliente || "",
-          valorLojista: r.valorLojista.trim() || preco?.lojista || "",
+          valorCliente: precoAplicavel?.cliente || r.valorCliente.trim() || "",
+          valorLojista: precoAplicavel?.lojista || r.valorLojista.trim() || "",
         };
       }),
     );
@@ -1327,7 +1336,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
             const pecaCorrecaoSelecionada = pecasExistentes.find((peca) => peca.id === r.correcaoPecaId);
             const qualidadeCorrecaoCompativel = Boolean(
               pecaCorrecaoSelecionada &&
-              pecaCorrecaoSelecionada.qualidade.trim().toLowerCase() === r.qualidade.trim().toLowerCase(),
+              chaveQualidade(pecaCorrecaoSelecionada.qualidade) === chaveQualidade(r.qualidade),
             );
             const mesmaPecaSelecionada = Boolean(
               pecaCorrecaoSelecionada &&
