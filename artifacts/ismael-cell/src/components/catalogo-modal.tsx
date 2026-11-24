@@ -939,13 +939,13 @@ function tokensModeloImport(modelo: string): string[] {
 }
 
 const MARCAS_MODELO_IMPORT = new Set([
-  "SAM", "SAMSUNG", "APPLE", "MOTOROLA", "MOTO", "XIAOMI", "REDMI", "POCO", "REALME",
+  "SAM", "SAN", "SAMSUNG", "APPLE", "MOTOROLA", "MOTO", "XIAOMI", "REDMI", "POCO", "REALME",
   "OPPO", "VIVO", "HUAWEI", "HONOR", "GOOGLE", "PIXEL", "ONEPLUS", "LG",
   "SONY", "NOKIA", "ASUS", "TECNO", "INFINIX", "TCL", "ALCATEL", "ZTE", "LENOVO",
 ]);
 
 function marcaCanonicaImport(token: string): string {
-  return token === "SAM" ? "SAMSUNG" : token;
+  return token === "SAM" || token === "SAN" ? "SAMSUNG" : token;
 }
 
 function tokensIdentidadeModeloImport(modelo: string): { tokens: string[]; marca?: string } {
@@ -1005,6 +1005,17 @@ function mesmoModeloImport(modeloA: string | undefined, modeloB: string): boolea
     identidadeA.tokens.join("|").replace(/\|/g, "").length >= 3 &&
     identidadeA.tokens.join("|") === identidadeB.tokens.join("|")
   );
+}
+
+function removerMarcasModeloImport(modelo: string): string {
+  return modelo
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .split(/([^A-Z0-9]+)/i)
+    .filter((parte) => !MARCAS_MODELO_IMPORT.has(parte.toUpperCase()))
+    .join("")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function sugerirModeloExistenteExato(
@@ -1167,10 +1178,12 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
       };
     }
 
+    const modeloSemMarca = removerMarcasModeloImport(row.modelo);
     const sugestao = sugerirCorrecaoImport(row, pecasExistentes);
     if (!sugestao) {
       return {
         ...row,
+        modelo: modeloSemMarca || row.modelo,
         correcaoPecaId: undefined,
         correcaoGemeaId: undefined,
         correcaoModeloAntigo: undefined,
@@ -1181,6 +1194,7 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, qualidadesPe
     const preco = precosExistentes[`${sugestao.modelo.toLowerCase().trim()}|${sugestao.qualidade}`];
     return {
       ...row,
+      modelo: modeloSemMarca || row.modelo,
       valorCliente: row.valorCliente.trim() || preco?.cliente || "",
       valorLojista: row.valorLojista.trim() || preco?.lojista || "",
       correcaoPecaId: sugestao.id,
