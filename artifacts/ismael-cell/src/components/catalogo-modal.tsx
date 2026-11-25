@@ -981,6 +981,9 @@ interface ImportRow {
   buscaCorrecao?: string;
   modoNomeCompleto?: boolean;
   qualidadeOutraAtiva?: boolean;
+  expansaoCompatibilidadePecaId?: number;
+  expansaoCompatibilidadeGemeaId?: number;
+  modeloCompatibilidadeBase?: string;
   vinculoAutoProcessado?: boolean;
   vinculoEditadoPeloUsuario?: boolean;
 }
@@ -1050,6 +1053,28 @@ function tokensModeloImport(modelo: string): string[] {
     .toUpperCase()
     .split(/[^A-Z0-9]+/)
     .filter((parte) => parte && !PALAVRAS_GENERICAS_PECA.has(parte));
+}
+
+function acrescentarModelosCompativeis(modeloExistente: string, modeloImportado: string): string {
+  const normalizarParte = (parte: string) => parte
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleUpperCase("pt-BR")
+    .replace(/[^A-Z0-9]/g, "");
+  const partesExistentes = modeloExistente.split("/").map((parte) => parte.trim()).filter(Boolean);
+  const partesIncluidas = new Set(partesExistentes.map(normalizarParte));
+  const novasPartes = modeloImportado
+    .split("/")
+    .map((parte) => parte.trim())
+    .filter((parte) => {
+      const chave = normalizarParte(parte);
+      if (!chave || partesIncluidas.has(chave)) return false;
+      partesIncluidas.add(chave);
+      return true;
+    });
+  return novasPartes.length
+    ? `${modeloExistente.trim()}/${novasPartes.join("/")}`
+    : modeloExistente;
 }
 
 const MARCAS_MODELO_IMPORT = new Set([
@@ -1345,7 +1370,11 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
   const pecaCorrespondenteEstoque = (r: ImportRow) =>
     pecasExistentes.find(
       (peca) =>
-        peca.modelo.trim().toLocaleLowerCase("pt-BR") === r.modelo.trim().toLocaleLowerCase("pt-BR") &&
+        (
+          peca.modelo.trim().toLocaleLowerCase("pt-BR") === r.modelo.trim().toLocaleLowerCase("pt-BR") ||
+          peca.id === r.expansaoCompatibilidadePecaId ||
+          peca.id === r.expansaoCompatibilidadeGemeaId
+        ) &&
         chaveQualidade(peca.qualidade) === chaveQualidade(r.qualidade),
     );
   const jaCadastrada = (r: ImportRow) =>
@@ -1422,13 +1451,21 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
         ? buscarCorrespondencia(row.modeloOriginal.trim())
         : null);
     if (modeloExistente) {
+      const modeloComCompatibilidade = acrescentarModelosCompativeis(
+        modeloExistente.modelo,
+        linhaNormalizada.modelo,
+      );
+      const expandiuCompatibilidade = modeloComCompatibilidade !== modeloExistente.modelo;
       const preco = precosExistentes[
         `${modeloExistente.modelo.toLowerCase().trim()}|${modeloExistente.qualidade}`
       ];
       return {
         ...linhaNormalizada,
-        modelo: modeloExistente.modelo,
+        modelo: modeloComCompatibilidade,
         qualidade: modeloExistente.qualidade,
+        expansaoCompatibilidadePecaId: expandiuCompatibilidade ? modeloExistente.id : undefined,
+        expansaoCompatibilidadeGemeaId: expandiuCompatibilidade ? modeloExistente.gemeaId : undefined,
+        modeloCompatibilidadeBase: expandiuCompatibilidade ? modeloExistente.modelo : undefined,
         valorCliente: preco?.cliente || linhaNormalizada.valorCliente.trim() || "",
         valorLojista: preco?.lojista || linhaNormalizada.valorLojista.trim() || "",
         correcaoPecaId: undefined,
@@ -1505,6 +1542,13 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
           ...r,
           ...patch,
           ...((patch.modelo !== undefined || patch.qualidade !== undefined)
+            ? {
+                expansaoCompatibilidadePecaId: undefined,
+                expansaoCompatibilidadeGemeaId: undefined,
+                modeloCompatibilidadeBase: undefined,
+              }
+            : {}),
+          ...((patch.modelo !== undefined || patch.qualidade !== undefined)
             ? { vinculoEditadoPeloUsuario: true }
             : {}),
           ...(patch.qualidade !== undefined && patch.qualidade !== r.qualidade
@@ -1547,6 +1591,9 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
           correcaoModeloAntigo: peca.modelo,
           aplicarCorrecao: false,
           correcaoManual: true,
+          expansaoCompatibilidadePecaId: undefined,
+          expansaoCompatibilidadeGemeaId: undefined,
+          modeloCompatibilidadeBase: undefined,
           vinculoAutoProcessado: true,
           vinculoEditadoPeloUsuario: true,
           buscaCorrecao: peca.modelo,
@@ -1788,7 +1835,16 @@ function ImportarNotaDialog({ open, itensIniciais, pecasExistentes, pecasExisten
                       <span>
                         Peça selecionada automaticamente: <b>{pecaEstoqueEncontrada?.modelo ?? r.modelo}</b> ·{" "}
                         <b>{pecaEstoqueEncontrada?.qualidade ?? r.qualidade}</b>.
-                        Ao cadastrar, vai <b>somar {r.quantidade || 0} no estoque</b> dela, sem criar cópia.
+                        {r.modeloCompatibilidadeBase ? (
+                          <>
+                            {" "}Ao confirmar, o nome existente será atualizado para <b>{r.modelo}</b> nos setores Cliente e Lojista.
+                            {" "}A quantidade será somada ao mesmo estoque, sem criar cópia.
+                          </>
+                        ) : (
+                          <>
+                            {" "}Ao cadastrar, vai <b>somar {r.quantidade || 0} no estoque</b> dela, sem criar cópia.
+                          </>
+                        )}
                       </span>
                     </div>
                     <button
@@ -2419,6 +2475,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
             aliasModelo: r.modeloOriginal || r.modelo,
             correcaoPecaId: r.aplicarCorrecao ? r.correcaoPecaId : undefined,
             correcaoGemeaId: r.aplicarCorrecao ? r.correcaoGemeaId : undefined,
+            expansaoCompatibilidadePecaId: r.expansaoCompatibilidadePecaId,
+            expansaoCompatibilidadeGemeaId: r.expansaoCompatibilidadeGemeaId,
+            modeloCompatibilidadeBase: r.modeloCompatibilidadeBase,
           })),
         }),
       });
@@ -2431,8 +2490,9 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
       const criados = resp?.criados ?? (resp?.cadastrados ?? rows.length);
       const somados = resp?.somados ?? 0;
       const corrigidos = resp?.corrigidos ?? 0;
+      const compatibilidadesExpandidas = resp?.compatibilidadesExpandidas ?? 0;
       const desc = somados > 0
-        ? `${criados} nova(s) + ${somados} somada(s) ao estoque existente${corrigidos ? `, com ${corrigidos} nome(s) corrigido(s)` : ""}.`
+        ? `${criados} nova(s) + ${somados} somada(s) ao estoque existente${corrigidos ? `, com ${corrigidos} nome(s) corrigido(s)` : ""}${compatibilidadesExpandidas ? `, ${compatibilidadesExpandidas} compatibilidade(s) adicionada(s) ao nome da tela` : ""}.`
         : `${criados} peças adicionadas nos dois setores.`;
       toast({ title: "Peças cadastradas!", description: desc });
     } catch (err: unknown) {
