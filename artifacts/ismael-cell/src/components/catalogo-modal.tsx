@@ -38,11 +38,20 @@ function normalizarNomeQualidade(qualidade: string): string {
     .replace(/\s+/g, " ");
 }
 
+function qualidadeEhMarcadorSemAro(qualidade: string): boolean {
+  return /^S\s*\/\s*A$/i.test(normalizarNomeQualidade(qualidade));
+}
+
+function incluirMarcadorSemAro(modelo: string): string {
+  return /\bS\s*\/\s*A\b/i.test(modelo) ? modelo : `${modelo} S/A`;
+}
+
 function chaveQualidade(qualidade: string): string {
   return normalizarNomeQualidade(qualidade).toLocaleLowerCase("pt-BR");
 }
 
 function normalizarQualidadeImportada(qualidade: string): string {
+  if (qualidadeEhMarcadorSemAro(qualidade)) return "";
   const chaveCompacta = normalizarNomeQualidade(qualidade)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
@@ -1115,7 +1124,9 @@ function modeloContemIdentidadeImport(modeloA: string, modeloB: string): boolean
   // Não associe uma peça com aro a outra sem aro, mesmo quando o modelo coincide.
   const comAroA = /\bC\s*\/\s*A\b/i.test(modeloA);
   const comAroB = /\bC\s*\/\s*A\b/i.test(modeloB);
-  if (comAroA !== comAroB) return false;
+  const semAroA = /\bS\s*\/\s*A\b/i.test(modeloA);
+  const semAroB = /\bS\s*\/\s*A\b/i.test(modeloB);
+  if (comAroA !== comAroB || semAroA !== semAroB) return false;
 
   return codigosA.some((codigo) => codigosB.has(codigo));
 }
@@ -2279,15 +2290,19 @@ export function CatalogoModal({ open, onClose, setor, initialTab, soloTab, share
   const prepararLinhasImportadas = (itens: Array<{ modelo: string; modeloOriginal?: string; quantidade: number; custo: string; qualidade: string }>) => {
     const rows: ImportRow[] = itens.map((it) => {
       const custo = (it.custo ?? "").replace(".", ",");
-      const modelo = it.modelo ?? "";
+      const modeloBase = it.modelo ?? "";
       const qualidadeOriginal = it.qualidade ?? "";
-      const qualidade = normalizarQualidadeImportada(qualidadeOriginal);
+      const marcadorSemAro = qualidadeEhMarcadorSemAro(qualidadeOriginal);
+      const modelo = marcadorSemAro ? incluirMarcadorSemAro(modeloBase) : modeloBase;
+      const modeloOriginalBase = it.modeloOriginal || modeloBase;
+      const modeloOriginal = marcadorSemAro ? incluirMarcadorSemAro(modeloOriginalBase) : modeloOriginalBase;
+      const qualidade = marcadorSemAro ? "" : normalizarQualidadeImportada(qualidadeOriginal);
       const pe = precosExistentes[`${modelo.toLowerCase().trim()}|${qualidade}`];
       return {
         modelo,
-        modeloOriginal: it.modeloOriginal || modelo,
+        modeloOriginal,
         qualidade,
-        qualidadeImportadaOriginal: qualidadeOriginal,
+        qualidadeImportadaOriginal: marcadorSemAro ? undefined : qualidadeOriginal,
         quantidade: String(it.quantidade ?? 1),
         valorCusto: custo,
         valorCliente: pe?.cliente || sugestaoPrecoCliente(custo),

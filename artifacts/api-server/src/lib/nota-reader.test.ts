@@ -46,6 +46,29 @@ describe("normalizarItensNota", () => {
     deepEqual(itens.map((item) => item.custo), ["65.00", "42.00", "50.00", "63.00"]);
   });
 
+  it("move S/A sozinho para o modelo e deixa a qualidade vazia", () => {
+    const [item] = normalizarItensNota({
+      itens: [{
+        modeloOriginal: "TELA G04/G04S/G24 F",
+        modelo: "TELA G04/G04S/G24 F",
+        qualidade: "S/A",
+      }],
+    });
+
+    equal(item?.modelo, "TELA G04/G04S/G24 F S/A");
+    equal(item?.modeloOriginal, "TELA G04/G04S/G24 F S/A");
+    equal(item?.qualidade, "");
+  });
+
+  it("mantém uma qualidade explícita quando o modelo também contém S/A", () => {
+    const [item] = normalizarItensNota({
+      itens: [{ modelo: "TELA G04/G04S/G24 F S/A", qualidade: "ZL" }],
+    });
+
+    equal(item?.modelo, "TELA G04/G04S/G24 F S/A");
+    equal(item?.qualidade, "ZL");
+  });
+
   it("falha claramente se a resposta não tiver uma lista de itens", () => {
     throws(() => normalizarItensNota({}), NotaReaderError);
   });
