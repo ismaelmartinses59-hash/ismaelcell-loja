@@ -229,11 +229,26 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
       correcaoGemeaId: Number.isInteger(Number(o.correcaoGemeaId)) && Number(o.correcaoGemeaId) > 0
         ? Number(o.correcaoGemeaId)
         : null,
+      expansaoCompatibilidadePecaId: Number.isInteger(Number(o.expansaoCompatibilidadePecaId)) && Number(o.expansaoCompatibilidadePecaId) > 0
+        ? Number(o.expansaoCompatibilidadePecaId)
+        : null,
+      expansaoCompatibilidadeGemeaId: Number.isInteger(Number(o.expansaoCompatibilidadeGemeaId)) && Number(o.expansaoCompatibilidadeGemeaId) > 0
+        ? Number(o.expansaoCompatibilidadeGemeaId)
+        : null,
+      modeloCompatibilidadeBase: String(o.modeloCompatibilidadeBase ?? "").trim(),
     };
   });
   const invalido = normalizados.find((n) => !n.modelo || !n.qualidade || !n.valorCliente || !n.valorLojista || n.quantidade < 1);
   if (invalido) {
     res.status(400).json({ error: "Todos os itens precisam de modelo, qualidade, quantidade (mín. 1) e os dois preços" });
+    return;
+  }
+  const expansaoInvalida = normalizados.find((n) =>
+    (n.expansaoCompatibilidadePecaId !== null || n.expansaoCompatibilidadeGemeaId !== null || n.modeloCompatibilidadeBase) &&
+    (!n.expansaoCompatibilidadePecaId || !n.modeloCompatibilidadeBase || n.correcaoPecaId || n.correcaoGemeaId),
+  );
+  if (expansaoInvalida) {
+    res.status(400).json({ error: "A ampliação do nome da peça está incompleta. Reabra a importação e tente novamente." });
     return;
   }
   const nomePorParDeCorrecao = new Map<string, string>();
@@ -250,11 +265,31 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
     }
     nomePorParDeCorrecao.set(chavePar, nomeDestino);
   }
+  const nomePorParDeCompatibilidade = new Map<string, string>();
+  for (const item of normalizados) {
+    if (!item.expansaoCompatibilidadePecaId) continue;
+    const idsPar = [
+      item.expansaoCompatibilidadePecaId,
+      ...(item.expansaoCompatibilidadeGemeaId ? [item.expansaoCompatibilidadeGemeaId] : []),
+    ];
+    const chavePar = [...idsPar].sort((a, b) => a - b).join(":");
+    const nomeDestino = item.modelo.toLocaleLowerCase("pt-BR");
+    const nomeAnterior = nomePorParDeCompatibilidade.get(chavePar);
+    if (nomeAnterior !== undefined && nomeAnterior !== nomeDestino) {
+      res.status(409).json({
+        error: "A mesma tela não pode receber dois nomes diferentes nesta nota. Revise os modelos compatíveis.",
+      });
+      return;
+    }
+    nomePorParDeCompatibilidade.set(chavePar, nomeDestino);
+  }
   try {
     const resultado = await db.transaction(async (tx) => {
       let criados = 0;
       let somados = 0;
       let corrigidos = 0;
+      let compatibilidadesExpandidas = 0;
+      const modelosCompatibilidadeExpandidos = new Map<string, string>();
       // Cada item vira um par de gêmeos (cliente + lojista). Se já existir uma
       // peça com o MESMO modelo (ignorando maiúsc./espaços) + qualidade + setor,
       // apenas SOMA a quantidade no estoque existente — não cria cópia.
@@ -290,6 +325,95 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
         return "criado" as const;
       };
       for (const n of normalizados) {
+        if (n.expansaoCompatibilidadePecaId) {
+          const idsPar = [
+            n.expansaoCompatibilidadePecaId,
+            ...(n.expansaoCompatibilidadeGemeaId ? [n.expansaoCompatibilidadeGemeaId] : []),
+          ];
+          const chavePar = [...idsPar].sort((a, b) => a - b).join(":");
+          const nomeJaExpandido = modelosCompatibilidadeExpandidos.get(chavePar);
+          if (nomeJaExpandido && nomeJaExpandido !== n.modelo.toLocaleLowerCase("pt-BR")) {
+            throw new ImportacaoInvalida("A mesma tela foi associada a nomes diferentes nesta nota.", 409);
+          }
+          if (!nomeJaExpandido) {
+            const idsComTrava = [
+              n.expansaoCompatibilidadePecaId,
+              ...(n.expansaoCompatibilidadeGemeaId ? [n.expansaoCompatibilidadeGemeaId] : []),
+            ].sort((a, b) => a - b);
+            for (const lockId of idsComTrava) {
+              await tx.execute(sql`
+                SELECT pg_advisory_xact_lock(hashtext('expandir_modelo_compativel'), ${lockId})
+              `);
+            }
+            const [alvo] = await tx.select().from(pecasTable)
+              .where(eq(pecasTable.id, n.expansaoCompatibilidadePecaId)).limit(1);
+            const modeloBase = n.modeloCompatibilidadeBase.trim();
+            const baseNormalizada = modeloBase.toLocaleLowerCase("pt-BR");
+            const modeloNovoNormalizado = n.modelo.toLocaleLowerCase("pt-BR");
+            const partesBase = modeloBase.split("/").map((parte) => parte.trim()).filter(Boolean);
+            const partesNovas = n.modelo.split("/").map((parte) => parte.trim()).filter(Boolean);
+            const baseAindaPreservada = partesBase.every(
+              (parte, indice) => partesNovas[indice]?.toLocaleLowerCase("pt-BR") === parte.toLocaleLowerCase("pt-BR"),
+            );
+            if (
+              !alvo ||
+              alvo.modelo.trim().toLocaleLowerCase("pt-BR") !== baseNormalizada ||
+              alvo.qualidade.trim().toLocaleLowerCase("pt-BR") !== n.qualidade.trim().toLocaleLowerCase("pt-BR") ||
+              !modeloNovoNormalizado.startsWith(`${baseNormalizada}/`) ||
+              partesNovas.length <= partesBase.length ||
+              !baseAindaPreservada
+            ) {
+              throw new ImportacaoInvalida("A peça compatível mudou desde a leitura da nota. Reabra a importação antes de cadastrar.", 409);
+            }
+
+            const outroSetor = alvo.setor === "cliente" ? "lojista" : "cliente";
+            const [gemeaExistente] = await tx.select().from(pecasTable).where(and(
+              sql`lower(trim(${pecasTable.modelo})) = ${baseNormalizada}`,
+              sql`lower(trim(${pecasTable.qualidade})) = ${n.qualidade.toLocaleLowerCase("pt-BR")}`,
+              eq(pecasTable.setor, outroSetor),
+            )).orderBy(pecasTable.id).limit(1);
+            const gemeaRows = n.expansaoCompatibilidadeGemeaId
+              ? await tx.select().from(pecasTable)
+                .where(eq(pecasTable.id, n.expansaoCompatibilidadeGemeaId)).limit(1)
+              : [];
+            const gemea = gemeaRows[0];
+            if (
+              (gemeaExistente && gemeaExistente.id !== n.expansaoCompatibilidadeGemeaId) ||
+              (n.expansaoCompatibilidadeGemeaId && (
+                !gemea ||
+                gemea.id === alvo.id ||
+                gemea.setor !== outroSetor ||
+                gemea.modelo.trim().toLocaleLowerCase("pt-BR") !== baseNormalizada ||
+                gemea.qualidade.trim().toLocaleLowerCase("pt-BR") !== n.qualidade.toLocaleLowerCase("pt-BR")
+              ))
+            ) {
+              throw new ImportacaoInvalida("O par Cliente/Lojista da peça compatível mudou. Reabra a importação e tente novamente.", 409);
+            }
+            const idsProtegidos = [alvo.id, ...(gemea ? [gemea.id] : [])];
+            for (const setor of ["cliente", "lojista"] as const) {
+              const conditions = [
+                sql`lower(trim(${pecasTable.modelo})) = ${modeloNovoNormalizado}`,
+                sql`lower(trim(${pecasTable.qualidade})) = ${n.qualidade.toLocaleLowerCase("pt-BR")}`,
+                eq(pecasTable.setor, setor),
+                ...idsProtegidos.map((id) => sql`${pecasTable.id} <> ${id}`),
+              ];
+              const [conflito] = await tx.select({ id: pecasTable.id }).from(pecasTable)
+                .where(and(...conditions)).limit(1);
+              if (conflito) {
+                throw new ImportacaoInvalida(
+                  `O nome ampliado já pertence a outra peça no setor ${setor}. Revise a nota antes de continuar.`,
+                  409,
+                );
+              }
+            }
+            await tx.update(pecasTable).set({ modelo: n.modelo }).where(eq(pecasTable.id, alvo.id));
+            if (gemea) {
+              await tx.update(pecasTable).set({ modelo: n.modelo }).where(eq(pecasTable.id, gemea.id));
+            }
+            modelosCompatibilidadeExpandidos.set(chavePar, n.modelo.toLocaleLowerCase("pt-BR"));
+            compatibilidadesExpandidas++;
+          }
+        }
         if (n.correcaoPecaId) {
           if (!n.correcaoGemeaId || n.correcaoGemeaId === n.correcaoPecaId) {
             throw new ImportacaoInvalida("O par Cliente/Lojista da correção é inválido.", 409);
@@ -422,13 +546,14 @@ router.post("/pecas/importar/confirmar", async (req, res): Promise<void> => {
           taxaPercent: "0",
         });
       }
-      return { criados, somados, corrigidos };
+      return { criados, somados, corrigidos, compatibilidadesExpandidas };
     });
     res.status(201).json({
       cadastrados: resultado.criados + resultado.somados,
       criados: resultado.criados,
       somados: resultado.somados,
       corrigidos: resultado.corrigidos,
+      compatibilidadesExpandidas: resultado.compatibilidadesExpandidas,
     });
   } catch (err) {
     if (err instanceof ImportacaoInvalida) {
