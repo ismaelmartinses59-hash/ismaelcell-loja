@@ -1202,6 +1202,7 @@ function sugerirModeloExistenteExato(
     const tokensPeca = tokensModeloImport(modeloExistente);
     const tokensCompartilhados = tokensPeca.filter((token) => tokensNota.includes(token)).length;
     const tokensExtras = tokensPeca.length - tokensCompartilhados;
+    // Prefira o nome completo correspondente quando vários modelos compartilham o mesmo código-base.
     const fraseExata = tokensNota.some((_, inicio) =>
       tokensPeca.every((token, deslocamento) => tokensNota[inicio + deslocamento] === token),
     );
